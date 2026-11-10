@@ -1,0 +1,23 @@
+{
+  "name": "bd-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "test": "node --test src/model.test.js src/copilot.test.js"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/ibm-plex-sans": "^5.2.8",
+    "@tisoap/react-flow-smart-edge": "^5.0.0",
+    "@xyflow/react": "^12.10.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-rnd": "^10.5.3"
+  },
+  "devDependencies": {
+    "vite": "^7.2.2"
+  }
+}

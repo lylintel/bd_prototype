@@ -1,0 +1,91 @@
+{
+  "name": "uart_loopback_bd",
+  "modules": {
+    "bd_stream_register": {
+      "sources": ["../src/vendor/verilog-axis/rtl/axis_register.v", "../src/adapters/bd_stream_register.v"],
+      "parameters": {
+        "DATA_WIDTH": {"default": 8, "min": 1, "max": 1024},
+        "REG_TYPE": {"default": 2, "min": 0, "max": 2}
+      },
+      "ports": {
+        "clk": {"direction": "input"},
+        "rst": {"direction": "input"},
+        "in_data": {"direction": "input", "range": ["DATA_WIDTH - 1", 0]},
+        "in_valid": {"direction": "input"},
+        "in_ready": {"direction": "output"},
+        "out_data": {"direction": "output", "range": ["DATA_WIDTH - 1", 0]},
+        "out_valid": {"direction": "output"},
+        "out_ready": {"direction": "input"}
+      }
+    },
+    "uart_tx": {
+      "sources": ["../src/vendor/verilog-uart/rtl/uart_tx.v"],
+      "parameters": {"DATA_WIDTH": {"default": 8, "min": 5, "max": 9}},
+      "ports": {
+        "clk": {"direction": "input"},
+        "rst": {"direction": "input"},
+        "s_axis_tdata": {"direction": "input", "range": ["DATA_WIDTH - 1", 0]},
+        "s_axis_tvalid": {"direction": "input"},
+        "s_axis_tready": {"direction": "output"},
+        "txd": {"direction": "output"},
+        "busy": {"direction": "output"},
+        "prescale": {"direction": "input", "range": [15, 0]}
+      }
+    },
+    "uart_rx": {
+      "sources": ["../src/vendor/verilog-uart/rtl/uart_rx.v"],
+      "parameters": {"DATA_WIDTH": {"default": 8, "min": 5, "max": 9}},
+      "ports": {
+        "clk": {"direction": "input"},
+        "rst": {"direction": "input"},
+        "m_axis_tdata": {"direction": "output", "range": ["DATA_WIDTH - 1", 0]},
+        "m_axis_tvalid": {"direction": "output"},
+        "m_axis_tready": {"direction": "input"},
+        "rxd": {"direction": "input"},
+        "busy": {"direction": "output"},
+        "overrun_error": {"direction": "output"},
+        "frame_error": {"direction": "output"},
+        "prescale": {"direction": "input", "range": [15, 0]}
+      }
+    }
+  },
+  "ports": {
+    "clk": {"direction": "input"},
+    "rst": {"direction": "input"},
+    "prescale": {"direction": "input", "range": [15, 0]},
+    "in_data": {"direction": "input", "range": [7, 0]},
+    "in_valid": {"direction": "input"},
+    "in_ready": {"direction": "output"},
+    "out_data": {"direction": "output", "range": [7, 0]},
+    "out_valid": {"direction": "output"},
+    "out_ready": {"direction": "input"},
+    "tx_busy": {"direction": "output"},
+    "rx_busy": {"direction": "output"},
+    "overrun_error": {"direction": "output"},
+    "frame_error": {"direction": "output"}
+  },
+  "instances": {
+    "buffer_0": {"module": "bd_stream_register", "parameters": {"DATA_WIDTH": 8, "REG_TYPE": 2}},
+    "tx_0": {"module": "uart_tx", "parameters": {"DATA_WIDTH": 8}},
+    "rx_0": {"module": "uart_rx", "parameters": {"DATA_WIDTH": 8}}
+  },
+  "nets": {
+    "clk_net": ["@clk", "buffer_0.clk", "tx_0.clk", "rx_0.clk"],
+    "rst_net": ["@rst", "buffer_0.rst", "tx_0.rst", "rx_0.rst"],
+    "prescale_net": ["@prescale", "tx_0.prescale", "rx_0.prescale"],
+    "input_data_net": ["@in_data", "buffer_0.in_data"],
+    "input_valid_net": ["@in_valid", "buffer_0.in_valid"],
+    "input_ready_net": ["buffer_0.in_ready", "@in_ready"],
+    "buffer_data_net": ["buffer_0.out_data", "tx_0.s_axis_tdata"],
+    "buffer_valid_net": ["buffer_0.out_valid", "tx_0.s_axis_tvalid"],
+    "buffer_ready_net": ["tx_0.s_axis_tready", "buffer_0.out_ready"],
+    "serial_net": ["tx_0.txd", "rx_0.rxd"],
+    "output_data_net": ["rx_0.m_axis_tdata", "@out_data"],
+    "output_valid_net": ["rx_0.m_axis_tvalid", "@out_valid"],
+    "output_ready_net": ["@out_ready", "rx_0.m_axis_tready"],
+    "tx_busy_net": ["tx_0.busy", "@tx_busy"],
+    "rx_busy_net": ["rx_0.busy", "@rx_busy"],
+    "overrun_net": ["rx_0.overrun_error", "@overrun_error"],
+    "frame_net": ["rx_0.frame_error", "@frame_error"]
+  }
+}

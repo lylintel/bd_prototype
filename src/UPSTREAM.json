@@ -1,0 +1,55 @@
+{
+  "snapshot_date": "2026-11-05",
+  "version_policy": "Vendored bytes are locked by SHA-256. GitHub API rate limiting prevented verification of the branch commit; no commit SHA is asserted.",
+  "repositories": {
+    "verilog-uart": {
+      "url": "https://github.com/alexforencich/verilog-uart",
+      "reference": "master",
+      "resolved_commit": null,
+      "license": "MIT",
+      "maintenance": "deprecated; superseded by https://github.com/fpganinja/taxi",
+      "license_notice": "Complete upstream copyright and MIT permission notices are retained in every vendored RTL file."
+    },
+    "verilog-axis": {
+      "url": "https://github.com/alexforencich/verilog-axis",
+      "reference": "master",
+      "resolved_commit": null,
+      "license": "MIT",
+      "maintenance": "deprecated; superseded by https://github.com/fpganinja/taxi",
+      "license_notice": "Complete upstream copyright and MIT permission notices are retained in every vendored RTL file."
+    }
+  },
+  "files": [
+    {
+      "path": "vendor/verilog-uart/rtl/uart_tx.v",
+      "repository": "verilog-uart",
+      "upstream_path": "rtl/uart_tx.v",
+      "sha256": "e9559ddebf124f8fbface06bf7091296baa78c7acab95a36b40a919663349d34",
+      "modified": false
+    },
+    {
+      "path": "vendor/verilog-uart/rtl/uart_rx.v",
+      "repository": "verilog-uart",
+      "upstream_path": "rtl/uart_rx.v",
+      "sha256": "e686104e5ff2d25fa1504e8d08259cef508f2ec9c9e8cfa63364f3fcb39b9f5c",
+      "modified": false
+    },
+    {
+      "path": "vendor/verilog-axis/rtl/axis_register.v",
+      "repository": "verilog-axis",
+      "upstream_path": "rtl/axis_register.v",
+      "sha256": "599fde2d6c2d806643bbffb7c444297e69a71871f962d4b741ec1914342e0d39",
+      "modified": false
+    },
+    {
+      "path": "vendor/verilog-axis/rtl/priority_encoder.v",
+      "repository": "verilog-axis",
+      "upstream_path": "rtl/priority_encoder.v",
+      "sha256": "df28220d95b47df349a72803a9751aad331eb8e1435416e8686d00572a974dd5",
+      "modified": false
+    }
+  ],
+  "local_files": [
+    {"path": "adapters/bd_stream_register.v", "role": "Local ready/valid adapter around the unmodified upstream axis_register; not an upstream file."}
+  ]
+}

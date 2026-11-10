@@ -1,0 +1,102 @@
+{
+  "name": "example_bd",
+  "modules": {
+    "counter": {
+      "sources": [
+        "../examples/rtl/counter.v"
+      ],
+      "parameters": {
+        "WIDTH": {
+          "default": 8,
+          "min": 1
+        }
+      },
+      "ports": {
+        "clk": {
+          "direction": "input"
+        },
+        "rst": {
+          "direction": "input"
+        },
+        "count": {
+          "direction": "output",
+          "range": [
+            "WIDTH - 1",
+            0
+          ]
+        }
+      }
+    },
+    "compare_eq": {
+      "sources": [
+        "../examples/rtl/compare_eq.v"
+      ],
+      "parameters": {
+        "WIDTH": {
+          "default": 8,
+          "min": 1
+        },
+        "THRESHOLD": {
+          "default": 9,
+          "min": 0
+        }
+      },
+      "ports": {
+        "value": {
+          "direction": "input",
+          "range": [
+            "WIDTH - 1",
+            0
+          ]
+        },
+        "match": {
+          "direction": "output"
+        }
+      }
+    }
+  },
+  "ports": {
+    "clk": {
+      "direction": "input"
+    },
+    "rst": {
+      "direction": "input"
+    },
+    "match": {
+      "direction": "output"
+    }
+  },
+  "instances": {
+    "counter_0": {
+      "module": "counter",
+      "parameters": {
+        "WIDTH": 8
+      }
+    },
+    "compare_0": {
+      "module": "compare_eq",
+      "parameters": {
+        "WIDTH": 8,
+        "THRESHOLD": 19
+      }
+    }
+  },
+  "nets": {
+    "clk_net": [
+      "@clk",
+      "counter_0.clk"
+    ],
+    "rst_net": [
+      "@rst",
+      "counter_0.rst"
+    ],
+    "match_net": [
+      "compare_0.match",
+      "@match"
+    ],
+    "count_net": [
+      "counter_0.count",
+      "compare_0.value"
+    ]
+  }
+}
