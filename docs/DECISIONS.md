@@ -63,3 +63,11 @@
 - P1.5 沿用现有受保护 HTTP/NDJSON 约定，不强制 multipart；P1.6 前先独立提交前端 i18n 基础，不迁移旧文案，所有新界面文案使用资源。
 - P1.7 全部原创 RTL，每个附 testbench 并在 Icarus/CI 运行，不复制现有 vendor IP 充数。每项结束完整 scripts/check.py，通过后单独提交；新增夹具/示例也冻结预期输出。
 - 开工前本地完整检查最终通过 112 项 Python 测试、57 个子测试和 19 项前端测试。首次遇到原 HTTP 测试 WinError 10053；该用例单独复跑与完整复跑均通过，未跳过测试、未修改 HTTP 代码，原因未确定。
+
+## D009：P1.2 前 pyslang 跨平台 spike
+
+- 固定 pyslang 12.1.0；当前 Windows/Python 3.14.5 已成功安装并解析原 counter。API 位于 pyslang.syntax.SyntaxTree 与 pyslang.ast.Compilation，不使用已移走的顶层旧 API。
+- scripts/spike_pyslang.py 真实解析 ANSI/非 ANSI、多模块、参数、localparam、wire/reg/logic 夹具，比较端口名/方向/类型的 UTF-8 golden 字节，输出实际系统/Python/包版本。
+- CI 增加 Windows/Linux 与 Python 3.10/3.14 四组合，明确要求可安装的二进制 wheel，任何安装/解析/字节差异都会失败；不允许 continue-on-error。原 Linux 完整检查同时保留。
+- 决定：只有本 spike 提交的四项实际 CI 全通过，才采用固定 pyslang 为主解析器并开始 P1.2；否则将 pyslang 降为可选、用 Yosys 主路径并重新验证全矩阵。实时证据为该提交的 Checks，不用单机结果代替四组合证据。
+- 新夹具 tests/fixtures/verilog/spike.sv 已有独立 golden；原有 HDL golden 不变。此 spike 只确认依赖/API/平台能力，尚不是正式导入器。

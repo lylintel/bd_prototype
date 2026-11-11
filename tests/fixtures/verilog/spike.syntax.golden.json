@@ -1,0 +1,36 @@
+{
+  "spike_ansi": [
+    [
+      "clk",
+      "ArgumentDirection.In",
+      "logic"
+    ],
+    [
+      "data",
+      "ArgumentDirection.In",
+      "logic[7:0]"
+    ],
+    [
+      "result",
+      "ArgumentDirection.Out",
+      "logic[7:0]"
+    ]
+  ],
+  "spike_legacy": [
+    [
+      "left",
+      "ArgumentDirection.In",
+      "logic[3:0]"
+    ],
+    [
+      "right",
+      "ArgumentDirection.In",
+      "logic[3:0]"
+    ],
+    [
+      "result",
+      "ArgumentDirection.Out",
+      "reg[3:0]"
+    ]
+  ]
+}
