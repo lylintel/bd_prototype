@@ -1,0 +1,65 @@
+.panel-heading .ip-import-trigger ~ .icon-button { margin-left: 0; }
+.ip-library { min-height: 74px; max-height: 37%; display: flex; flex-direction: column; flex-shrink: 1; }
+.ip-library .library-section-title { flex-shrink: 0; font-family: inherit; font-size: 10px; padding-top: 4px; }
+.ip-library .library-section-title > span:first-child { margin-left: 0; }
+.ip-library-scroll { overflow: auto; min-height: 0; }
+.ip-library-item { padding: 8px; }
+.ip-library-item .module-label strong { white-space: nowrap; }
+.ip-library-state { padding: 10px 14px; font-size: 11px; color: var(--muted); display: flex; gap: 7px; overflow-wrap: anywhere; }
+.ip-library-state.error, .ip-unavailable { color: #a75549; }
+.ip-origin { align-self: flex-start; display: inline-block; border-radius: 3px; border: 1px solid #d9e5ed; padding: 1px 4px; font-size: 9px; color: #55718b; background: #f0f5fa; }
+.ip-origin-builtin { color: #287960; background: #edf7f2; border-color: #cce3d7; }
+.ip-origin-manual { color: #8b704b; background: #faf5eb; border-color: #eee0c9; }
+.ip-dialog { padding: 0; width: min(1060px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); box-shadow: 0 24px 80px #20353e30; }
+.ip-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.ip-dialog::backdrop { background: #20313b55; }
+.ip-dialog h2 { font-size: 16px; }
+.ip-import-toolbar { display: flex; flex-shrink: 0; gap: 14px; flex-wrap: wrap; align-items: flex-end; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.ip-import-toolbar label { display: grid; gap: 4px; font-size: 10px; width: 220px; }
+.ip-import-toolbar .ip-muted { margin-left: auto; align-self: center; }
+.ip-import-body { display: grid; grid-template-columns: minmax(190px, 0.8fr) minmax(0, 2fr); min-height: 140px; height: min(58dvh, 580px); overflow: hidden; }
+.ip-candidates { overflow: auto; min-width: 0; border-right: 1px solid var(--line); background: #fafcfd; }
+.ip-check { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; }
+.ip-select-all { display: flex; padding: 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: #fafcfd; z-index: 1; }
+.ip-candidate { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #edf1f4; }
+.ip-candidate.active { background: #edf7f2; }
+.ip-candidate > input { flex-shrink: 0; }
+.ip-candidate > button { background: none; border: 0; min-width: 0; padding: 2px 0; display: flex; flex: 1; flex-direction: column; gap: 5px; text-align: left; }
+.ip-candidate code { font-size: 11px; overflow-wrap: anywhere; }
+.ip-status { font-size: 10px; color: #5c7f91; }
+.ip-status-needs_version { color: #9e702a; }
+.ip-status-invalid { color: #b34b42; }
+.ip-status-imported, .ip-status-skipped { color: #348369; }
+.ip-detail { overflow: auto; min-width: 0; }
+.ip-editor { border: 0; padding: 16px 18px; margin: 0; min-width: 0; }
+.ip-editor-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; min-width: 0; }
+.ip-editor-heading code { font-size: 13px; overflow-wrap: anywhere; }
+.ip-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
+.ip-fields label, .ip-port-fields label, .ip-role-fields > label:not(.ip-check) { display: grid; gap: 5px; font-size: 10px; min-width: 0; }
+.ip-field-wide { grid-column: 1 / -1; }
+.ip-fields textarea { resize: vertical; max-height: 150px; }
+.ip-editor h3 { font-size: 11px; font-weight: 500; margin: 20px 0 10px; }
+.ip-parameter { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr); gap: 10px; align-items: center; margin: 8px 0; }
+.ip-parameter code { font-size: 11px; overflow-wrap: anywhere; }
+.ip-port-editor { border-top: 1px solid #edf1f4; padding: 12px 0; }
+.ip-port-fields { display: grid; grid-template-columns: minmax(0, 1fr) 80px minmax(0, 1.3fr); gap: 8px; }
+.ip-role-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.ip-role-fields > label:not(.ip-check) { width: 105px; }
+.ip-muted { font-size: 10px; color: var(--muted); }
+.ip-progress { display: flex; gap: 8px; align-items: center; padding: 10px 18px; font-size: 11px; color: var(--green); background: #f1f8f5; overflow-wrap: anywhere; }
+.ip-import-error { display: flex; align-items: flex-start; gap: 8px; padding: 9px 16px; color: #aa4f43; background: #fff5f2; font-size: 11px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.ip-errors { max-height: 120px; overflow: auto; flex-shrink: 0; }
+.ip-import-error code { max-width: 35%; }
+.ip-version-diff { margin: 12px 16px 0; font-size: 11px; color: #9a722e; }
+.ip-version-diff > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px; }
+@media (max-width: 640px) {
+  .ip-import-body { grid-template-columns: 1fr; grid-template-rows: minmax(70px, 150px) minmax(0, 1fr); height: 60dvh; min-height: 140px; }
+  .ip-candidates { border-right: 0; border-bottom: 1px solid var(--line); }
+  .ip-import-toolbar { gap: 9px; padding: 10px 12px; }
+  .ip-import-toolbar label { width: 150px; }
+  .ip-import-toolbar .ip-muted { display: none; }
+  .ip-editor { padding: 12px; }
+  .ip-port-fields { grid-template-columns: minmax(0, 1fr) 78px; }
+  .ip-port-fields > label:last-child { grid-column: 1 / -1; }
+  .ip-dialog .dialog-actions { padding: 10px 12px; }
+}

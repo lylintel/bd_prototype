@@ -4,7 +4,7 @@ import react from "eslint-plugin-react";
 
 export default [
   {
-    files: ["src/**/*.{js,jsx}"],
+    files: ["src/**/*.{js,jsx}", "e2e/**/*.js", "playwright.config.js"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",

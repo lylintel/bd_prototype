@@ -7,6 +7,9 @@ import OutputWindow from "./OutputWindow.jsx";
 import CircuitEdge from "./CircuitEdge.jsx";
 import CopilotPanel from "./CopilotPanel.jsx";
 import { resolveDesignUpdate } from "./copilot.js";
+import { ImportButton, LibraryList, OriginBadge } from "./ip/Library.jsx";
+import { IP_DRAG_TYPE, addImported, findImportedDrop, originForDefinition } from "./ip/model.js";
+import { t } from "./i18n.js";
 
 const { Handle } = FlowComponents;
 const initialLayout = { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } };
@@ -106,6 +109,9 @@ export default function App() {
   const [mobilePanel, setMobilePanel] = useState(null);
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [modal, setModal] = useState(null);
+  const [ipImportOpen, setIpImportOpen] = useState(false);
+  const [ipRevision, setIpRevision] = useState(0);
+  const [ipCatalog, setIpCatalog] = useState({ baseDir: "", entries: [] });
   const [toast, setToast] = useState(null);
   const [fatal, setFatal] = useState("");
   const [jsonDraft, setJsonDraft] = useState("");
@@ -291,6 +297,27 @@ export default function App() {
     }
   }
 
+  function insertImported(entry, position, sourceBase) {
+    if (sourceBase !== editorState.current.baseDir) { notify(t("ip.dragInvalid"), true); return; }
+    let id;
+    if (mutate((next, nextLayout) => { id = addImported(next, entry); nextLayout.nodes[id] = position ?? defaultPosition(id, next); }, t("ip.added", { name: entry.metadata.id }))) {
+      setSelection({ type: "node", id }); setMobilePanel(null);
+    }
+  }
+
+  function dropModule(event) {
+    event.preventDefault();
+    const position = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    const imported = event.dataTransfer.getData(IP_DRAG_TYPE);
+    if (imported) {
+      try { insertImported(findImportedDrop(imported, ipCatalog, baseDir), position, ipCatalog.baseDir); }
+      catch (error) { notify(error.message, true); }
+      return;
+    }
+    const module = event.dataTransfer.getData("application/bd-module");
+    if (module) insertModule(module, position);
+  }
+
   function removeSelection() {
     if (!selection) return;
     mutate((next, nextLayout) => {
@@ -391,7 +418,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event) => {
-      if (!design || busy || modal || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+      if (!design || busy || modal || ipImportOpen || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveDialog(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
@@ -413,7 +440,7 @@ export default function App() {
 
   if (!design) return <div className="boot-screen"><CircuitBoard size={36} /><h1>BD Studio</h1>{fatal ? <><p role="alert">{fatal}</p><button onClick={() => location.reload()}>重新连接</button></> : <LoaderCircle className="spin" size={20} />}</div>;
 
-  const moduleNames = Object.keys(design.modules).filter((name) => name.toLowerCase().includes(search.toLowerCase()));
+  const moduleNames = Object.keys(design.modules).filter((name) => [name, ...Object.keys(design.modules[name].ports)].some((value) => value.toLowerCase().includes(search.toLowerCase())));
   const filename = tab === "wrapper" ? `${design.name}_wrapper.v` : `${design.name}.v`;
   const code = inspection.files[filename] ?? "";
   const selectionNode = selection?.type === "node" ? selection.id : selection?.type === "port" ? nodeId(selection.id) : null;
@@ -461,11 +488,12 @@ export default function App() {
     <main className="workbench" inert={busy ? true : undefined}>
       {mobilePanel && <button className="panel-scrim" aria-label="关闭侧面板" onClick={() => setMobilePanel(null)} />}
       <aside className={`library-panel ${mobilePanel === "library" ? "mobile-open" : ""}`}>
-        <div className="panel-heading"><span>模块库</span><span className="count-badge">{Object.keys(design.modules).length}</span><IconButton icon={Plus} label="登记 RTL 模块" onClick={() => setModal({ kind: "module", name: "my_module", json: JSON.stringify({ sources: ["rtl/my_module.v"], parameters: {}, ports: { clk: { direction: "input" }, result: { direction: "output" } } }, null, 2) })} /></div>
+        <div className="panel-heading"><span>模块库</span><span className="count-badge">{Object.keys(design.modules).length}</span><ImportButton token={token} onOpenChange={setIpImportOpen} onComplete={() => setIpRevision((value) => value + 1)} onNotify={notify} /><IconButton icon={Plus} label="登记 RTL 模块" onClick={() => setModal({ kind: "module", name: "my_module", json: JSON.stringify({ sources: ["rtl/my_module.v"], parameters: {}, ports: { clk: { direction: "input" }, result: { direction: "output" } } }, null, 2) })} /></div>
         <label className="search-box"><Search size={14} /><input aria-label="搜索模块" placeholder="搜索模块" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+        <LibraryList baseDir={baseDir} revision={ipRevision} search={search} onCatalogChange={setIpCatalog} onAdd={insertImported} />
         <div className="library-section-title"><ChevronDown size={13} />PROJECT RTL<span>{moduleNames.length}</span></div>
         <div className="module-list">{moduleNames.map((module) => <div className="module-item" key={module} draggable onDragStart={(event) => { event.dataTransfer.setData("application/bd-module", module); event.dataTransfer.effectAllowed = "copy"; }} onDoubleClick={() => insertModule(module)}>
-          <div className={`module-icon ${module.includes("compare") ? "amber" : "blue"}`}><Cpu size={19} strokeWidth={1.5} /></div><div className="module-label"><strong>{module}</strong><span>{Object.keys(design.modules[module].ports).length} ports · RTL</span></div><IconButton icon={Plus} label={`添加 ${module}`} onClick={() => insertModule(module)} />
+          <div className={`module-icon ${module.includes("compare") ? "amber" : "blue"}`}><Cpu size={19} strokeWidth={1.5} /></div><div className="module-label"><strong>{module}</strong><span>{Object.keys(design.modules[module].ports).length} ports · RTL</span><OriginBadge origin={originForDefinition(module, design.modules[module], ipCatalog.entries)} /></div><IconButton icon={Plus} label={`添加 ${module}`} onClick={() => insertModule(module)} />
         </div>)}</div>
         {!moduleNames.length && <div className="empty-small">没有匹配的模块</div>}
         <div className="library-section-title external-title"><ChevronDown size={13} />EXTERNAL I/O<IconButton icon={Plus} label="添加外部端口" onClick={() => setModal({ kind: "external", name: uniqueName(design, "port"), direction: "input", vector: false, left: "7", right: "0", signed: false })} /></div>
@@ -475,7 +503,7 @@ export default function App() {
 
       <section className="center-panel">
         <div className="canvas-heading"><div><span className="canvas-tab"><Workflow size={14} />Block Design</span><span className="canvas-meta">{Object.keys(design.instances).length} instances <span>/</span> {Object.keys(design.nets).length} nets</span></div><div><IconButton icon={LayoutGrid} label="整理布局" onClick={autoLayout} /><IconButton icon={Maximize2} label="适应画布" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div></div>
-        <div className="canvas" aria-label="设计画布" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); const module = event.dataTransfer.getData("application/bd-module"); if (module) insertModule(module, flow.screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}>
+        <div className="canvas" aria-label="设计画布" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={dropModule}>
           <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={0.25} maxZoom={2} deleteKeyCode={null} connectOnClick={false} snapToGrid snapGrid={[10, 10]}
             connectionMode={ConnectionMode.Loose} connectionLineType={ConnectionLineType.Step}
             isValidConnection={(connection) => connectionReady && connectionError(design, connection.sourceHandle, connection.targetHandle, interfaces) === null}

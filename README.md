@@ -28,7 +28,7 @@
 
 ## IP 元数据
 
-P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、许可证、参数表达式和端口角色的独立 IP 格式。counter/compare_eq 可通过 API 自动迁移，保留原设计和 HDL 输出。现已提供跨平台 RTL 解析、角色建议和共享 CLI/HTTP 导入入口，使用方法和限制见 [docs/ip-import.md](docs/ip-import.md)；GUI 导入面板尚未实现。
+P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、许可证、参数表达式和端口角色的独立 IP 格式。counter/compare_eq 可通过 API 自动迁移，保留原设计和 HDL 输出。现已提供跨平台 RTL 解析、角色建议、共享 CLI/HTTP 导入入口和 GUI 预览确认面板，使用方法和限制见 [docs/ip-import.md](docs/ip-import.md)。
 
 仅使用 IP 元数据 API 时安装 `python -m pip install -r requirements-ip.txt`；开发安装已包含该依赖。字段、迁移示例和限制见 [docs/ip-metadata.md](docs/ip-metadata.md)。
 
@@ -38,13 +38,14 @@ P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、
 
 ## 开发检查
 
-CI 与本地共用 [scripts/check.py](scripts/check.py)，依次执行 Ruff、全部 Python/golden 测试、ESLint、应用 JS/JSX 类型检查、前端单测、生产构建。任一步失败立即返回非零状态。检查不请求真实 LLM，不需要登录或 SDK；只使用本机临时 HTTP 服务和 mock。
+CI 与本地共用 [scripts/check.py](scripts/check.py)，依次执行 Ruff、全部 Python/golden 测试、ESLint、应用 JS/JSX 类型检查、前端单测、生产构建和隔离真实后端的 Playwright 验收。任一步失败立即返回非零状态。检查不请求真实 LLM，不需要登录或 SDK；只使用本机临时 HTTP 服务和 mock。
 
 准备 Python 3.10+、Node.js 24 和 Icarus Verilog（`iverilog`、`vvp` 必须在 PATH；Ubuntu 可用 `sudo apt-get install iverilog`），已有虚拟环境后安装依赖：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 npm.cmd --prefix web ci
+.\web\node_modules\.bin\playwright.cmd install chromium
 ```
 
 一键运行与 CI 相同的检查：
@@ -53,7 +54,7 @@ npm.cmd --prefix web ci
 .\.venv\Scripts\python.exe scripts/check.py
 ```
 
-Linux/macOS 使用 `.venv/bin/python scripts/check.py`。CI 测试 Python 3.10/3.14 与 Node 24，缺少 HDL 工具会失败，不接受跳过仿真的假绿。安装步骤需要网络，检查步骤不依赖外网。仅运行原有 Python 单测仍可用 `python -m unittest discover -s tests -v`；golden 必须使用 `python -m pytest tests/golden`，维护规则见 [tests/golden/README.md](tests/golden/README.md)。
+Linux/macOS 首次在 web 目录执行 `npx playwright install --with-deps chromium`，随后使用 `.venv/bin/python scripts/check.py`。CI 测试 Python 3.10/3.14 与 Node 24，缺少 HDL 工具会失败，不接受跳过仿真的假绿；另有四组合解析矩阵。安装步骤需要网络，检查步骤不依赖外网。仅运行原有 Python 单测仍可用 `python -m unittest discover -s tests -v`；golden 必须使用 `python -m pytest tests/golden`，维护规则见 [tests/golden/README.md](tests/golden/README.md)。
 
 ## 网页 GUI
 
@@ -61,6 +62,7 @@ Linux/macOS 使用 `.venv/bin/python scripts/check.py`。CI 测试 Python 3.10/3
 
 ```powershell
 py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-parser.txt
 npm.cmd --prefix web ci
 npm.cmd --prefix web run build
 .\.venv\Scripts\python.exe -m bdgui --open

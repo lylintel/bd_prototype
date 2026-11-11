@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import sys
@@ -18,12 +19,12 @@ def main():
     commands = [
         [sys.executable, "-m", "ruff", "check", "."],
         [sys.executable, "-m", "pytest", "-q"],
-        *[[npm, "--prefix", "web", "run", task] for task in ("lint", "typecheck", "test", "build")],
+        *[[npm, "--prefix", "web", "run", task] for task in ("lint", "typecheck", "test", "build", "test:e2e")],
     ]
     for command in commands:
         print(f"\n> {' '.join(command)}", flush=True)
         try:
-            result = subprocess.run(command, cwd=ROOT, timeout=300)
+            result = subprocess.run(command, cwd=ROOT, timeout=300, env={**os.environ, "BD_PYTHON": sys.executable})
         except (OSError, subprocess.TimeoutExpired) as error:
             print(str(error), file=sys.stderr)
             return 1

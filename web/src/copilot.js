@@ -1,6 +1,6 @@
 import { clone, validateDocumentShape } from "./model.js";
 
-function canonicalDesign(value) {
+export function canonicalDesign(value) {
   return JSON.stringify(value, (key, item) => item && typeof item === "object" && !Array.isArray(item)
     ? Object.fromEntries(Object.keys(item).sort().map((name) => [name, item[name]])) : item);
 }
