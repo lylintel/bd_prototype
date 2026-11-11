@@ -16,3 +16,5 @@ P0.2 锁定 examples 下每个 JSON 设计的 BD、wrapper 和规范化校验结
 ```
 
 不可以用重新采集 golden 掩盖意外回归。当前初始基线来自未修改的 bdtool 生成器；完整示例集合缺少任何 golden 都会导致测试失败。
+
+新增示例可仅更新指定项：`python -m tests.golden.test_examples --update builtin_counter`。这不会触碰 counter_compare 或 uart_loopback 的基准。比较器本身始终比较字节，不转换换行或路径分隔符。

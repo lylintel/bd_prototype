@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "id": "bd_debounce",
+  "version": "1.0.0",
+  "display_name": "输入去抖",
+  "description": "先同步输入，再要求连续 STABLE_CYCLES 个样本相同才更新输出。",
+  "tags": [
+    "debounce",
+    "gpio",
+    "control"
+  ],
+  "source": {
+    "kind": "verilog",
+    "path": "src/bd_debounce.v",
+    "sha256": "608ad368a46a656efb22f1b6b42c155291dc93288c6c5bc6c3f701f3ba0c58a3",
+    "license": "MIT"
+  },
+  "language": "verilog-2005",
+  "parameters": [
+    {
+      "name": "STABLE_CYCLES",
+      "type": "int",
+      "default": "4",
+      "min": 2,
+      "max": 65536
+    }
+  ],
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "in",
+      "width": "1",
+      "signed": false,
+      "role": {
+        "kind": "clock",
+        "confidence": 0.95,
+        "confirmed": false
+      }
+    },
+    {
+      "name": "rst",
+      "dir": "in",
+      "width": "1",
+      "signed": false,
+      "role": {
+        "kind": "reset",
+        "confidence": 0.95,
+        "confirmed": false,
+        "polarity": "high",
+        "async": "unknown"
+      }
+    },
+    {
+      "name": "raw_in",
+      "dir": "in",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "level",
+      "dir": "out",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "changed",
+      "dir": "out",
+      "width": "1",
+      "signed": false
+    }
+  ],
+  "interfaces": []
+}

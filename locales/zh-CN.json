@@ -46,5 +46,7 @@
   "IP_LIBRARY_IO": "IP 库读写失败。{detail}",
   "IP_LIBRARY_MISSING": "IP 导入依赖未安装，请安装 requirements-parser.txt。",
   "IP_CLI_DESCRIPTION": "导入本地 RTL 接口到版本化 IP 库，输出 NDJSON 结果。",
-  "IP_LIBRARY_INTEGRITY": "元数据与已提交的导入记录不一致，请重新预览并升版本。{detail}"
+  "IP_LIBRARY_INTEGRITY": "元数据与已提交的导入记录不一致，请重新预览并升版本。{detail}",
+  "IP_BUILTIN_MANIFEST": "原创内置库清单或生成快照不一致：{detail}",
+  "IP_BUILTIN_DESCRIPTION": "通过共享导入流水线生成或核对原创内置库和示例。"
 }

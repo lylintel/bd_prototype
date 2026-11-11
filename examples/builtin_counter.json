@@ -1,0 +1,191 @@
+{
+  "name": "builtin_counter_bd",
+  "modules": {
+    "bd_counter": {
+      "sources": [
+        "../ip_library/builtin/bd_counter/1.0.0/src/bd_counter.v"
+      ],
+      "parameters": {
+        "WIDTH": {
+          "default": 8,
+          "min": 1,
+          "max": 32
+        }
+      },
+      "ports": {
+        "clk": {
+          "direction": "input",
+          "signed": false
+        },
+        "rst": {
+          "direction": "input",
+          "signed": false
+        },
+        "enable": {
+          "direction": "input",
+          "signed": false
+        },
+        "clear": {
+          "direction": "input",
+          "signed": false
+        },
+        "count": {
+          "direction": "output",
+          "signed": false,
+          "range": [
+            "(WIDTH - 1)",
+            0
+          ]
+        },
+        "overflow": {
+          "direction": "output",
+          "signed": false
+        }
+      }
+    },
+    "bd_compare": {
+      "sources": [
+        "../ip_library/builtin/bd_compare/1.0.0/src/bd_compare.v"
+      ],
+      "parameters": {
+        "WIDTH": {
+          "default": 8,
+          "min": 1,
+          "max": 32
+        }
+      },
+      "ports": {
+        "left_data": {
+          "direction": "input",
+          "signed": false,
+          "range": [
+            "(WIDTH - 1)",
+            0
+          ]
+        },
+        "right_data": {
+          "direction": "input",
+          "signed": false,
+          "range": [
+            "(WIDTH - 1)",
+            0
+          ]
+        },
+        "equal": {
+          "direction": "output",
+          "signed": false
+        },
+        "less": {
+          "direction": "output",
+          "signed": false
+        },
+        "greater": {
+          "direction": "output",
+          "signed": false
+        }
+      }
+    }
+  },
+  "ports": {
+    "clk": {
+      "direction": "input",
+      "signed": false
+    },
+    "rst": {
+      "direction": "input",
+      "signed": false
+    },
+    "enable": {
+      "direction": "input",
+      "signed": false
+    },
+    "clear": {
+      "direction": "input",
+      "signed": false
+    },
+    "count": {
+      "direction": "output",
+      "signed": false,
+      "range": [
+        7,
+        0
+      ]
+    },
+    "overflow": {
+      "direction": "output",
+      "signed": false
+    },
+    "threshold": {
+      "direction": "input",
+      "signed": false,
+      "range": [
+        7,
+        0
+      ]
+    },
+    "equal": {
+      "direction": "output"
+    },
+    "less": {
+      "direction": "output"
+    },
+    "greater": {
+      "direction": "output"
+    }
+  },
+  "instances": {
+    "counter_0": {
+      "module": "bd_counter",
+      "parameters": {}
+    },
+    "compare_0": {
+      "module": "bd_compare",
+      "parameters": {
+        "WIDTH": 8
+      }
+    }
+  },
+  "nets": {
+    "clk_net": [
+      "@clk",
+      "counter_0.clk"
+    ],
+    "rst_net": [
+      "@rst",
+      "counter_0.rst"
+    ],
+    "enable_net": [
+      "@enable",
+      "counter_0.enable"
+    ],
+    "clear_net": [
+      "@clear",
+      "counter_0.clear"
+    ],
+    "count_bus": [
+      "counter_0.count",
+      "compare_0.left_data",
+      "@count"
+    ],
+    "threshold_bus": [
+      "@threshold",
+      "compare_0.right_data"
+    ],
+    "overflow_net": [
+      "counter_0.overflow",
+      "@overflow"
+    ],
+    "equal_net": [
+      "compare_0.equal",
+      "@equal"
+    ],
+    "less_net": [
+      "compare_0.less",
+      "@less"
+    ],
+    "greater_net": [
+      "compare_0.greater",
+      "@greater"
+    ]
+  }
+}

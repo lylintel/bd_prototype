@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "id": "bd_compare",
+  "version": "1.0.0",
+  "display_name": "无符号比较器",
+  "description": "输出相等、小于和大于关系的组合比较器。",
+  "tags": [
+    "compare",
+    "combinational"
+  ],
+  "source": {
+    "kind": "verilog",
+    "path": "src/bd_compare.v",
+    "sha256": "8aeffb1bd080507531df317bd872fa949deee86f17d9a69393aff49ecfa03cda",
+    "license": "MIT"
+  },
+  "language": "verilog-2005",
+  "parameters": [
+    {
+      "name": "WIDTH",
+      "type": "int",
+      "default": "8",
+      "min": 1,
+      "max": 32
+    }
+  ],
+  "ports": [
+    {
+      "name": "left_data",
+      "dir": "in",
+      "width": "(((WIDTH - 1)) >= (0) ? ((WIDTH - 1)) - (0) + 1 : (0) - ((WIDTH - 1)) + 1)",
+      "signed": false,
+      "range": [
+        "(WIDTH - 1)",
+        0
+      ]
+    },
+    {
+      "name": "right_data",
+      "dir": "in",
+      "width": "(((WIDTH - 1)) >= (0) ? ((WIDTH - 1)) - (0) + 1 : (0) - ((WIDTH - 1)) + 1)",
+      "signed": false,
+      "range": [
+        "(WIDTH - 1)",
+        0
+      ]
+    },
+    {
+      "name": "equal",
+      "dir": "out",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "less",
+      "dir": "out",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "greater",
+      "dir": "out",
+      "width": "1",
+      "signed": false
+    }
+  ],
+  "interfaces": []
+}

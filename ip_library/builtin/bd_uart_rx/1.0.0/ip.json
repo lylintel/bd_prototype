@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "id": "bd_uart_rx",
+  "version": "1.0.0",
+  "display_name": "UART 接收",
+  "description": "8N1 接收，输入同步、中心采样、单字节输出缓存及帧错/溢出标志。",
+  "tags": [
+    "uart",
+    "serial",
+    "stream"
+  ],
+  "source": {
+    "kind": "verilog",
+    "path": "src/bd_uart_rx.v",
+    "sha256": "9da0e3683fdef23951742e9b4fb5cde287f4b87ba4c6d3f518017ac5426042bd",
+    "license": "MIT"
+  },
+  "language": "verilog-2005",
+  "parameters": [
+    {
+      "name": "CLKS_PER_BIT",
+      "type": "int",
+      "default": "8",
+      "min": 4,
+      "max": 65535
+    }
+  ],
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "in",
+      "width": "1",
+      "signed": false,
+      "role": {
+        "kind": "clock",
+        "confidence": 0.95,
+        "confirmed": false
+      }
+    },
+    {
+      "name": "rst",
+      "dir": "in",
+      "width": "1",
+      "signed": false,
+      "role": {
+        "kind": "reset",
+        "confidence": 0.95,
+        "confirmed": false,
+        "polarity": "high",
+        "async": "unknown"
+      }
+    },
+    {
+      "name": "rx",
+      "dir": "in",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "m_data",
+      "dir": "out",
+      "width": "8",
+      "signed": false,
+      "range": [
+        7,
+        0
+      ]
+    },
+    {
+      "name": "m_valid",
+      "dir": "out",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "m_ready",
+      "dir": "in",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "framing_error",
+      "dir": "out",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "overrun",
+      "dir": "out",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "busy",
+      "dir": "out",
+      "width": "1",
+      "signed": false
+    }
+  ],
+  "interfaces": []
+}

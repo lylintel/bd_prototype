@@ -1,0 +1,172 @@
+{
+  "bd_async_fifo": {
+    "wrapper": "bd_async_fifo_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_async_fifo/1.0.0/src/bd_async_fifo.v"
+    ],
+    "files": {
+      "bd_async_fifo_bd.v": "module bd_async_fifo_bd (\n    input wire wr_clk,\n    input wire wr_rst_n,\n    input wire [7:0] s_data,\n    input wire s_valid,\n    output wire s_ready,\n    input wire rd_clk,\n    input wire rd_rst_n,\n    output wire [7:0] m_data,\n    output wire m_valid,\n    input wire m_ready\n);\n\n    wire wr_clk_net;\n    wire wr_rst_n_net;\n    wire [7:0] s_data_net;\n    wire s_valid_net;\n    wire s_ready_net;\n    wire rd_clk_net;\n    wire rd_rst_n_net;\n    wire [7:0] m_data_net;\n    wire m_valid_net;\n    wire m_ready_net;\n\n    assign wr_clk_net = wr_clk;\n    assign wr_rst_n_net = wr_rst_n;\n    assign s_data_net = s_data;\n    assign s_valid_net = s_valid;\n    assign s_ready = s_ready_net;\n    assign rd_clk_net = rd_clk;\n    assign rd_rst_n_net = rd_rst_n;\n    assign m_data = m_data_net;\n    assign m_valid = m_valid_net;\n    assign m_ready_net = m_ready;\n\n    bd_async_fifo #(\n        .WIDTH(8),\n        .ADDR_WIDTH(3)\n    ) dut (\n        .wr_clk(wr_clk_net),\n        .wr_rst_n(wr_rst_n_net),\n        .s_data(s_data_net),\n        .s_valid(s_valid_net),\n        .s_ready(s_ready_net),\n        .rd_clk(rd_clk_net),\n        .rd_rst_n(rd_rst_n_net),\n        .m_data(m_data_net),\n        .m_valid(m_valid_net),\n        .m_ready(m_ready_net)\n    );\nendmodule\n",
+      "bd_async_fifo_bd_wrapper.v": "module bd_async_fifo_bd_wrapper (\n    input wire wr_clk,\n    input wire wr_rst_n,\n    input wire [7:0] s_data,\n    input wire s_valid,\n    output wire s_ready,\n    input wire rd_clk,\n    input wire rd_rst_n,\n    output wire [7:0] m_data,\n    output wire m_valid,\n    input wire m_ready\n);\n\n    bd_async_fifo_bd bd_i (\n        .wr_clk(wr_clk),\n        .wr_rst_n(wr_rst_n),\n        .s_data(s_data),\n        .s_valid(s_valid),\n        .s_ready(s_ready),\n        .rd_clk(rd_clk),\n        .rd_rst_n(rd_rst_n),\n        .m_data(m_data),\n        .m_valid(m_valid),\n        .m_ready(m_ready)\n    );\nendmodule\n"
+    }
+  },
+  "bd_axil_regs": {
+    "wrapper": "bd_axil_regs_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_axil_regs/1.0.0/src/bd_axil_regs.v"
+    ],
+    "files": {
+      "bd_axil_regs_bd.v": "module bd_axil_regs_bd (\n    input wire clk,\n    input wire resetn,\n    input wire [5:0] awaddr,\n    input wire [2:0] awprot,\n    input wire awvalid,\n    output wire awready,\n    input wire [31:0] wdata,\n    input wire [3:0] wstrb,\n    input wire wvalid,\n    output wire wready,\n    output wire [1:0] bresp,\n    output wire bvalid,\n    input wire bready,\n    input wire [5:0] araddr,\n    input wire [2:0] arprot,\n    input wire arvalid,\n    output wire arready,\n    output wire [31:0] rdata,\n    output wire [1:0] rresp,\n    output wire rvalid,\n    input wire rready,\n    output wire [31:0] reg0,\n    output wire [31:0] reg1,\n    output wire [31:0] reg2,\n    output wire [31:0] reg3\n);\n\n    wire clk_net;\n    wire resetn_net;\n    wire [5:0] awaddr_net;\n    wire [2:0] awprot_net;\n    wire awvalid_net;\n    wire awready_net;\n    wire [31:0] wdata_net;\n    wire [3:0] wstrb_net;\n    wire wvalid_net;\n    wire wready_net;\n    wire [1:0] bresp_net;\n    wire bvalid_net;\n    wire bready_net;\n    wire [5:0] araddr_net;\n    wire [2:0] arprot_net;\n    wire arvalid_net;\n    wire arready_net;\n    wire [31:0] rdata_net;\n    wire [1:0] rresp_net;\n    wire rvalid_net;\n    wire rready_net;\n    wire [31:0] reg0_net;\n    wire [31:0] reg1_net;\n    wire [31:0] reg2_net;\n    wire [31:0] reg3_net;\n\n    assign clk_net = clk;\n    assign resetn_net = resetn;\n    assign awaddr_net = awaddr;\n    assign awprot_net = awprot;\n    assign awvalid_net = awvalid;\n    assign awready = awready_net;\n    assign wdata_net = wdata;\n    assign wstrb_net = wstrb;\n    assign wvalid_net = wvalid;\n    assign wready = wready_net;\n    assign bresp = bresp_net;\n    assign bvalid = bvalid_net;\n    assign bready_net = bready;\n    assign araddr_net = araddr;\n    assign arprot_net = arprot;\n    assign arvalid_net = arvalid;\n    assign arready = arready_net;\n    assign rdata = rdata_net;\n    assign rresp = rresp_net;\n    assign rvalid = rvalid_net;\n    assign rready_net = rready;\n    assign reg0 = reg0_net;\n    assign reg1 = reg1_net;\n    assign reg2 = reg2_net;\n    assign reg3 = reg3_net;\n\n    bd_axil_regs #(\n        .ADDR_WIDTH(6)\n    ) dut (\n        .clk(clk_net),\n        .resetn(resetn_net),\n        .awaddr(awaddr_net),\n        .awprot(awprot_net),\n        .awvalid(awvalid_net),\n        .awready(awready_net),\n        .wdata(wdata_net),\n        .wstrb(wstrb_net),\n        .wvalid(wvalid_net),\n        .wready(wready_net),\n        .bresp(bresp_net),\n        .bvalid(bvalid_net),\n        .bready(bready_net),\n        .araddr(araddr_net),\n        .arprot(arprot_net),\n        .arvalid(arvalid_net),\n        .arready(arready_net),\n        .rdata(rdata_net),\n        .rresp(rresp_net),\n        .rvalid(rvalid_net),\n        .rready(rready_net),\n        .reg0(reg0_net),\n        .reg1(reg1_net),\n        .reg2(reg2_net),\n        .reg3(reg3_net)\n    );\nendmodule\n",
+      "bd_axil_regs_bd_wrapper.v": "module bd_axil_regs_bd_wrapper (\n    input wire clk,\n    input wire resetn,\n    input wire [5:0] awaddr,\n    input wire [2:0] awprot,\n    input wire awvalid,\n    output wire awready,\n    input wire [31:0] wdata,\n    input wire [3:0] wstrb,\n    input wire wvalid,\n    output wire wready,\n    output wire [1:0] bresp,\n    output wire bvalid,\n    input wire bready,\n    input wire [5:0] araddr,\n    input wire [2:0] arprot,\n    input wire arvalid,\n    output wire arready,\n    output wire [31:0] rdata,\n    output wire [1:0] rresp,\n    output wire rvalid,\n    input wire rready,\n    output wire [31:0] reg0,\n    output wire [31:0] reg1,\n    output wire [31:0] reg2,\n    output wire [31:0] reg3\n);\n\n    bd_axil_regs_bd bd_i (\n        .clk(clk),\n        .resetn(resetn),\n        .awaddr(awaddr),\n        .awprot(awprot),\n        .awvalid(awvalid),\n        .awready(awready),\n        .wdata(wdata),\n        .wstrb(wstrb),\n        .wvalid(wvalid),\n        .wready(wready),\n        .bresp(bresp),\n        .bvalid(bvalid),\n        .bready(bready),\n        .araddr(araddr),\n        .arprot(arprot),\n        .arvalid(arvalid),\n        .arready(arready),\n        .rdata(rdata),\n        .rresp(rresp),\n        .rvalid(rvalid),\n        .rready(rready),\n        .reg0(reg0),\n        .reg1(reg1),\n        .reg2(reg2),\n        .reg3(reg3)\n    );\nendmodule\n"
+    }
+  },
+  "bd_clock_divider": {
+    "wrapper": "bd_clock_divider_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_clock_divider/1.0.0/src/bd_clock_divider.v"
+    ],
+    "files": {
+      "bd_clock_divider_bd.v": "module bd_clock_divider_bd (\n    input wire clk,\n    input wire rst,\n    output wire out_clk,\n    output wire tick\n);\n\n    wire clk_net;\n    wire rst_net;\n    wire out_clk_net;\n    wire tick_net;\n\n    assign clk_net = clk;\n    assign rst_net = rst;\n    assign out_clk = out_clk_net;\n    assign tick = tick_net;\n\n    bd_clock_divider #(\n        .HALF_PERIOD(2)\n    ) dut (\n        .clk(clk_net),\n        .rst(rst_net),\n        .out_clk(out_clk_net),\n        .tick(tick_net)\n    );\nendmodule\n",
+      "bd_clock_divider_bd_wrapper.v": "module bd_clock_divider_bd_wrapper (\n    input wire clk,\n    input wire rst,\n    output wire out_clk,\n    output wire tick\n);\n\n    bd_clock_divider_bd bd_i (\n        .clk(clk),\n        .rst(rst),\n        .out_clk(out_clk),\n        .tick(tick)\n    );\nendmodule\n"
+    }
+  },
+  "bd_compare": {
+    "wrapper": "bd_compare_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_compare/1.0.0/src/bd_compare.v"
+    ],
+    "files": {
+      "bd_compare_bd.v": "module bd_compare_bd (\n    input wire [7:0] left_data,\n    input wire [7:0] right_data,\n    output wire equal,\n    output wire less,\n    output wire greater\n);\n\n    wire [7:0] left_data_net;\n    wire [7:0] right_data_net;\n    wire equal_net;\n    wire less_net;\n    wire greater_net;\n\n    assign left_data_net = left_data;\n    assign right_data_net = right_data;\n    assign equal = equal_net;\n    assign less = less_net;\n    assign greater = greater_net;\n\n    bd_compare #(\n        .WIDTH(8)\n    ) dut (\n        .left_data(left_data_net),\n        .right_data(right_data_net),\n        .equal(equal_net),\n        .less(less_net),\n        .greater(greater_net)\n    );\nendmodule\n",
+      "bd_compare_bd_wrapper.v": "module bd_compare_bd_wrapper (\n    input wire [7:0] left_data,\n    input wire [7:0] right_data,\n    output wire equal,\n    output wire less,\n    output wire greater\n);\n\n    bd_compare_bd bd_i (\n        .left_data(left_data),\n        .right_data(right_data),\n        .equal(equal),\n        .less(less),\n        .greater(greater)\n    );\nendmodule\n"
+    }
+  },
+  "bd_counter": {
+    "wrapper": "bd_counter_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_counter/1.0.0/src/bd_counter.v"
+    ],
+    "files": {
+      "bd_counter_bd.v": "module bd_counter_bd (\n    input wire clk,\n    input wire rst,\n    input wire enable,\n    input wire clear,\n    output wire [7:0] count,\n    output wire overflow\n);\n\n    wire clk_net;\n    wire rst_net;\n    wire enable_net;\n    wire clear_net;\n    wire [7:0] count_net;\n    wire overflow_net;\n\n    assign clk_net = clk;\n    assign rst_net = rst;\n    assign enable_net = enable;\n    assign clear_net = clear;\n    assign count = count_net;\n    assign overflow = overflow_net;\n\n    bd_counter #(\n        .WIDTH(8)\n    ) dut (\n        .clk(clk_net),\n        .rst(rst_net),\n        .enable(enable_net),\n        .clear(clear_net),\n        .count(count_net),\n        .overflow(overflow_net)\n    );\nendmodule\n",
+      "bd_counter_bd_wrapper.v": "module bd_counter_bd_wrapper (\n    input wire clk,\n    input wire rst,\n    input wire enable,\n    input wire clear,\n    output wire [7:0] count,\n    output wire overflow\n);\n\n    bd_counter_bd bd_i (\n        .clk(clk),\n        .rst(rst),\n        .enable(enable),\n        .clear(clear),\n        .count(count),\n        .overflow(overflow)\n    );\nendmodule\n"
+    }
+  },
+  "bd_debounce": {
+    "wrapper": "bd_debounce_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_debounce/1.0.0/src/bd_debounce.v"
+    ],
+    "files": {
+      "bd_debounce_bd.v": "module bd_debounce_bd (\n    input wire clk,\n    input wire rst,\n    input wire raw_in,\n    output wire level,\n    output wire changed\n);\n\n    wire clk_net;\n    wire rst_net;\n    wire raw_in_net;\n    wire level_net;\n    wire changed_net;\n\n    assign clk_net = clk;\n    assign rst_net = rst;\n    assign raw_in_net = raw_in;\n    assign level = level_net;\n    assign changed = changed_net;\n\n    bd_debounce #(\n        .STABLE_CYCLES(4)\n    ) dut (\n        .clk(clk_net),\n        .rst(rst_net),\n        .raw_in(raw_in_net),\n        .level(level_net),\n        .changed(changed_net)\n    );\nendmodule\n",
+      "bd_debounce_bd_wrapper.v": "module bd_debounce_bd_wrapper (\n    input wire clk,\n    input wire rst,\n    input wire raw_in,\n    output wire level,\n    output wire changed\n);\n\n    bd_debounce_bd bd_i (\n        .clk(clk),\n        .rst(rst),\n        .raw_in(raw_in),\n        .level(level),\n        .changed(changed)\n    );\nendmodule\n"
+    }
+  },
+  "bd_edge_detect": {
+    "wrapper": "bd_edge_detect_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_edge_detect/1.0.0/src/bd_edge_detect.v"
+    ],
+    "files": {
+      "bd_edge_detect_bd.v": "module bd_edge_detect_bd (\n    input wire clk,\n    input wire rst,\n    input wire signal_in,\n    output wire rising,\n    output wire falling\n);\n\n    wire clk_net;\n    wire rst_net;\n    wire signal_in_net;\n    wire rising_net;\n    wire falling_net;\n\n    assign clk_net = clk;\n    assign rst_net = rst;\n    assign signal_in_net = signal_in;\n    assign rising = rising_net;\n    assign falling = falling_net;\n\n    bd_edge_detect dut (\n        .clk(clk_net),\n        .rst(rst_net),\n        .signal_in(signal_in_net),\n        .rising(rising_net),\n        .falling(falling_net)\n    );\nendmodule\n",
+      "bd_edge_detect_bd_wrapper.v": "module bd_edge_detect_bd_wrapper (\n    input wire clk,\n    input wire rst,\n    input wire signal_in,\n    output wire rising,\n    output wire falling\n);\n\n    bd_edge_detect_bd bd_i (\n        .clk(clk),\n        .rst(rst),\n        .signal_in(signal_in),\n        .rising(rising),\n        .falling(falling)\n    );\nendmodule\n"
+    }
+  },
+  "bd_mux2": {
+    "wrapper": "bd_mux2_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_mux2/1.0.0/src/bd_mux2.v"
+    ],
+    "files": {
+      "bd_mux2_bd.v": "module bd_mux2_bd (\n    input wire [7:0] input0,\n    input wire [7:0] input1,\n    input wire select,\n    output wire [7:0] result\n);\n\n    wire [7:0] input0_net;\n    wire [7:0] input1_net;\n    wire select_net;\n    wire [7:0] result_net;\n\n    assign input0_net = input0;\n    assign input1_net = input1;\n    assign select_net = select;\n    assign result = result_net;\n\n    bd_mux2 #(\n        .WIDTH(8)\n    ) dut (\n        .input0(input0_net),\n        .input1(input1_net),\n        .select(select_net),\n        .result(result_net)\n    );\nendmodule\n",
+      "bd_mux2_bd_wrapper.v": "module bd_mux2_bd_wrapper (\n    input wire [7:0] input0,\n    input wire [7:0] input1,\n    input wire select,\n    output wire [7:0] result\n);\n\n    bd_mux2_bd bd_i (\n        .input0(input0),\n        .input1(input1),\n        .select(select),\n        .result(result)\n    );\nendmodule\n"
+    }
+  },
+  "bd_mux4": {
+    "wrapper": "bd_mux4_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_mux4/1.0.0/src/bd_mux4.v"
+    ],
+    "files": {
+      "bd_mux4_bd.v": "module bd_mux4_bd (\n    input wire [7:0] input0,\n    input wire [7:0] input1,\n    input wire [7:0] input2,\n    input wire [7:0] input3,\n    input wire [1:0] select,\n    output wire [7:0] result\n);\n\n    wire [7:0] input0_net;\n    wire [7:0] input1_net;\n    wire [7:0] input2_net;\n    wire [7:0] input3_net;\n    wire [1:0] select_net;\n    wire [7:0] result_net;\n\n    assign input0_net = input0;\n    assign input1_net = input1;\n    assign input2_net = input2;\n    assign input3_net = input3;\n    assign select_net = select;\n    assign result = result_net;\n\n    bd_mux4 #(\n        .WIDTH(8)\n    ) dut (\n        .input0(input0_net),\n        .input1(input1_net),\n        .input2(input2_net),\n        .input3(input3_net),\n        .select(select_net),\n        .result(result_net)\n    );\nendmodule\n",
+      "bd_mux4_bd_wrapper.v": "module bd_mux4_bd_wrapper (\n    input wire [7:0] input0,\n    input wire [7:0] input1,\n    input wire [7:0] input2,\n    input wire [7:0] input3,\n    input wire [1:0] select,\n    output wire [7:0] result\n);\n\n    bd_mux4_bd bd_i (\n        .input0(input0),\n        .input1(input1),\n        .input2(input2),\n        .input3(input3),\n        .select(select),\n        .result(result)\n    );\nendmodule\n"
+    }
+  },
+  "bd_shift_register": {
+    "wrapper": "bd_shift_register_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_shift_register/1.0.0/src/bd_shift_register.v"
+    ],
+    "files": {
+      "bd_shift_register_bd.v": "module bd_shift_register_bd (\n    input wire clk,\n    input wire rst,\n    input wire enable,\n    input wire serial_in,\n    output wire [7:0] parallel_out,\n    output wire serial_out\n);\n\n    wire clk_net;\n    wire rst_net;\n    wire enable_net;\n    wire serial_in_net;\n    wire [7:0] parallel_out_net;\n    wire serial_out_net;\n\n    assign clk_net = clk;\n    assign rst_net = rst;\n    assign enable_net = enable;\n    assign serial_in_net = serial_in;\n    assign parallel_out = parallel_out_net;\n    assign serial_out = serial_out_net;\n\n    bd_shift_register #(\n        .WIDTH(8)\n    ) dut (\n        .clk(clk_net),\n        .rst(rst_net),\n        .enable(enable_net),\n        .serial_in(serial_in_net),\n        .parallel_out(parallel_out_net),\n        .serial_out(serial_out_net)\n    );\nendmodule\n",
+      "bd_shift_register_bd_wrapper.v": "module bd_shift_register_bd_wrapper (\n    input wire clk,\n    input wire rst,\n    input wire enable,\n    input wire serial_in,\n    output wire [7:0] parallel_out,\n    output wire serial_out\n);\n\n    bd_shift_register_bd bd_i (\n        .clk(clk),\n        .rst(rst),\n        .enable(enable),\n        .serial_in(serial_in),\n        .parallel_out(parallel_out),\n        .serial_out(serial_out)\n    );\nendmodule\n"
+    }
+  },
+  "bd_simple_dual_port_ram": {
+    "wrapper": "bd_simple_dual_port_ram_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_simple_dual_port_ram/1.0.0/src/bd_simple_dual_port_ram.v"
+    ],
+    "files": {
+      "bd_simple_dual_port_ram_bd.v": "module bd_simple_dual_port_ram_bd (\n    input wire wr_clk,\n    input wire wr_enable,\n    input wire [3:0] wr_address,\n    input wire [7:0] wr_data,\n    input wire rd_clk,\n    input wire rd_rst,\n    input wire rd_enable,\n    input wire [3:0] rd_address,\n    output wire [7:0] rd_data,\n    output wire rd_valid\n);\n\n    wire wr_clk_net;\n    wire wr_enable_net;\n    wire [3:0] wr_address_net;\n    wire [7:0] wr_data_net;\n    wire rd_clk_net;\n    wire rd_rst_net;\n    wire rd_enable_net;\n    wire [3:0] rd_address_net;\n    wire [7:0] rd_data_net;\n    wire rd_valid_net;\n\n    assign wr_clk_net = wr_clk;\n    assign wr_enable_net = wr_enable;\n    assign wr_address_net = wr_address;\n    assign wr_data_net = wr_data;\n    assign rd_clk_net = rd_clk;\n    assign rd_rst_net = rd_rst;\n    assign rd_enable_net = rd_enable;\n    assign rd_address_net = rd_address;\n    assign rd_data = rd_data_net;\n    assign rd_valid = rd_valid_net;\n\n    bd_simple_dual_port_ram #(\n        .WIDTH(8),\n        .ADDR_WIDTH(4)\n    ) dut (\n        .wr_clk(wr_clk_net),\n        .wr_enable(wr_enable_net),\n        .wr_address(wr_address_net),\n        .wr_data(wr_data_net),\n        .rd_clk(rd_clk_net),\n        .rd_rst(rd_rst_net),\n        .rd_enable(rd_enable_net),\n        .rd_address(rd_address_net),\n        .rd_data(rd_data_net),\n        .rd_valid(rd_valid_net)\n    );\nendmodule\n",
+      "bd_simple_dual_port_ram_bd_wrapper.v": "module bd_simple_dual_port_ram_bd_wrapper (\n    input wire wr_clk,\n    input wire wr_enable,\n    input wire [3:0] wr_address,\n    input wire [7:0] wr_data,\n    input wire rd_clk,\n    input wire rd_rst,\n    input wire rd_enable,\n    input wire [3:0] rd_address,\n    output wire [7:0] rd_data,\n    output wire rd_valid\n);\n\n    bd_simple_dual_port_ram_bd bd_i (\n        .wr_clk(wr_clk),\n        .wr_enable(wr_enable),\n        .wr_address(wr_address),\n        .wr_data(wr_data),\n        .rd_clk(rd_clk),\n        .rd_rst(rd_rst),\n        .rd_enable(rd_enable),\n        .rd_address(rd_address),\n        .rd_data(rd_data),\n        .rd_valid(rd_valid)\n    );\nendmodule\n"
+    }
+  },
+  "bd_spi_master": {
+    "wrapper": "bd_spi_master_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_spi_master/1.0.0/src/bd_spi_master.v"
+    ],
+    "files": {
+      "bd_spi_master_bd.v": "module bd_spi_master_bd (\n    input wire clk,\n    input wire rst,\n    input wire start,\n    input wire [7:0] tx_data,\n    input wire miso,\n    output wire ready,\n    output wire busy,\n    output wire sclk,\n    output wire mosi,\n    output wire cs_n,\n    output wire [7:0] rx_data,\n    output wire done\n);\n\n    wire clk_net;\n    wire rst_net;\n    wire start_net;\n    wire [7:0] tx_data_net;\n    wire miso_net;\n    wire ready_net;\n    wire busy_net;\n    wire sclk_net;\n    wire mosi_net;\n    wire cs_n_net;\n    wire [7:0] rx_data_net;\n    wire done_net;\n\n    assign clk_net = clk;\n    assign rst_net = rst;\n    assign start_net = start;\n    assign tx_data_net = tx_data;\n    assign miso_net = miso;\n    assign ready = ready_net;\n    assign busy = busy_net;\n    assign sclk = sclk_net;\n    assign mosi = mosi_net;\n    assign cs_n = cs_n_net;\n    assign rx_data = rx_data_net;\n    assign done = done_net;\n\n    bd_spi_master #(\n        .CLOCK_DIV(2)\n    ) dut (\n        .clk(clk_net),\n        .rst(rst_net),\n        .start(start_net),\n        .tx_data(tx_data_net),\n        .miso(miso_net),\n        .ready(ready_net),\n        .busy(busy_net),\n        .sclk(sclk_net),\n        .mosi(mosi_net),\n        .cs_n(cs_n_net),\n        .rx_data(rx_data_net),\n        .done(done_net)\n    );\nendmodule\n",
+      "bd_spi_master_bd_wrapper.v": "module bd_spi_master_bd_wrapper (\n    input wire clk,\n    input wire rst,\n    input wire start,\n    input wire [7:0] tx_data,\n    input wire miso,\n    output wire ready,\n    output wire busy,\n    output wire sclk,\n    output wire mosi,\n    output wire cs_n,\n    output wire [7:0] rx_data,\n    output wire done\n);\n\n    bd_spi_master_bd bd_i (\n        .clk(clk),\n        .rst(rst),\n        .start(start),\n        .tx_data(tx_data),\n        .miso(miso),\n        .ready(ready),\n        .busy(busy),\n        .sclk(sclk),\n        .mosi(mosi),\n        .cs_n(cs_n),\n        .rx_data(rx_data),\n        .done(done)\n    );\nendmodule\n"
+    }
+  },
+  "bd_stream_slice": {
+    "wrapper": "bd_stream_slice_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_stream_slice/1.0.0/src/bd_stream_slice.v"
+    ],
+    "files": {
+      "bd_stream_slice_bd.v": "module bd_stream_slice_bd (\n    input wire clk,\n    input wire rst,\n    input wire [7:0] s_data,\n    input wire s_valid,\n    output wire s_ready,\n    output wire [7:0] m_data,\n    output wire m_valid,\n    input wire m_ready\n);\n\n    wire clk_net;\n    wire rst_net;\n    wire [7:0] s_data_net;\n    wire s_valid_net;\n    wire s_ready_net;\n    wire [7:0] m_data_net;\n    wire m_valid_net;\n    wire m_ready_net;\n\n    assign clk_net = clk;\n    assign rst_net = rst;\n    assign s_data_net = s_data;\n    assign s_valid_net = s_valid;\n    assign s_ready = s_ready_net;\n    assign m_data = m_data_net;\n    assign m_valid = m_valid_net;\n    assign m_ready_net = m_ready;\n\n    bd_stream_slice #(\n        .WIDTH(8)\n    ) dut (\n        .clk(clk_net),\n        .rst(rst_net),\n        .s_data(s_data_net),\n        .s_valid(s_valid_net),\n        .s_ready(s_ready_net),\n        .m_data(m_data_net),\n        .m_valid(m_valid_net),\n        .m_ready(m_ready_net)\n    );\nendmodule\n",
+      "bd_stream_slice_bd_wrapper.v": "module bd_stream_slice_bd_wrapper (\n    input wire clk,\n    input wire rst,\n    input wire [7:0] s_data,\n    input wire s_valid,\n    output wire s_ready,\n    output wire [7:0] m_data,\n    output wire m_valid,\n    input wire m_ready\n);\n\n    bd_stream_slice_bd bd_i (\n        .clk(clk),\n        .rst(rst),\n        .s_data(s_data),\n        .s_valid(s_valid),\n        .s_ready(s_ready),\n        .m_data(m_data),\n        .m_valid(m_valid),\n        .m_ready(m_ready)\n    );\nendmodule\n"
+    }
+  },
+  "bd_sync_2ff": {
+    "wrapper": "bd_sync_2ff_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_sync_2ff/1.0.0/src/bd_sync_2ff.v"
+    ],
+    "files": {
+      "bd_sync_2ff_bd.v": "module bd_sync_2ff_bd (\n    input wire clk,\n    input wire rstn,\n    input wire async_in,\n    output wire sync_out\n);\n\n    wire clk_net;\n    wire rstn_net;\n    wire async_in_net;\n    wire sync_out_net;\n\n    assign clk_net = clk;\n    assign rstn_net = rstn;\n    assign async_in_net = async_in;\n    assign sync_out = sync_out_net;\n\n    bd_sync_2ff dut (\n        .clk(clk_net),\n        .rstn(rstn_net),\n        .async_in(async_in_net),\n        .sync_out(sync_out_net)\n    );\nendmodule\n",
+      "bd_sync_2ff_bd_wrapper.v": "module bd_sync_2ff_bd_wrapper (\n    input wire clk,\n    input wire rstn,\n    input wire async_in,\n    output wire sync_out\n);\n\n    bd_sync_2ff_bd bd_i (\n        .clk(clk),\n        .rstn(rstn),\n        .async_in(async_in),\n        .sync_out(sync_out)\n    );\nendmodule\n"
+    }
+  },
+  "bd_sync_fifo": {
+    "wrapper": "bd_sync_fifo_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_sync_fifo/1.0.0/src/bd_sync_fifo.v"
+    ],
+    "files": {
+      "bd_sync_fifo_bd.v": "module bd_sync_fifo_bd (\n    input wire clk,\n    input wire rst,\n    input wire [7:0] s_data,\n    input wire s_valid,\n    output wire s_ready,\n    output wire [7:0] m_data,\n    output wire m_valid,\n    input wire m_ready,\n    output wire [4:0] level\n);\n\n    wire clk_net;\n    wire rst_net;\n    wire [7:0] s_data_net;\n    wire s_valid_net;\n    wire s_ready_net;\n    wire [7:0] m_data_net;\n    wire m_valid_net;\n    wire m_ready_net;\n    wire [4:0] level_net;\n\n    assign clk_net = clk;\n    assign rst_net = rst;\n    assign s_data_net = s_data;\n    assign s_valid_net = s_valid;\n    assign s_ready = s_ready_net;\n    assign m_data = m_data_net;\n    assign m_valid = m_valid_net;\n    assign m_ready_net = m_ready;\n    assign level = level_net;\n\n    bd_sync_fifo #(\n        .WIDTH(8),\n        .DEPTH(16)\n    ) dut (\n        .clk(clk_net),\n        .rst(rst_net),\n        .s_data(s_data_net),\n        .s_valid(s_valid_net),\n        .s_ready(s_ready_net),\n        .m_data(m_data_net),\n        .m_valid(m_valid_net),\n        .m_ready(m_ready_net),\n        .level(level_net)\n    );\nendmodule\n",
+      "bd_sync_fifo_bd_wrapper.v": "module bd_sync_fifo_bd_wrapper (\n    input wire clk,\n    input wire rst,\n    input wire [7:0] s_data,\n    input wire s_valid,\n    output wire s_ready,\n    output wire [7:0] m_data,\n    output wire m_valid,\n    input wire m_ready,\n    output wire [4:0] level\n);\n\n    bd_sync_fifo_bd bd_i (\n        .clk(clk),\n        .rst(rst),\n        .s_data(s_data),\n        .s_valid(s_valid),\n        .s_ready(s_ready),\n        .m_data(m_data),\n        .m_valid(m_valid),\n        .m_ready(m_ready),\n        .level(level)\n    );\nendmodule\n"
+    }
+  },
+  "bd_uart_rx": {
+    "wrapper": "bd_uart_rx_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_uart_rx/1.0.0/src/bd_uart_rx.v"
+    ],
+    "files": {
+      "bd_uart_rx_bd.v": "module bd_uart_rx_bd (\n    input wire clk,\n    input wire rst,\n    input wire rx,\n    output wire [7:0] m_data,\n    output wire m_valid,\n    input wire m_ready,\n    output wire framing_error,\n    output wire overrun,\n    output wire busy\n);\n\n    wire clk_net;\n    wire rst_net;\n    wire rx_net;\n    wire [7:0] m_data_net;\n    wire m_valid_net;\n    wire m_ready_net;\n    wire framing_error_net;\n    wire overrun_net;\n    wire busy_net;\n\n    assign clk_net = clk;\n    assign rst_net = rst;\n    assign rx_net = rx;\n    assign m_data = m_data_net;\n    assign m_valid = m_valid_net;\n    assign m_ready_net = m_ready;\n    assign framing_error = framing_error_net;\n    assign overrun = overrun_net;\n    assign busy = busy_net;\n\n    bd_uart_rx #(\n        .CLKS_PER_BIT(8)\n    ) dut (\n        .clk(clk_net),\n        .rst(rst_net),\n        .rx(rx_net),\n        .m_data(m_data_net),\n        .m_valid(m_valid_net),\n        .m_ready(m_ready_net),\n        .framing_error(framing_error_net),\n        .overrun(overrun_net),\n        .busy(busy_net)\n    );\nendmodule\n",
+      "bd_uart_rx_bd_wrapper.v": "module bd_uart_rx_bd_wrapper (\n    input wire clk,\n    input wire rst,\n    input wire rx,\n    output wire [7:0] m_data,\n    output wire m_valid,\n    input wire m_ready,\n    output wire framing_error,\n    output wire overrun,\n    output wire busy\n);\n\n    bd_uart_rx_bd bd_i (\n        .clk(clk),\n        .rst(rst),\n        .rx(rx),\n        .m_data(m_data),\n        .m_valid(m_valid),\n        .m_ready(m_ready),\n        .framing_error(framing_error),\n        .overrun(overrun),\n        .busy(busy)\n    );\nendmodule\n"
+    }
+  },
+  "bd_uart_tx": {
+    "wrapper": "bd_uart_tx_bd_wrapper",
+    "sources": [
+      "ip_library/builtin/bd_uart_tx/1.0.0/src/bd_uart_tx.v"
+    ],
+    "files": {
+      "bd_uart_tx_bd.v": "module bd_uart_tx_bd (\n    input wire clk,\n    input wire rst,\n    input wire [7:0] s_data,\n    input wire s_valid,\n    output wire s_ready,\n    output wire tx,\n    output wire busy\n);\n\n    wire clk_net;\n    wire rst_net;\n    wire [7:0] s_data_net;\n    wire s_valid_net;\n    wire s_ready_net;\n    wire tx_net;\n    wire busy_net;\n\n    assign clk_net = clk;\n    assign rst_net = rst;\n    assign s_data_net = s_data;\n    assign s_valid_net = s_valid;\n    assign s_ready = s_ready_net;\n    assign tx = tx_net;\n    assign busy = busy_net;\n\n    bd_uart_tx #(\n        .CLKS_PER_BIT(8)\n    ) dut (\n        .clk(clk_net),\n        .rst(rst_net),\n        .s_data(s_data_net),\n        .s_valid(s_valid_net),\n        .s_ready(s_ready_net),\n        .tx(tx_net),\n        .busy(busy_net)\n    );\nendmodule\n",
+      "bd_uart_tx_bd_wrapper.v": "module bd_uart_tx_bd_wrapper (\n    input wire clk,\n    input wire rst,\n    input wire [7:0] s_data,\n    input wire s_valid,\n    output wire s_ready,\n    output wire tx,\n    output wire busy\n);\n\n    bd_uart_tx_bd bd_i (\n        .clk(clk),\n        .rst(rst),\n        .s_data(s_data),\n        .s_valid(s_valid),\n        .s_ready(s_ready),\n        .tx(tx),\n        .busy(busy)\n    );\nendmodule\n"
+    }
+  }
+}

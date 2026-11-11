@@ -92,7 +92,7 @@ def test_single_character_generator_regression_is_detected(example):
 
 @pytest.mark.parametrize("mutation", ["crlf", "path-separator"])
 def test_comparator_does_not_normalize_bytes(mutation):
-    example = EXAMPLES[0]
+    example = ROOT / "examples" / "counter_compare.json"
     actual = capture(example)
     if mutation == "crlf":
         name = next(name for name in actual if name.endswith(".v"))
@@ -110,9 +110,12 @@ def test_golden_covers_every_example():
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] != ["--update"]:
+    if len(sys.argv) not in (2, 3) or sys.argv[1] != "--update":
         raise SystemExit("Use python -m pytest tests/golden; baseline regeneration requires --update.")
-    for example in EXAMPLES:
+    selected = EXAMPLES if len(sys.argv) == 2 else tuple(example for example in EXAMPLES if example.stem == sys.argv[2])
+    if not selected:
+        raise SystemExit("Unknown example for golden update.")
+    for example in selected:
         destination = GOLDEN / example.stem
         destination.mkdir(parents=True, exist_ok=True)
         for name, contents in capture(example).items():

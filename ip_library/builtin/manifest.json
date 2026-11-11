@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "license": "MIT",
+  "origin": "original",
+  "entries": [
+    {"id": "bd_sync_fifo", "version": "1.0.0", "display_name": "同步 FIFO", "description": "单时钟 ready/valid FIFO，支持任意正深度、同时读写和满空保护。", "tags": ["fifo", "stream", "buffer"], "parameters": {"WIDTH": {"min": 1, "max": 128}, "DEPTH": {"min": 1, "max": 256}}, "tests": [{}, {"DEPTH": 1}, {"DEPTH": 8}]},
+    {"id": "bd_async_fifo", "version": "1.0.0", "display_name": "异步 FIFO", "description": "Gray 指针双时钟 FIFO，深度为 2 的 ADDR_WIDTH 次方；两个域需协调复位。", "tags": ["fifo", "cdc", "stream"], "parameters": {"WIDTH": {"min": 1, "max": 128}, "ADDR_WIDTH": {"min": 1, "max": 8}}, "tests": [{}, {"ADDR_WIDTH": 1}, {"ADDR_WIDTH": 3}]},
+    {"id": "bd_sync_2ff", "version": "1.0.0", "display_name": "两级同步器", "description": "单比特控制信号两级同步器，不用于多位数据一致性传输。", "tags": ["cdc_sync", "control"], "parameters": {}, "tests": [{}]},
+    {"id": "bd_edge_detect", "version": "1.0.0", "display_name": "边沿检测", "description": "同域单比特信号的上升沿和下降沿单周期脉冲。", "tags": ["edge", "control"], "parameters": {}, "tests": [{}]},
+    {"id": "bd_clock_divider", "version": "1.0.0", "display_name": "时钟分频", "description": "每 HALF_PERIOD 个输入周期翻转输出，并在输出上升沿产生单周期 tick。", "tags": ["clock", "divider", "enable"], "parameters": {"HALF_PERIOD": {"min": 1, "max": 65536}}, "tests": [{}, {"HALF_PERIOD": 1}]},
+    {"id": "bd_debounce", "version": "1.0.0", "display_name": "输入去抖", "description": "先同步输入，再要求连续 STABLE_CYCLES 个样本相同才更新输出。", "tags": ["debounce", "gpio", "control"], "parameters": {"STABLE_CYCLES": {"min": 2, "max": 65536}}, "tests": [{}, {"STABLE_CYCLES": 2}]},
+    {"id": "bd_shift_register", "version": "1.0.0", "display_name": "移位寄存器", "description": "带使能的串行输入、并行输出移位寄存器，复位清零。", "tags": ["shift", "register", "serial"], "parameters": {"WIDTH": {"min": 1, "max": 128}}, "tests": [{}, {"WIDTH": 1}]},
+    {"id": "bd_stream_slice", "version": "1.0.0", "display_name": "流寄存器切片", "description": "一级弹性 ready/valid 寄存器，背压期间保持数据，支持同时替换。", "tags": ["stream", "pipeline", "register"], "parameters": {"WIDTH": {"min": 1, "max": 1024}}, "tests": [{}, {"WIDTH": 1}]},
+    {"id": "bd_mux2", "version": "1.0.0", "display_name": "2 路选择器", "description": "可参数化数据宽度的组合二选一选择器。", "tags": ["mux", "combinational"], "parameters": {"WIDTH": {"min": 1, "max": 128}}, "tests": [{}, {"WIDTH": 1}]},
+    {"id": "bd_mux4", "version": "1.0.0", "display_name": "4 路选择器", "description": "可参数化数据宽度的组合四选一选择器。", "tags": ["mux", "combinational"], "parameters": {"WIDTH": {"min": 1, "max": 128}}, "tests": [{}, {"WIDTH": 1}]},
+    {"id": "bd_counter", "version": "1.0.0", "display_name": "使能计数器", "description": "带同步清零、使能和回绕脉冲的无符号计数器。", "tags": ["counter", "control"], "parameters": {"WIDTH": {"min": 1, "max": 32}}, "tests": [{}, {"WIDTH": 1}, {"WIDTH": 8}]},
+    {"id": "bd_compare", "version": "1.0.0", "display_name": "无符号比较器", "description": "输出相等、小于和大于关系的组合比较器。", "tags": ["compare", "combinational"], "parameters": {"WIDTH": {"min": 1, "max": 32}}, "tests": [{}, {"WIDTH": 1}]},
+    {"id": "bd_uart_tx", "version": "1.0.0", "display_name": "UART 发送", "description": "8N1、LSB 优先发送，输入为 ready/valid，波特率为时钟除以 CLKS_PER_BIT。", "tags": ["uart", "serial", "stream"], "parameters": {"CLKS_PER_BIT": {"min": 2, "max": 65535}}, "tests": [{}, {"CLKS_PER_BIT": 5}]},
+    {"id": "bd_uart_rx", "version": "1.0.0", "display_name": "UART 接收", "description": "8N1 接收，输入同步、中心采样、单字节输出缓存及帧错/溢出标志。", "tags": ["uart", "serial", "stream"], "parameters": {"CLKS_PER_BIT": {"min": 4, "max": 65535}}, "tests": [{}, {"CLKS_PER_BIT": 5}]},
+    {"id": "bd_spi_master", "version": "1.0.0", "display_name": "SPI 主机", "description": "模式 0、8 位、MSB 优先的单片选 SPI 主机，支持全双工传输。", "tags": ["spi", "serial", "control"], "parameters": {"CLOCK_DIV": {"min": 1, "max": 65535}}, "roles": {"cs_n": {"kind": "control", "confidence": 1, "confirmed": false}}, "tests": [{}, {"CLOCK_DIV": 1}]},
+    {"id": "bd_simple_dual_port_ram", "version": "1.0.0", "display_name": "简单双口 RAM", "description": "独立读写时钟、一写一读端口、同步读输出；同址跨时钟冲突行为不保证。", "tags": ["ram", "memory", "dual_clock"], "parameters": {"WIDTH": {"min": 1, "max": 128}, "ADDR_WIDTH": {"min": 1, "max": 8}}, "tests": [{}, {"ADDR_WIDTH": 1}]},
+    {"id": "bd_axil_regs", "version": "1.0.0", "display_name": "AXI-Lite 寄存器", "description": "32 位、4 个寄存器，AW/W 独立握手、字节写使能、响应背压和地址错误响应。", "tags": ["axi_lite", "register", "control"], "parameters": {"ADDR_WIDTH": {"min": 4, "max": 16}}, "tests": [{}, {"ADDR_WIDTH": 4}]}
+  ]
+}

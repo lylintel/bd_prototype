@@ -6,6 +6,8 @@
 
 开源 IP 已整理到 `src/`：UART 发送/接收、简化流式寄存器、完整 AXI Stream 寄存器和 8 路优先编码器。来源、MIT 许可、固定配置、维护状态及使用方式见 [src/README.md](src/README.md)。GUI 可打开 [src/ip_catalog.json](src/ip_catalog.json) 使用模块库，或打开 [examples/uart_loopback.json](examples/uart_loopback.json) 查看完整回环设计。
 
+另外提供 [17 个原创内置 IP](ip_library/builtin/README.md)，每个含自检 testbench、版本化元数据和许可字段。GUI 自动显示只读内置库，用户导入与它分开存储；新组合示例见 [examples/builtin_counter.json](examples/builtin_counter.json)。这些原创实现不使用上面的 vendor RTL 充数。
+
 | 文件 | 职责 |
 | --- | --- |
 | [bdtool.py](bdtool.py) | 设计模型、表达式求值、连接校验、两层生成器和 CLI |

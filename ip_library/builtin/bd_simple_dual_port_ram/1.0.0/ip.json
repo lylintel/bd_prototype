@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "id": "bd_simple_dual_port_ram",
+  "version": "1.0.0",
+  "display_name": "简单双口 RAM",
+  "description": "独立读写时钟、一写一读端口、同步读输出；同址跨时钟冲突行为不保证。",
+  "tags": [
+    "ram",
+    "memory",
+    "dual_clock"
+  ],
+  "source": {
+    "kind": "verilog",
+    "path": "src/bd_simple_dual_port_ram.v",
+    "sha256": "362f9bf48273f5fe2a872b27bed8887f81df941735a2edbeca6c3446a6000590",
+    "license": "MIT"
+  },
+  "language": "verilog-2005",
+  "parameters": [
+    {
+      "name": "WIDTH",
+      "type": "int",
+      "default": "8",
+      "min": 1,
+      "max": 128
+    },
+    {
+      "name": "ADDR_WIDTH",
+      "type": "int",
+      "default": "4",
+      "min": 1,
+      "max": 8
+    }
+  ],
+  "ports": [
+    {
+      "name": "wr_clk",
+      "dir": "in",
+      "width": "1",
+      "signed": false,
+      "role": {
+        "kind": "clock",
+        "confidence": 0.9,
+        "confirmed": false
+      }
+    },
+    {
+      "name": "wr_enable",
+      "dir": "in",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "wr_address",
+      "dir": "in",
+      "width": "(((ADDR_WIDTH - 1)) >= (0) ? ((ADDR_WIDTH - 1)) - (0) + 1 : (0) - ((ADDR_WIDTH - 1)) + 1)",
+      "signed": false,
+      "range": [
+        "(ADDR_WIDTH - 1)",
+        0
+      ]
+    },
+    {
+      "name": "wr_data",
+      "dir": "in",
+      "width": "(((WIDTH - 1)) >= (0) ? ((WIDTH - 1)) - (0) + 1 : (0) - ((WIDTH - 1)) + 1)",
+      "signed": false,
+      "range": [
+        "(WIDTH - 1)",
+        0
+      ]
+    },
+    {
+      "name": "rd_clk",
+      "dir": "in",
+      "width": "1",
+      "signed": false,
+      "role": {
+        "kind": "clock",
+        "confidence": 0.9,
+        "confirmed": false
+      }
+    },
+    {
+      "name": "rd_rst",
+      "dir": "in",
+      "width": "1",
+      "signed": false,
+      "role": {
+        "kind": "reset",
+        "confidence": 0.9,
+        "confirmed": false,
+        "polarity": "high",
+        "async": "unknown"
+      }
+    },
+    {
+      "name": "rd_enable",
+      "dir": "in",
+      "width": "1",
+      "signed": false
+    },
+    {
+      "name": "rd_address",
+      "dir": "in",
+      "width": "(((ADDR_WIDTH - 1)) >= (0) ? ((ADDR_WIDTH - 1)) - (0) + 1 : (0) - ((ADDR_WIDTH - 1)) + 1)",
+      "signed": false,
+      "range": [
+        "(ADDR_WIDTH - 1)",
+        0
+      ]
+    },
+    {
+      "name": "rd_data",
+      "dir": "out",
+      "width": "(((WIDTH - 1)) >= (0) ? ((WIDTH - 1)) - (0) + 1 : (0) - ((WIDTH - 1)) + 1)",
+      "signed": false,
+      "range": [
+        "(WIDTH - 1)",
+        0
+      ]
+    },
+    {
+      "name": "rd_valid",
+      "dir": "out",
+      "width": "1",
+      "signed": false
+    }
+  ],
+  "interfaces": []
+}

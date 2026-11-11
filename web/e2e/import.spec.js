@@ -135,3 +135,18 @@ test("a rejected file does not suppress valid files in the same selection", asyn
   await dialog.getByRole("button", { name: t("common.cancel"), exact: true }).click();
   await expect(page.getByTestId("ip-row-header@1.0.0")).toBeVisible();
 });
+
+test("all bundled IPs are available without creating a private index", async ({ page }) => {
+  await openEditor(page);
+  const manifest = JSON.parse(readFileSync(path.join(root, "ip_library/builtin/manifest.json"), "utf8"));
+  await expect(page.locator(".ip-library-item")).toHaveCount(manifest.entries.length);
+  for (const entry of manifest.entries) {
+    const row = page.getByTestId(`ip-row-${entry.id}@${entry.version}`);
+    await expect(row).toContainText(t("ip.origin.builtin"));
+    await expect(row.getByRole("button", { name: t("ip.add", { name: entry.id }), exact: true })).toBeEnabled();
+  }
+  expect(existsSync(path.join(server.directory, "ip_library/index.json"))).toBe(false);
+  const response = await page.request.get(`${server.url}/api/load?path=examples/builtin_counter.json`);
+  expect(response.ok()).toBe(true);
+  expect((await response.json()).inspection.valid).toBe(true);
+});

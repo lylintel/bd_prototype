@@ -1,0 +1,311 @@
+{
+  "valid": true,
+  "diagnostics": [],
+  "summary": "Valid: builtin_counter_bd (2 instances, 10 nets)",
+  "name": "builtin_counter_bd",
+  "wrapper_name": "builtin_counter_bd_wrapper",
+  "ports": {
+    "clk": {
+      "direction": "input",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "rst": {
+      "direction": "input",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "enable": {
+      "direction": "input",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "clear": {
+      "direction": "input",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "count": {
+      "direction": "output",
+      "range": [
+        7,
+        0
+      ],
+      "signed": false,
+      "width": 8
+    },
+    "overflow": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "threshold": {
+      "direction": "input",
+      "range": [
+        7,
+        0
+      ],
+      "signed": false,
+      "width": 8
+    },
+    "equal": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "less": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "greater": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    }
+  },
+  "instances": {
+    "counter_0": {
+      "module": "bd_counter",
+      "parameters": {
+        "WIDTH": 8
+      },
+      "ports": {
+        "clk": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "rst": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "enable": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "clear": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "count": {
+          "direction": "output",
+          "range": [
+            7,
+            0
+          ],
+          "signed": false,
+          "width": 8
+        },
+        "overflow": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        }
+      }
+    },
+    "compare_0": {
+      "module": "bd_compare",
+      "parameters": {
+        "WIDTH": 8
+      },
+      "ports": {
+        "left_data": {
+          "direction": "input",
+          "range": [
+            7,
+            0
+          ],
+          "signed": false,
+          "width": 8
+        },
+        "right_data": {
+          "direction": "input",
+          "range": [
+            7,
+            0
+          ],
+          "signed": false,
+          "width": 8
+        },
+        "equal": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "less": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "greater": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        }
+      }
+    }
+  },
+  "nets": [
+    {
+      "name": "clk_net",
+      "shape": {
+        "direction": "input",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "@clk",
+      "sinks": [
+        "counter_0.clk"
+      ]
+    },
+    {
+      "name": "rst_net",
+      "shape": {
+        "direction": "input",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "@rst",
+      "sinks": [
+        "counter_0.rst"
+      ]
+    },
+    {
+      "name": "enable_net",
+      "shape": {
+        "direction": "input",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "@enable",
+      "sinks": [
+        "counter_0.enable"
+      ]
+    },
+    {
+      "name": "clear_net",
+      "shape": {
+        "direction": "input",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "@clear",
+      "sinks": [
+        "counter_0.clear"
+      ]
+    },
+    {
+      "name": "count_bus",
+      "shape": {
+        "direction": "output",
+        "range": [
+          7,
+          0
+        ],
+        "signed": false,
+        "width": 8
+      },
+      "driver": "counter_0.count",
+      "sinks": [
+        "compare_0.left_data",
+        "@count"
+      ]
+    },
+    {
+      "name": "threshold_bus",
+      "shape": {
+        "direction": "input",
+        "range": [
+          7,
+          0
+        ],
+        "signed": false,
+        "width": 8
+      },
+      "driver": "@threshold",
+      "sinks": [
+        "compare_0.right_data"
+      ]
+    },
+    {
+      "name": "overflow_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "counter_0.overflow",
+      "sinks": [
+        "@overflow"
+      ]
+    },
+    {
+      "name": "equal_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "compare_0.equal",
+      "sinks": [
+        "@equal"
+      ]
+    },
+    {
+      "name": "less_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "compare_0.less",
+      "sinks": [
+        "@less"
+      ]
+    },
+    {
+      "name": "greater_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "compare_0.greater",
+      "sinks": [
+        "@greater"
+      ]
+    }
+  ],
+  "sources": [
+    "ip_library/builtin/bd_counter/1.0.0/src/bd_counter.v",
+    "ip_library/builtin/bd_compare/1.0.0/src/bd_compare.v"
+  ]
+}

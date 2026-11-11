@@ -136,8 +136,8 @@ class IpLibrary:
             raise LibraryError("IP_LIBRARY_PATH")
         return path
 
-    def _index(self) -> dict:
-        path = self._path("index.json")
+    def _read_index(self, relative: str) -> dict:
+        path = self._path(relative)
         if not path.exists():
             return {"schema_version": 1, "entries": {}, "sources": {}}
         try:
@@ -156,6 +156,14 @@ class IpLibrary:
             return data
         except (OSError, ValueError, TypeError, KeyError) as error:
             raise LibraryError("IP_LIBRARY_INDEX") from error
+
+    def _index(self, *, include_builtin: bool = True) -> dict:
+        private = self._read_index("index.json")
+        if not include_builtin:
+            return private
+        builtin = self._read_index("builtin/index.json")
+        return {"schema_version": 1, "entries": {**builtin["entries"], **private["entries"]},
+                "sources": {**builtin["sources"], **private["sources"]}}
 
     @contextmanager
     def _locked(self):
@@ -196,6 +204,7 @@ class IpLibrary:
             raise LibraryError("IP_LIBRARY_INPUT", metadata.id)
         with self._locked():
             index = self._index()
+            private = self._index(include_builtin=False)
             status, selected_version, diff = self._decision(index, metadata, version)
             if status != "ready":
                 return status, selected_version, diff
@@ -213,13 +222,14 @@ class IpLibrary:
                 save_ip(stored, staging / "ip.json")
                 staging.rename(target)
             try:
-                index["entries"][f"{metadata.id}@{selected_version}"] = {
+                private["entries"][f"{metadata.id}@{selected_version}"] = {
                     "id": metadata.id, "version": selected_version, "metadata": f"{relative}/ip.json",
                     "source_sha256": metadata.source.sha256, "interface_hash": _signature(metadata),
                     "origin": origin, "dependencies": dependencies,
                 }
-                index["sources"].setdefault(metadata.source.sha256, {"path": f"{relative}/src/{upload.name}", "modules": names})
-                bdtool._write_outputs({"index.json": json.dumps(index, indent=2, sort_keys=True, ensure_ascii=False) + "\n"}, self.directory, set())
+                private["sources"].setdefault(metadata.source.sha256, index["sources"].get(metadata.source.sha256,
+                                             {"path": f"{relative}/src/{upload.name}", "modules": names}))
+                bdtool._write_outputs({"index.json": json.dumps(private, indent=2, sort_keys=True, ensure_ascii=False) + "\n"}, self.directory, set())
             except (OSError, ValueError):
                 shutil.rmtree(target)
                 raise

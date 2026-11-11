@@ -1,4 +1,19 @@
-# Phase 1：进行中
+# Phase 1：P1.1-P1.7 实现完成
+
+本地最终验收通过，P1.8 按要求不做。远端门禁以本次提交的 [Checks](https://github.com/lylintel/bd_prototype/actions/workflows/ci.yml) 为准，不将本地结果冒充远端成功。
+
+| 内容 | 提交 |
+| --- | --- |
+| P0 开工前核验 | 0f54c92 |
+| 解析器 spike 及兼容性调整 | 06c3847、14c9430、aa8c4b4 |
+| P1.1 | bae64c2 |
+| P1.2 | fcde8c5 |
+| P1.3 | c7a4114 |
+| P1.4 | 3044b6f |
+| P1.5 | 7803092 |
+| 独立 i18n 基础 | 98cc60f |
+| P1.6 与浏览器 CI 镜像修复 | 4de8962、fe3858a |
+| P1.7 | 本提交 |
 
 ## P1.1 交付范围
 
@@ -59,13 +74,23 @@
 - 原有设计/HDL golden 不变，测试使用临时工作区和随机端口，浏览器外网请求被阻断；新的浏览器检查已加入 scripts/check.py 和 CI。
 - P1.6 最终完整门禁通过：256 项 Python 测试、57 个子测试、31 项前端单测、3 项 Playwright 流程，lint/typecheck/build 全绿。新增文件无编辑器诊断，已有依赖版本未升级。
 
+## P1.7 交付范围
+
+- 17 个原创 RTL、17 个独立自检 testbench 和 MIT 许可，覆盖计划中的全部基础类别；不使用 src/vendor 文件充数。
+- 35 组参数变体的 Icarus 自检通过，全部单实例生成 wrapper 编译通过；新增计数器比较示例也通过实际仿真。
+- 同一导入流水线生成版本化 ip.json、只读内置索引、完整 HDL golden 与新示例；私有导入索引不覆盖内置目录，源码/接口变化要求升版。
+- 浏览器验收已扩展为四项，全部内置 IP 自动显示且可添加，不创建私有索引；原有三个用户导入流程也通过。
+- 最终 scripts/check.py 退出码 0：303 项 Python 测试、57 个子测试、31 项前端单测、4 项真实浏览器流程，Ruff/ESLint/typecheck/build 全绿。本轮日志位于本地 build/phase1-final-check.log。
+- 与 P0.2 提交 946e0df 直接比较，原 counter_compare、uart_loopback、examples/rtl、src/vendor 和两个原 golden 目录无差异。新增示例独立建立 golden，不重采集旧基准。
+
 ## 未完成与限制
 
-- 本阶段整体尚未完成。P1.7 原创内置 IP 尚未实施，P1.8 按用户要求暂不做。
+- P1.8 按用户要求暂不做；Phase 2 及后续阶段未提前实施。
 - width/default 在元数据中仍是字符串；可显式使用新求值器，但加载不会自动修改表达式。原生成器仍不支持 inout 或新增的协议接口，v1 interfaces 必须为空。
 - 许可证缺失记 NOASSERTION；角色只能作为未确认建议。单独 load_ip/save_ip 不重新读取源码校验哈希，版本库会在生成旧模型定义时核对来源；复杂依赖版本约束仍未实现。
 - 安装依赖需要网络，测试不需要外网或真实 LLM。旧 RTL CLI 继续不依赖额外 Python 包。
+- 原创 IP 仅完成数字仿真与结构编译，未完成目标器件综合、CDC、时序、功耗或硬件签核。UART、SPI、RAM、AXI-Lite 的具体范围和复位限制见原创 IP 清单。
 
 ## 下一项
 
-P1.7：编写原创 RTL、testbench、许可和说明，经同一流水线形成内置库并通过 Icarus/CI。已有功能见 [IP 元数据](../ip-metadata.md)、[RTL 解析与导入](../ip-import.md)、[安全表达式](../expressions.md) 和 [i18n 基础](../i18n.md)。
+下一阶段为 Phase 2 的结构化语义诊断与接口能力，本轮未提前实施。已有功能见 [IP 元数据](../ip-metadata.md)、[RTL 解析与导入](../ip-import.md)、[安全表达式](../expressions.md)、[i18n 基础](../i18n.md) 和 [原创 IP 清单](../../ip_library/builtin/README.md)。
