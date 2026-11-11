@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import argparse
-import ast
 from dataclasses import dataclass
 import json
-import operator
 from pathlib import Path
 import re
 import sys
 import tempfile
+
+from core.expr import ExpressionError, evaluate
 
 
 class DesignError(ValueError):
@@ -77,7 +77,6 @@ showcancelled signed small specify specparam strong0 strong1 supply0 supply1
 table task time tran tranif0 tranif1 tri tri0 tri1 triand trior trireg unsigned
 use vectored wait wand weak0 weak1 while wire wor xnor xor uwire
 """.split())
-BINARY_OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul}
 
 
 def _object(value: object, where: str) -> dict:
@@ -112,26 +111,10 @@ def _integer(value: object, where: str) -> int:
 def _range_bound(value: object, parameters: dict[str, int], where: str) -> int:
     if not isinstance(value, str):
         return _integer(value, where)
-
-    def evaluate(node: ast.AST) -> int:
-        if isinstance(node, ast.Constant):
-            return _integer(node.value, where)
-        if isinstance(node, ast.Name):
-            if node.id not in parameters:
-                raise DesignError(f"{where}: unresolved parameter {node.id!r}")
-            return parameters[node.id]
-        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
-            operand = evaluate(node.operand)
-            return _integer(-operand if isinstance(node.op, ast.USub) else operand, where)
-        if isinstance(node, ast.BinOp) and type(node.op) in BINARY_OPERATORS:
-            result = BINARY_OPERATORS[type(node.op)](evaluate(node.left), evaluate(node.right))
-            return _integer(result, where)
-        raise DesignError(f"{where}: range expressions allow integers, parameter names, +, -, * and parentheses")
-
     try:
-        return evaluate(ast.parse(value.strip(), mode="eval").body)
-    except (SyntaxError, RecursionError) as exc:
-        raise DesignError(f"{where}: invalid range expression {value!r}") from exc
+        return _integer(evaluate(value, parameters), where)
+    except ExpressionError as error:
+        raise DesignError(f"{where}: {error}") from error
 
 
 def _parameters(specs: object, overrides: object, where: str) -> dict[str, int]:

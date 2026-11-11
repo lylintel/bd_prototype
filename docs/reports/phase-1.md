@@ -23,13 +23,20 @@
 - 13 个夹具及人工 JSON golden；语法错误行号、路径、大小、工具缺失、超时和 warning 有测试。原 HDL golden 不变。解析 API 不写 IP 库。
 - P1.2 本地 scripts/check.py 通过：124 项 Python 测试、57 个子测试、19 项前端测试，lint/typecheck/build 全绿。定向解析/golden 检查 18 项通过；四组合 CI 已接入正式夹具。
 
+## P1.3 交付范围
+
+- 安全 Pratt 求值器支持 Verilog 整数、参数、算术、比较、三目、$clog2 和受限逻辑/移位，无 eval/exec。
+- 52 组合法表达式纳入独立字节 golden；覆盖超限、除零、未知参数、5000 组限时随机字符串及 Icarus 语义核对。
+- 旧位宽入口已复用新求值器，保持最终 32 位约束；旧 HDL golden 不变。解析器 localparam 的参数覆盖与旧核心扩展语法有集成测试。
+- P1.3 本地 scripts/check.py 全绿：211 项 Python 测试、57 个子测试、19 项前端测试，lint/typecheck/build 通过；表达式与旧 golden 定向检查 96 项通过。
+
 ## 未完成与限制
 
-- 本阶段整体尚未完成。P1.3–P1.7 未实施，P1.8 按用户要求暂不做；不宣称已有 GUI 导入器或扩充后的内置库。
-- width/default 是表达式字符串，但尚不求值；原生成器仍不支持 inout 或新增的协议接口。v1 interfaces 必须为空。
+- 本阶段整体尚未完成。P1.4–P1.7 未实施，P1.8 按用户要求暂不做；不宣称已有 GUI 导入器或扩充后的内置库。
+- width/default 在元数据中仍是字符串；可显式使用新求值器，但加载不会自动修改表达式。原生成器仍不支持 inout 或新增的协议接口，v1 interfaces 必须为空。
 - 许可证缺失记 NOASSERTION；不猜时钟/复位角色。load/save 不重新读取源码校验哈希。版本目录、去重和升版流程留待 P1.5。
 - 安装依赖需要网络，测试不需要外网或真实 LLM。旧 RTL CLI 继续不依赖额外 Python 包。
 
 ## 下一项
 
-P1.3：安全 Pratt 表达式求值器。P1.1 用法见 [IP 元数据说明](../ip-metadata.md)，P1.2 用法和限制见 [RTL 接口解析](../ip-import.md)。
+P1.4：时钟/复位角色建议。已有功能见 [IP 元数据](../ip-metadata.md)、[RTL 接口解析](../ip-import.md) 和 [安全表达式](../expressions.md)。

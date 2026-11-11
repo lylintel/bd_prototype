@@ -22,5 +22,12 @@
   "IP_PARSE_TIMEOUT": "{path}:{line}: 解析超时，未导入。",
   "IP_PARSE_TOOL": "{path}:{line}: 无法启动解析器，请安装 requirements-parser.txt 中的依赖。",
   "IP_PARSE_EMPTY": "{path}:{line}: 未找到可导入的模块。",
-  "IP_PARSE_WARNING": "{path}:{line}: 解析器报告非致命警告，请检查源声明；接口仍已提取。"
+  "IP_PARSE_WARNING": "{path}:{line}: 解析器报告非致命警告，请检查源声明；接口仍已提取。",
+  "EXPR_SYNTAX": "range expressions allow 受支持的整数运算，位置 {offset} 存在无效语法。",
+  "EXPR_UNKNOWN": "unresolved parameter：{name}，位置 {offset}。",
+  "EXPR_LITERAL": "位置 {offset}：无效的整数常量，不支持 X/Z。",
+  "EXPR_RANGE": "位置 {offset}：数值、位宽、指数或移位量超出安全范围。",
+  "EXPR_LIMIT": "位置 {offset}：表达式长度、标记数或嵌套层数超过限制。",
+  "EXPR_DOMAIN": "位置 {offset}：函数参数不在支持的整数定义域。",
+  "EXPR_ZERO": "位置 {offset}：不能除以零或对零取余。"
 }

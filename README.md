@@ -32,6 +32,8 @@ P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、
 
 仅使用 IP 元数据 API 时安装 `python -m pip install -r requirements-ip.txt`；开发安装已包含该依赖。字段、迁移示例和限制见 [docs/ip-metadata.md](docs/ip-metadata.md)。
 
+位宽表达式已使用 P1.3 的安全 Pratt 求值器，支持 Verilog 整数、三目和 `$clog2`，限制见 [docs/expressions.md](docs/expressions.md)。旧设计与 HDL 输出保持兼容。
+
 ## 开发检查
 
 CI 与本地共用 [scripts/check.py](scripts/check.py)，依次执行 Ruff、全部 Python/golden 测试、ESLint、应用 JS/JSX 类型检查、前端单测、生产构建。任一步失败立即返回非零状态。检查不请求真实 LLM，不需要登录或 SDK；只使用本机临时 HTTP 服务和 mock。
