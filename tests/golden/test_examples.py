@@ -90,6 +90,19 @@ def test_single_character_generator_regression_is_detected(example):
             assert_matches_golden(example, capture(example))
 
 
+@pytest.mark.parametrize("mutation", ["crlf", "path-separator"])
+def test_comparator_does_not_normalize_bytes(mutation):
+    example = EXAMPLES[0]
+    actual = capture(example)
+    if mutation == "crlf":
+        name = next(name for name in actual if name.endswith(".v"))
+        actual[name] = actual[name].replace(b"\n", b"\r\n")
+    else:
+        actual["validation.json"] = actual["validation.json"].replace(b"examples/rtl/", b"examples\\\\rtl\\\\")
+    with pytest.raises(AssertionError, match="Golden mismatch"):
+        assert_matches_golden(example, actual)
+
+
 def test_golden_covers_every_example():
     assert EXAMPLES, "No examples found"
     directories = {path.name for path in GOLDEN.iterdir() if path.is_dir() and not path.name.startswith((".", "__"))}

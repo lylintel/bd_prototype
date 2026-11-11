@@ -4,14 +4,16 @@
 
 - P0.1：核实 HTTP/NDJSON、设计/布局格式、IP 元数据、校验器、React 状态、Copilot 工具链与测试入口；实际运行启动、校验、生成、单测和构建。提交 243e826。
 - P0.2：冻结两个现有示例的 BD、wrapper、校验结构；7 项 golden 测试覆盖真实 CLI 和单字符回归。先证明缺基准失败，再采集基准、证明正确输出通过。提交 946e0df。
-- P0.3：添加固定开发依赖、Ruff/ESLint、应用 JS/JSX 类型检查、跨平台一键检查和 GitHub Actions。CI 覆盖 Python 3.10/3.14、Node 24，强制存在 Icarus。移除三个未使用导入，修复 DOM 类型和同义页签结构；原有包版本未升级。
+- P0.3：添加固定开发依赖、Ruff/ESLint、应用 JS/JSX 类型检查、跨平台一键检查和 GitHub Actions。CI 覆盖 Python 3.10/3.14、Node 24，强制存在 Icarus。移除三个未使用导入，修复 DOM 类型和同义页签结构；原有包版本未升级。提交 b2c58b114e5e72d5d43286d9eaf302fc4a2f9f0d。
 
 ## 验证证据
 
 - Windows/Python 3.14.5：scripts/check.py 完整通过；56 项 Python 测试、57 个子测试、19 项前端单测；Ruff、ESLint、tsc 和 Vite 构建通过。
 - 现有 RTL 生成器和示例数据未修改；golden 逐字节一致，无仿真跳过，无真实 LLM 调用。
 - 浏览器冒烟：有效 example_bd、2 个实例、4 条连线和端口正常显示。独立启动命令使用 --port 0，不占用原服务端口。
-- 远端记录：[GitHub Actions Checks](https://github.com/lylintel/bd_prototype/actions/workflows/ci.yml)。合入下一任务前，必须确认本次 P0.3 提交的两个矩阵任务都成功；本地通过本身不证明远端成功。
+- 远端记录：[P0.3 运行 42953227540](https://github.com/lylintel/bd_prototype/actions/runs/42953227540)。2026-11-11 开工前再次确认：对应 b2c58b1，状态 Success，Python 3.10/3.14 两个矩阵任务全部成功，耗时 44 秒。
+- 跨平台检查：.gitattributes 明确指定 golden/夹具使用 LF。HDL 与校验快照比较器均比较 read_bytes，不转换换行或路径分隔符；CRLF 与路径分隔符变异均必须失败。校验快照在采集时将源码路径投影为仓库相对路径，这是快照字段定义，不是比较时归一化；HDL 内容无此投影。
+- Linux CI 通过 apt 安装 Icarus，显式 command -v 检查 iverilog/vvp，scripts/check.py 再强制检查存在，不能靠跳过仿真通过。
 
 ## 未完成及已知问题
 

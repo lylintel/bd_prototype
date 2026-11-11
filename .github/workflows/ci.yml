@@ -36,7 +36,10 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install HDL tools
-        run: sudo apt-get update && sudo apt-get install -y iverilog
+        run: |
+          sudo apt-get update && sudo apt-get install -y iverilog
+          command -v iverilog
+          command -v vvp
       - name: Install development dependencies
         run: |
           python -m pip install -r requirements-dev.txt

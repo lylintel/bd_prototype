@@ -54,3 +54,12 @@
 - 来源边界：迁移要求显式 workspace_root，只哈希范围内的已登记源文件；未知许可证用 NOASSERTION，角色不猜测/不确认。load/save 仅处理元数据，不验证源码新鲜度。另存通过非序列化 base_dir 重写相对源码路径；失败不替换原文件。
 - 有意推迟：表达式求值/默认值约束检查到 P1.3，角色建议到 P1.4，版本库和导入命令到 P1.5，协议接口到 P2.5。v1 interfaces 仅允许空数组，版本号仅三段发布号。具体字段、限制和 API 见 docs/ip-metadata.md。
 - 安全与本地化：文件/对象上限 1 MiB，拒绝重复 JSON 字段、NaN/Infinity、非法标识符、关键字和正则结尾换行绕过。新领域错误统一 code/location，中文消息放 locales/zh-CN.json；不新增硬编码 UI 文案。
+
+## D008：Phase 1 后续执行补充约束
+
+- 2026-11-11 用户要求继续 P1.1–P1.7，P1.1 已通过并保留，P1.8 暂不执行。
+- 开工前独立提交核验 P0.3 SHA/远端矩阵、LF 和 golden 严格字节比较；不改变既有 golden 内容。
+- P1.2 前独立 spike，验证 Windows/Linux 与 Python 3.10/3.14 四组合的 pyslang 安装和真实解析；不支持的组合使用可选 pyslang 或 Yosys 主路径，不隐藏失败。
+- P1.5 沿用现有受保护 HTTP/NDJSON 约定，不强制 multipart；P1.6 前先独立提交前端 i18n 基础，不迁移旧文案，所有新界面文案使用资源。
+- P1.7 全部原创 RTL，每个附 testbench 并在 Icarus/CI 运行，不复制现有 vendor IP 充数。每项结束完整 scripts/check.py，通过后单独提交；新增夹具/示例也冻结预期输出。
+- 开工前本地完整检查最终通过 112 项 Python 测试、57 个子测试和 19 项前端测试。首次遇到原 HTTP 测试 WinError 10053；该用例单独复跑与完整复跑均通过，未跳过测试、未修改 HTTP 代码，原因未确定。
