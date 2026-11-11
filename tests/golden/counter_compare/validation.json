@@ -1,0 +1,143 @@
+{
+  "valid": true,
+  "diagnostics": [],
+  "summary": "Valid: example_bd (2 instances, 4 nets)",
+  "name": "example_bd",
+  "wrapper_name": "example_bd_wrapper",
+  "ports": {
+    "clk": {
+      "direction": "input",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "rst": {
+      "direction": "input",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "match": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    }
+  },
+  "instances": {
+    "counter_0": {
+      "module": "counter",
+      "parameters": {
+        "WIDTH": 8
+      },
+      "ports": {
+        "clk": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "rst": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "count": {
+          "direction": "output",
+          "range": [
+            7,
+            0
+          ],
+          "signed": false,
+          "width": 8
+        }
+      }
+    },
+    "compare_0": {
+      "module": "compare_eq",
+      "parameters": {
+        "WIDTH": 8,
+        "THRESHOLD": 9
+      },
+      "ports": {
+        "value": {
+          "direction": "input",
+          "range": [
+            7,
+            0
+          ],
+          "signed": false,
+          "width": 8
+        },
+        "match": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        }
+      }
+    }
+  },
+  "nets": [
+    {
+      "name": "clk_net",
+      "shape": {
+        "direction": "input",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "@clk",
+      "sinks": [
+        "counter_0.clk"
+      ]
+    },
+    {
+      "name": "rst_net",
+      "shape": {
+        "direction": "input",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "@rst",
+      "sinks": [
+        "counter_0.rst"
+      ]
+    },
+    {
+      "name": "count_bus",
+      "shape": {
+        "direction": "output",
+        "range": [
+          7,
+          0
+        ],
+        "signed": false,
+        "width": 8
+      },
+      "driver": "counter_0.count",
+      "sinks": [
+        "compare_0.value"
+      ]
+    },
+    {
+      "name": "match_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "compare_0.match",
+      "sinks": [
+        "@match"
+      ]
+    }
+  ],
+  "sources": [
+    "examples/rtl/counter.v",
+    "examples/rtl/compare_eq.v"
+  ]
+}

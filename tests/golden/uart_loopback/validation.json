@@ -1,0 +1,543 @@
+{
+  "valid": true,
+  "diagnostics": [],
+  "summary": "Valid: uart_loopback_bd (3 instances, 17 nets)",
+  "name": "uart_loopback_bd",
+  "wrapper_name": "uart_loopback_bd_wrapper",
+  "ports": {
+    "clk": {
+      "direction": "input",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "rst": {
+      "direction": "input",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "prescale": {
+      "direction": "input",
+      "range": [
+        15,
+        0
+      ],
+      "signed": false,
+      "width": 16
+    },
+    "in_data": {
+      "direction": "input",
+      "range": [
+        7,
+        0
+      ],
+      "signed": false,
+      "width": 8
+    },
+    "in_valid": {
+      "direction": "input",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "in_ready": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "out_data": {
+      "direction": "output",
+      "range": [
+        7,
+        0
+      ],
+      "signed": false,
+      "width": 8
+    },
+    "out_valid": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "out_ready": {
+      "direction": "input",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "tx_busy": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "rx_busy": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "overrun_error": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    },
+    "frame_error": {
+      "direction": "output",
+      "range": null,
+      "signed": false,
+      "width": 1
+    }
+  },
+  "instances": {
+    "buffer_0": {
+      "module": "bd_stream_register",
+      "parameters": {
+        "DATA_WIDTH": 8,
+        "REG_TYPE": 2
+      },
+      "ports": {
+        "clk": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "rst": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "in_data": {
+          "direction": "input",
+          "range": [
+            7,
+            0
+          ],
+          "signed": false,
+          "width": 8
+        },
+        "in_valid": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "in_ready": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "out_data": {
+          "direction": "output",
+          "range": [
+            7,
+            0
+          ],
+          "signed": false,
+          "width": 8
+        },
+        "out_valid": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "out_ready": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        }
+      }
+    },
+    "tx_0": {
+      "module": "uart_tx",
+      "parameters": {
+        "DATA_WIDTH": 8
+      },
+      "ports": {
+        "clk": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "rst": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "s_axis_tdata": {
+          "direction": "input",
+          "range": [
+            7,
+            0
+          ],
+          "signed": false,
+          "width": 8
+        },
+        "s_axis_tvalid": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "s_axis_tready": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "txd": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "busy": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "prescale": {
+          "direction": "input",
+          "range": [
+            15,
+            0
+          ],
+          "signed": false,
+          "width": 16
+        }
+      }
+    },
+    "rx_0": {
+      "module": "uart_rx",
+      "parameters": {
+        "DATA_WIDTH": 8
+      },
+      "ports": {
+        "clk": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "rst": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "m_axis_tdata": {
+          "direction": "output",
+          "range": [
+            7,
+            0
+          ],
+          "signed": false,
+          "width": 8
+        },
+        "m_axis_tvalid": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "m_axis_tready": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "rxd": {
+          "direction": "input",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "busy": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "overrun_error": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "frame_error": {
+          "direction": "output",
+          "range": null,
+          "signed": false,
+          "width": 1
+        },
+        "prescale": {
+          "direction": "input",
+          "range": [
+            15,
+            0
+          ],
+          "signed": false,
+          "width": 16
+        }
+      }
+    }
+  },
+  "nets": [
+    {
+      "name": "clk_net",
+      "shape": {
+        "direction": "input",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "@clk",
+      "sinks": [
+        "buffer_0.clk",
+        "tx_0.clk",
+        "rx_0.clk"
+      ]
+    },
+    {
+      "name": "rst_net",
+      "shape": {
+        "direction": "input",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "@rst",
+      "sinks": [
+        "buffer_0.rst",
+        "tx_0.rst",
+        "rx_0.rst"
+      ]
+    },
+    {
+      "name": "prescale_net",
+      "shape": {
+        "direction": "input",
+        "range": [
+          15,
+          0
+        ],
+        "signed": false,
+        "width": 16
+      },
+      "driver": "@prescale",
+      "sinks": [
+        "tx_0.prescale",
+        "rx_0.prescale"
+      ]
+    },
+    {
+      "name": "input_data_net",
+      "shape": {
+        "direction": "input",
+        "range": [
+          7,
+          0
+        ],
+        "signed": false,
+        "width": 8
+      },
+      "driver": "@in_data",
+      "sinks": [
+        "buffer_0.in_data"
+      ]
+    },
+    {
+      "name": "input_valid_net",
+      "shape": {
+        "direction": "input",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "@in_valid",
+      "sinks": [
+        "buffer_0.in_valid"
+      ]
+    },
+    {
+      "name": "input_ready_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "buffer_0.in_ready",
+      "sinks": [
+        "@in_ready"
+      ]
+    },
+    {
+      "name": "buffer_data_net",
+      "shape": {
+        "direction": "output",
+        "range": [
+          7,
+          0
+        ],
+        "signed": false,
+        "width": 8
+      },
+      "driver": "buffer_0.out_data",
+      "sinks": [
+        "tx_0.s_axis_tdata"
+      ]
+    },
+    {
+      "name": "buffer_valid_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "buffer_0.out_valid",
+      "sinks": [
+        "tx_0.s_axis_tvalid"
+      ]
+    },
+    {
+      "name": "buffer_ready_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "tx_0.s_axis_tready",
+      "sinks": [
+        "buffer_0.out_ready"
+      ]
+    },
+    {
+      "name": "serial_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "tx_0.txd",
+      "sinks": [
+        "rx_0.rxd"
+      ]
+    },
+    {
+      "name": "output_data_net",
+      "shape": {
+        "direction": "output",
+        "range": [
+          7,
+          0
+        ],
+        "signed": false,
+        "width": 8
+      },
+      "driver": "rx_0.m_axis_tdata",
+      "sinks": [
+        "@out_data"
+      ]
+    },
+    {
+      "name": "output_valid_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "rx_0.m_axis_tvalid",
+      "sinks": [
+        "@out_valid"
+      ]
+    },
+    {
+      "name": "output_ready_net",
+      "shape": {
+        "direction": "input",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "@out_ready",
+      "sinks": [
+        "rx_0.m_axis_tready"
+      ]
+    },
+    {
+      "name": "tx_busy_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "tx_0.busy",
+      "sinks": [
+        "@tx_busy"
+      ]
+    },
+    {
+      "name": "rx_busy_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "rx_0.busy",
+      "sinks": [
+        "@rx_busy"
+      ]
+    },
+    {
+      "name": "overrun_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "rx_0.overrun_error",
+      "sinks": [
+        "@overrun_error"
+      ]
+    },
+    {
+      "name": "frame_net",
+      "shape": {
+        "direction": "output",
+        "range": null,
+        "signed": false,
+        "width": 1
+      },
+      "driver": "rx_0.frame_error",
+      "sinks": [
+        "@frame_error"
+      ]
+    }
+  ],
+  "sources": [
+    "src/vendor/verilog-axis/rtl/axis_register.v",
+    "src/adapters/bd_stream_register.v",
+    "src/vendor/verilog-uart/rtl/uart_tx.v",
+    "src/vendor/verilog-uart/rtl/uart_rx.v"
+  ]
+}
