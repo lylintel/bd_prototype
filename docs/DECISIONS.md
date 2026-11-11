@@ -72,3 +72,6 @@
 - 决定：只有本 spike 提交的四项实际 CI 全通过，才采用固定 pyslang 为主解析器并开始 P1.2；否则将 pyslang 降为可选、用 Yosys 主路径并重新验证全矩阵。实时证据为该提交的 Checks，不用单机结果代替四组合证据。
 - 新夹具 tests/fixtures/verilog/spike.sv 已有独立 golden；原有 HDL golden 不变。此 spike 只确认依赖/API/平台能力，尚不是正式导入器。
 - 首次远端运行 42958799473 在 YAML 校验阶段失败，未启动任何 job：未引用的命令中冒号后接空格被解释为映射。改为 run 块文本，并新增本地 BaseLoader 语法检查；这不是 pyslang 安装失败证据。使用额外的 CI 修复提交保留已发布失败记录，不强制改写远端历史。
+- 实际安装矩阵 [42959289371](https://github.com/lylintel/bd_prototype/actions/runs/42959289371)：Windows/Linux 的 Python 3.14 安装/解析均成功，两边 Python 3.10 安装失败。包元数据确认 pyslang 12.1.0 Requires-Python >=3.11。
+- 最终策略调整：pyslang 单列 requirements-pyslang.txt 为可选后端，旧 Python 不强装；requirements-parser.txt 固定跨平台 yowasp-yosys 0.70.0.0.post1259、runtime 1.96、wasmtime 47.0.1（均支持 Python 3.9+）。Python 3.10 必须实际通过 Yosys，3.14 同时验证 Yosys/pyslang；不跳过解析、不删除组合。真实四组合转绿前仍不得进入 P1.2。
+- Yosys 与 pyslang 产物分别有字节 golden；Yosys 原生 JSON 的端口范围已求值，正式解析器必须保留这个限制并拒绝或明确诊断无法无损导入的参数关系，不将求值后的范围伪装成原表达式。

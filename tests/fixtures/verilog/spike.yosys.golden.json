@@ -1,0 +1,36 @@
+{
+  "spike_ansi": [
+    [
+      "clk",
+      "input",
+      1
+    ],
+    [
+      "data",
+      "input",
+      8
+    ],
+    [
+      "result",
+      "output",
+      8
+    ]
+  ],
+  "spike_legacy": [
+    [
+      "left",
+      "input",
+      4
+    ],
+    [
+      "right",
+      "input",
+      4
+    ],
+    [
+      "result",
+      "output",
+      4
+    ]
+  ]
+}
