@@ -1,4 +1,6 @@
 {
+  "D001": "设计格式无效：{reason}。",
+  "E005": "无法唯一解析 IP {ip}@{version}：{reason}。",
   "IP_SCHEMA_VERSION": "{location}: 缺少或不支持的 IP schema_version，需要整数 1。",
   "IP_SCHEMA_INVALID": "{location}: IP 元数据不符合 schema，检查规则 {rule}。",
   "IP_DUPLICATE_NAME": "{location}: 标识符 {name} 与已有端口或参数重名。",
