@@ -14,6 +14,10 @@ designs/*
 !designs/web_demo.json
 !designs/web_demo.layout.json
 
+/ip_library/*
+!/ip_library/builtin/
+!/ip_library/builtin/**
+
 .env
 .env.*
 !.env.example

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import copy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -17,6 +19,7 @@ import webbrowser
 
 import bdtool
 from bdcopilot import CopilotBridge, CopilotError
+from core.expr import MESSAGES
 
 
 ASSETS = Path(__file__).resolve().parent / "web" / "dist"
@@ -54,6 +57,28 @@ class Workspace:
     def __init__(self, root: Path, design_path: str):
         self.root = root.resolve()
         self.design_path = design_path
+
+    def ip_library(self):
+        try:
+            from ip_import.library import IpLibrary
+        except ImportError as error:
+            raise bdtool.DesignError(MESSAGES["IP_LIBRARY_MISSING"]) from error
+        return IpLibrary(self.root)
+
+    def import_ips(self, payload: dict):
+        library = self.ip_library()
+        from ip_import.library import LibraryError, Upload
+
+        if not isinstance(payload.get("action"), str) or payload["action"] not in {"preview", "commit"} or not isinstance(payload.get("files"), list) or not 1 <= len(payload["files"]) <= 200:
+            raise LibraryError("IP_LIBRARY_INPUT")
+        uploads = []
+        for item in payload["files"]:
+            try:
+                uploads.append(Upload(item["name"], base64.b64decode(item["content_b64"], validate=True)))
+            except (KeyError, TypeError, binascii.Error) as error:
+                raise LibraryError("IP_LIBRARY_INPUT") from error
+        return library.import_sources(uploads, dry_run=payload["action"] == "preview", version=payload.get("version"),
+                          selections=payload.get("metadata"), license_name=payload.get("license", "NOASSERTION"))
 
     def path(self, value: str) -> Path:
         if not isinstance(value, str) or not value or "\x00" in value:
@@ -239,6 +264,9 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(self.server.copilot.status())
             elif request.path == "/api/designs":
                 self.json_response({"paths": workspace.list_designs()})
+            elif request.path == "/api/ip/library":
+                base = workspace.path(parse_qs(request.query).get("base_dir", ["."])[0])
+                self.json_response({"entries": workspace.ip_library().entries(base_dir=base)})
             elif request.path == "/api/load":
                 filename = parse_qs(request.query).get("path", [workspace.design_path])[0]
                 self.json_response(workspace.load(filename))
@@ -282,6 +310,25 @@ class EditorHandler(BaseHTTPRequestHandler):
             if not turn.finished:
                 self.server.copilot.cancel(turn.id)
 
+    def stream_import(self, payload):
+        events = self.server.workspace.import_ips(payload)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.connection.settimeout(15)
+        try:
+            for event in events:
+                self.wfile.write((json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8"))
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            pass
+        finally:
+            events.close()
+            self.close_connection = True
+
     def do_POST(self) -> None:
         try:
             self.guard(write=True)
@@ -308,6 +355,8 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(workspace.save(payload))
             elif self.path == "/api/generate":
                 self.json_response(workspace.generate(payload))
+            elif self.path == "/api/ip/import":
+                self.stream_import(payload)
             else:
                 self.json_response({"error": "Not found"}, 404)
         except PermissionError as exc:

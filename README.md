@@ -28,11 +28,13 @@
 
 ## IP 元数据
 
-P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、许可证、参数表达式和端口角色的独立 IP 格式。counter/compare_eq 可通过 API 自动迁移，保留原设计和 HDL 输出。P1.2 已提供跨平台 RTL 接口解析 API，使用方法和限制见 [docs/ip-import.md](docs/ip-import.md)；GUI 导入入口尚未实现。
+P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、许可证、参数表达式和端口角色的独立 IP 格式。counter/compare_eq 可通过 API 自动迁移，保留原设计和 HDL 输出。现已提供跨平台 RTL 解析、角色建议和共享 CLI/HTTP 导入入口，使用方法和限制见 [docs/ip-import.md](docs/ip-import.md)；GUI 导入面板尚未实现。
 
 仅使用 IP 元数据 API 时安装 `python -m pip install -r requirements-ip.txt`；开发安装已包含该依赖。字段、迁移示例和限制见 [docs/ip-metadata.md](docs/ip-metadata.md)。
 
 位宽表达式已使用 P1.3 的安全 Pratt 求值器，支持 Verilog 整数、三目和 `$clog2`，限制见 [docs/expressions.md](docs/expressions.md)。旧设计与 HDL 输出保持兼容。
+
+导入预览命令：`python -m bdstudio ip import path/to/rtl --recursive --dry-run`，移除 `--dry-run` 才写入本地版本库。源码变化需显式 `--version` 升版；用户导入源码默认不进入 Git。
 
 ## 开发检查
 

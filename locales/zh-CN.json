@@ -29,5 +29,22 @@
   "EXPR_RANGE": "位置 {offset}：数值、位宽、指数或移位量超出安全范围。",
   "EXPR_LIMIT": "位置 {offset}：表达式长度、标记数或嵌套层数超过限制。",
   "EXPR_DOMAIN": "位置 {offset}：函数参数不在支持的整数定义域。",
-  "EXPR_ZERO": "位置 {offset}：不能除以零或对零取余。"
+  "EXPR_ZERO": "位置 {offset}：不能除以零或对零取余。",
+  "IP_LIBRARY_INPUT": "导入请求无效，文件名必须是可移植的 .v/.sv 名称，数量为 1–200。{detail}",
+  "IP_LIBRARY_SIZE": "文件超过 1 MiB 或文件数量超过 200。{detail}",
+  "IP_LIBRARY_VERSION": "版本必须显式使用递增的三段发布号。{detail}",
+  "IP_LIBRARY_INDEX": "IP 库索引格式无效，未覆盖现有数据。{detail}",
+  "IP_LIBRARY_PATH": "IP 库路径或源码路径不在授权目录内。{detail}",
+  "IP_LIBRARY_BUSY": "IP 库正在被其他导入任务使用，请稍后重试。{detail}",
+  "IP_LIBRARY_EXISTS": "目标版本目录已存在，未覆盖。{detail}",
+  "IP_LIBRARY_SELECTION": "所选元数据不属于本次源码预览。{detail}",
+  "IP_LIBRARY_INTERFACE": "接口编辑与真实源码不一致，请修改源码后重新预览。{detail}",
+  "IP_LIBRARY_PARAMETER": "参数默认值或位宽无法安全解析。{detail}",
+  "IP_LIBRARY_SOURCE": "库中源码缺失或哈希已变化，不能用于生成。{detail}",
+  "IP_LIBRARY_DEPENDENCY": "缺少依赖模块，请一并导入。{detail}",
+  "IP_LIBRARY_INOUT": "元数据已保存，但当前 BD 连接器尚不支持 inout。{detail}",
+  "IP_LIBRARY_IO": "IP 库读写失败。{detail}",
+  "IP_LIBRARY_MISSING": "IP 导入依赖未安装，请安装 requirements-parser.txt。",
+  "IP_CLI_DESCRIPTION": "导入本地 RTL 接口到版本化 IP 库，输出 NDJSON 结果。",
+  "IP_LIBRARY_INTEGRITY": "元数据与已提交的导入记录不一致，请重新预览并升版本。{detail}"
 }

@@ -51,3 +51,38 @@ for diagnostic in result.diagnostics:
 tests/fixtures/verilog 中 13 个源文件包含人工定义的 interfaces.golden.json。投影锁定模块顺序、参数表达式、端口顺序、方向、原始范围/符号性和错误行号，比较原始 UTF-8 字节。源码 SHA-256 与原文件独立校验；完整元数据仍通过 P1.1 schema。
 
 旧 examples 的 HDL golden 完全保留。CI 在 Windows/Linux、Python 3.10/3.14 四组合运行正式解析夹具和旧 golden；原 Linux 两组合仍执行完整 scripts/check.py。
+
+## P1.5 导入与版本库
+
+CLI 与 HTTP 共用 IpLibrary，不通过两套实现分别解释导入。示例：
+
+```powershell
+.\.venv\Scripts\python.exe -m bdstudio ip import examples/rtl/counter.v --dry-run
+.\.venv\Scripts\python.exe -m bdstudio ip import tests/fixtures/import --recursive --license NOASSERTION
+.\.venv\Scripts\python.exe -m bdstudio ip import path/to/changed.v --version 1.1.0
+```
+
+`--workspace` 指定目标工作区，默认当前目录。每个文件至多 1 MiB，一批最多 200 文件；目录可递归。单个读取、大小或解析错误不会中断其余文件，输出逐项 NDJSON 和 summary。退出码 0 表示没有失败/待升版项，1 表示部分失败或需要升版，2 表示请求/环境错误。
+
+`--dry-run` 和 preview 不创建/修改 ip_library、索引或源文件；解析器仍使用自动清理的系统临时目录，WASM 引擎可能写工具缓存。不会声称整个系统零磁盘 I/O。
+
+库使用新 schema_version=1 索引，保存到 `ip_library/<id>/<version>/ip.json` 和 `src/<file>`。源码哈希与接口签名相同则跳过；源码/接口变化必须给出更大的版本号，返回端口和参数的增删改差异。已有版本目录从不覆盖。
+
+写入使用独占文件锁、临时目录、原子重命名和索引替换；索引失败会移除本次新版本，不改旧版本。异常退出遗留 .lock 时，先确认没有活动写入进程再清理，不能盲目删除正在使用的锁。
+
+同一源文件的多个模块使用索引中的规范源码路径，避免重复编译。原始 AST 的模块依赖用于收集外部源码，包含文件内中间模块的间接依赖；缺少依赖、源码/接口记录被改动时条目不可用于生成。当前选用依赖模块的库内最新版本，复杂的跨版本工程约束尚未实现。
+
+库条目可生成旧模型定义，参数默认表达式显式解析成 32 位整数绑定，端口 range 保留符号表达式。inout 可登记元数据，但旧 BD 连接模型尚不支持，因此标记不可拖入。多个版本的同名模块不能静默替换当前画布定义。
+
+当前仓库公开，用户导入库和索引默认被 Git 忽略；只有后续原创 ip_library/builtin 参与版本管理。模块 id `builtin` 保留给该存储命名空间。
+
+## HTTP 契约
+
+- POST `/api/ip/import`：沿用 application/json、同源/Host 检查和 X-BD-Token；不使用 multipart。
+- 请求字段：action 为 preview/commit，files 为 name/content_b64 数组，可选 license/version；commit 可传 metadata 对象（键为所选模块 id，值为编辑后的 v1 元数据）。带 metadata 时一次只处理一个源文件，空对象表示不选择模块。
+- 单次 HTTP 正文仍受原 2 MiB 限制，源码解码后至多 1 MiB；浏览器按文件顺序请求，最多选择 200 个。无请求级更大正文例外。
+- 响应为 application/x-ndjson：file 表示正在解析，ip 表示 preview/imported/skipped/needs_version/invalid，summary 给出计数。请求结构错误在流开始前返回 HTTP 错误。
+- 确认时重新解析源码并校验编辑，不信任客户端哈希和接口。允许显示名、说明、标签、默认参数和角色调整；真实模块/端口名、方向、范围、符号性不能与源码矛盾，位宽编辑也必须与源接口一致。
+- GET `/api/ip/library?base_dir=examples` 返回元数据、来源、可用性、诊断及重定位后的旧模型 definition。不安装可选导入依赖时旧 GUI/CLI 仍可使用，导入功能报告依赖缺失。
+
+浏览器断开后不会回滚已经确认的单个模块；重试相同源码是幂等的。此接口不是远程多用户服务，不承诺跨版本 HDL 完整语义验证；仍需后续编译与仿真。

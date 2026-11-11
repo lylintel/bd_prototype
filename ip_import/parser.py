@@ -35,10 +35,12 @@ class ParseResult:
     modules: tuple[IpMetadata, ...] = ()
     diagnostics: tuple[ParseDiagnostic, ...] = ()
     backend: str = "yosys"
+    dependencies: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {"modules": [module.to_dict() for module in self.modules],
-                "diagnostics": [asdict(item) for item in self.diagnostics], "backend": self.backend}
+                "diagnostics": [asdict(item) for item in self.diagnostics], "backend": self.backend,
+                "dependencies": {name: list(values) for name, values in self.dependencies.items()}}
 
 
 @dataclass
@@ -196,17 +198,25 @@ def parse_file(path: Path, *, workspace_root: Path | None = None, license_name: 
         return failed("IP_PARSE_TIMEOUT")
     except OSError:
         return failed("IP_PARSE_TOOL")
-    modules, diagnostics = [], []
+    modules, diagnostics, dependencies = [], [], {}
     if re.search(r"(?m)^Warning:", output + errors):
         diagnostics.append(ParseDiagnostic("IP_PARSE_WARNING", "warning", path.name, 1,
                                           MESSAGES["IP_PARSE_WARNING"].format(path=path.name, line=1)))
     for node in _tree(output):
         try:
             modules.append(_module(node, path, raw, license_name))
+            pending = list(node.children)
+            names = []
+            while pending:
+                child = pending.pop()
+                if child.kind == "CELLTYPE" and child.name and not child.name.startswith("$"):
+                    names.append(child.name)
+                pending.extend(child.children)
+            dependencies[node.name] = tuple(sorted(set(names)))
         except Unsupported as error:
             diagnostics.append(diagnostic("IP_PARSE_UNSUPPORTED", path.name, error.line))
         except IpMetadataError:
             diagnostics.append(diagnostic("IP_PARSE_METADATA", path.name, node.line))
     if not modules and not any(item.severity == "error" for item in diagnostics):
         return failed("IP_PARSE_EMPTY")
-    return ParseResult(tuple(modules), tuple(diagnostics))
+    return ParseResult(tuple(modules), tuple(diagnostics), dependencies=dependencies)
