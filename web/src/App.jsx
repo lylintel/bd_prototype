@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Background, BackgroundVariant, ConnectionLineType, ConnectionMode, Handle, Position, ReactFlow, applyNodeChanges, useNodesInitialized, useReactFlow } from "@xyflow/react";
-import { ArrowDownToLine, ArrowUpRight, Blocks, Bot, Check, CheckCheck, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircuitBoard, Code2, Copy, Cpu, Download, FilePlus2, FolderOpen, GripVertical, LayoutGrid, ListTree, LoaderCircle, Maximize2, PanelBottom, PanelLeft, PanelRight, Plus, Redo2, Save, Search, Settings2, ShieldCheck, Trash2, Undo2, Unplug, Workflow, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Background, BackgroundVariant, ConnectionLineType, ConnectionMode, Position, ReactFlow, applyNodeChanges, useNodesInitialized, useReactFlow } from "@xyflow/react";
+import * as FlowComponents from "@xyflow/react";
+import { ArrowUpRight, Blocks, Bot, Check, CheckCheck, ChevronDown, CircleAlert, CircleCheck, CircuitBoard, Code2, Copy, Cpu, Download, FilePlus2, FolderOpen, GripVertical, LayoutGrid, ListTree, LoaderCircle, Maximize2, PanelLeft, PanelRight, Plus, Redo2, Save, Search, Settings2, ShieldCheck, Trash2, Undo2, Unplug, Workflow, X, ZoomIn, ZoomOut } from "lucide-react";
 import { addInstance, checkName, clone, connectionError, connectPorts, deleteNode, disconnectPort, endpointInfo, externalId, makeExternal, parseInteger, rangeLabel, renameNet, renameNode, uniqueName, validateDocumentShape } from "./model.js";
 import OutputWindow from "./OutputWindow.jsx";
 import CircuitEdge from "./CircuitEdge.jsx";
 import CopilotPanel from "./CopilotPanel.jsx";
 import { resolveDesignUpdate } from "./copilot.js";
 
+const { Handle } = FlowComponents;
 const initialLayout = { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } };
 const emptyInspection = { valid: false, diagnostics: [], files: {}, interfaces: { ports: {}, instances: {} } };
 
@@ -487,7 +489,7 @@ export default function App() {
             onConnect={(connection) => connect(connection.sourceHandle, connection.targetHandle)}
             onConnectEnd={(event, state) => {
               const first = state.fromHandle?.id;
-              const second = state.toHandle?.id ?? event.target?.closest?.(".react-flow__handle")?.getAttribute("data-handleid");
+              const second = state.toHandle?.id ?? (event.target instanceof Element ? event.target.closest(".react-flow__handle")?.getAttribute("data-handleid") : undefined);
               if (first && second && first !== second && !state.isValid) {
                 const error = connectionReady ? connectionError(design, first, second, interfaces) : "接口正在解析，请稍后连线";
                 if (error) notify(error, true);
@@ -504,7 +506,7 @@ export default function App() {
         </div>
 
         <OutputWindow open={panelOpen} onOpenChange={setPanelOpen} tab={tab}
-          tabs={[ ["diagnostics", "诊断", ListTree], ["bd", "BD Verilog", Code2], ["wrapper", "Wrapper", Blocks], ["json", "设计 JSON", CircuitBoard] ].map(([id, label, Icon]) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => { setTab(id); setPanelOpen(true); }}><Icon size={14} />{label}{id === "diagnostics" && inspection.diagnostics.length > 0 && <b>{inspection.diagnostics.length}</b>}</button>)}>
+          tabs={[ { id: "diagnostics", label: "诊断", Icon: ListTree }, { id: "bd", label: "BD Verilog", Icon: Code2 }, { id: "wrapper", label: "Wrapper", Icon: Blocks }, { id: "json", label: "设计 JSON", Icon: CircuitBoard } ].map(({ id, label, Icon }) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => { setTab(id); setPanelOpen(true); }}><Icon size={14} />{label}{id === "diagnostics" && inspection.diagnostics.length > 0 && <b>{inspection.diagnostics.length}</b>}</button>)}>
           {panelOpen && <div className="output-content" role="tabpanel">
             {tab === "diagnostics" ? <>
               <div className={`diagnostic-summary ${inspection.valid ? "success" : ""}`}>{checking ? <LoaderCircle size={18} className="spin" /> : inspection.valid ? <CircleCheck size={19} /> : <CircleAlert size={19} />}<div><strong>{checking ? "正在校验设计" : inspection.valid ? "所有连接检查通过" : "设计存在待修复项"}</strong><span>{inspection.valid ? `${totalPins} 个实例端口 · ${Object.keys(design.ports).length} 个外部端口 · ${Object.keys(design.nets).length} 条网络` : "DesignError"}</span></div>{inspection.valid && <span className="diagnostic-tag">VALID</span>}</div>

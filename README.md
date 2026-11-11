@@ -25,6 +25,25 @@
 | [tests/test_bdgui.py](tests/test_bdgui.py) | GUI 后端、路径约束、草稿保存和 HTTP 访问检查 |
 | [web/src/model.test.js](web/src/model.test.js) | 连线、扇出、重命名、外引端口和参数编辑回归 |
 
+## 开发检查
+
+CI 与本地共用 [scripts/check.py](scripts/check.py)，依次执行 Ruff、全部 Python/golden 测试、ESLint、应用 JS/JSX 类型检查、前端单测、生产构建。任一步失败立即返回非零状态。检查不请求真实 LLM，不需要登录或 SDK；只使用本机临时 HTTP 服务和 mock。
+
+准备 Python 3.10+、Node.js 24 和 Icarus Verilog（`iverilog`、`vvp` 必须在 PATH；Ubuntu 可用 `sudo apt-get install iverilog`），已有虚拟环境后安装依赖：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+npm.cmd --prefix web ci
+```
+
+一键运行与 CI 相同的检查：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/check.py
+```
+
+Linux/macOS 使用 `.venv/bin/python scripts/check.py`。CI 测试 Python 3.10/3.14 与 Node 24，缺少 HDL 工具会失败，不接受跳过仿真的假绿。安装步骤需要网络，检查步骤不依赖外网。仅运行原有 Python 单测仍可用 `python -m unittest discover -s tests -v`；golden 必须使用 `python -m pytest tests/golden`，维护规则见 [tests/golden/README.md](tests/golden/README.md)。
+
 ## 网页 GUI
 
 首次克隆后，在项目根目录创建虚拟环境并构建前端。需要 Python 3.10+（Copilot 助手需要 3.11+）及 Node.js 20.19+ 或 22.12+，推荐 Node.js 24。Windows PowerShell：

@@ -78,7 +78,7 @@ export default function OutputWindow({ open, onOpenChange, tab, tabs, children }
       else { setDockHeight(element.offsetHeight); frame.current?.updatePosition({ x: 0, y: 0 }); }
     }}
     style={{ display: "flex", flexDirection: "column", position: "absolute", "--code-font-size": `${fontSize}px` }}>
-    <div className="output-window-titlebar" onDoubleClick={(event) => { if (!event.target.closest("button")) toggleMaximize(); }}>
+    <div className="output-window-titlebar" onDoubleClick={(event) => { if (event.target instanceof Element && !event.target.closest("button")) toggleMaximize(); }}>
       <div className="output-window-title" tabIndex={mode === "floating" ? 0 : undefined} aria-label="移动代码窗口" title={mode === "floating" ? "拖动代码窗口" : "输出"} onKeyDown={moveWithKeyboard}>
         {floating ? <Move size={13} /> : <GripHorizontal size={14} />}<span>输出</span>
       </div>

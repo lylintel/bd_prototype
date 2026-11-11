@@ -36,3 +36,11 @@
 - 背景：计划要求用户可见文案走 i18n，但现有组件及诊断大量硬编码。
 - 决定：P0 文档和测试不引入新 UI。后续涉及新 UI 时先建 i18n 资源并迁移对应触及范围；不要在基线任务中全面改写现有界面。
 - 理由：减少与当前任务无关的格式变更，维持测试可归因性。
+
+## D006：P0.3 质量门禁与兼容性
+
+- 决定：Python 使用固定版本 pytest/Ruff；前端保持 JavaScript，使用 TypeScript checkJs/noEmit 检查全部应用 JS/JSX，并使用 ESLint 检查应用及单测。未开启 strict/noImplicitAny，后续可逐步补类型；没有 ts-ignore/ts-nocheck 或排除应用文件。
+- 依赖边界：maxNodeModuleJsDepth=0、skipLibCheck=true 只跳过第三方实现/声明检查。测试文件由 Node 实际执行和 ESLint 检查，不把故意无效输入当成应用类型错误。
+- 局部修复：DOM EventTarget 经 Element 检查后访问 closest；页签使用同义对象替代混合数组；CSS 变量只允许 -- 前缀键。React Flow 同名 Handle 类型/值导出通过命名空间取值，不改第三方源码。
+- lint：Ruff E9/F 与 ESLint recommended/JSX 使用规则，不混入全库格式化。ESLint 9 与当前 react 插件兼容，但安装器已提示版本停止支持，后续升级需一起验证 JSX 插件，不以强制忽略 peer 冲突解决。
+- CI：GitHub Actions 在 Ubuntu、Python 3.10/3.14、Node 24 执行与本地相同的 scripts/check.py，依赖安装后检查离线运行。强制要求 Icarus，不把缺工具跳过 HDL 当通过。真实 CI 状态须单独核实，不等同于本地检查。
