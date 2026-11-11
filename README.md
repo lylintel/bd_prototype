@@ -9,6 +9,7 @@
 | 文件 | 职责 |
 | --- | --- |
 | [bdtool.py](bdtool.py) | 设计模型、表达式求值、连接校验、两层生成器和 CLI |
+| [bdip.py](bdip.py) | 独立 v1 IP 元数据数据类、schema 校验、加载保存与旧模块迁移 |
 | [bdgui.py](bdgui.py) | Python 标准库 HTTP 服务、编辑器 API、设计与布局保存 |
 | [bdcopilot.py](bdcopilot.py) | 可选 Copilot SDK 桥接、会话生命周期、流式事件和受限设计工具 |
 | [bdworkflow.py](bdworkflow.py) | 可追踪需求、确定性连接计划、隔离生成及输入哈希保护 |
@@ -24,6 +25,12 @@
 | [tests/test_bdtool.py](tests/test_bdtool.py) | CLI、模型、生成结果和可选 HDL 仿真的验收测试 |
 | [tests/test_bdgui.py](tests/test_bdgui.py) | GUI 后端、路径约束、草稿保存和 HTTP 访问检查 |
 | [web/src/model.test.js](web/src/model.test.js) | 连线、扇出、重命名、外引端口和参数编辑回归 |
+
+## IP 元数据
+
+P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、许可证、参数表达式和端口角色的独立 IP 格式。counter/compare_eq 可通过 API 自动迁移，保留原设计和 HDL 输出；此阶段尚无 Verilog 解析器或 GUI 导入入口。
+
+仅使用 IP 元数据 API 时安装 `python -m pip install -r requirements-ip.txt`；开发安装已包含该依赖。字段、迁移示例和限制见 [docs/ip-metadata.md](docs/ip-metadata.md)。
 
 ## 开发检查
 

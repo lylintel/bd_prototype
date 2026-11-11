@@ -1,0 +1,15 @@
+{
+  "IP_SCHEMA_VERSION": "{location}: 缺少或不支持的 IP schema_version，需要整数 1。",
+  "IP_SCHEMA_INVALID": "{location}: IP 元数据不符合 schema，检查规则 {rule}。",
+  "IP_DUPLICATE_NAME": "{location}: 标识符 {name} 与已有端口或参数重名。",
+  "IP_PARAMETER_LIMITS": "{location}: 参数下限不能大于上限。",
+  "IP_JSON_INVALID": "{location}: IP JSON 编码或语法无效。",
+  "IP_JSON_DUPLICATE": "{location}: JSON 包含重复字段。",
+  "IP_METADATA_TOO_LARGE": "{location}: IP 元数据超过 1 MiB 限制。",
+  "IP_FILE_READ": "{location}: 无法读取 IP 元数据文件。",
+  "IP_FILE_WRITE": "{location}: 无法写入 IP 元数据文件，原文件未被替换。",
+  "IP_LEGACY_INVALID": "{location}: 旧模块元数据无效：{reason}",
+  "IP_SOURCE_OUTSIDE_WORKSPACE": "{location}: 源码路径超出授权工作区。",
+  "IP_SOURCE_READ": "{location}: 无法读取已登记的 RTL 源文件。",
+  "IP_SOURCE_OVERWRITE": "{location}: IP 元数据不能覆盖已登记的 RTL 源文件。"
+}

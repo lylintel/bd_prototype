@@ -44,3 +44,13 @@
 - 局部修复：DOM EventTarget 经 Element 检查后访问 closest；页签使用同义对象替代混合数组；CSS 变量只允许 -- 前缀键。React Flow 同名 Handle 类型/值导出通过命名空间取值，不改第三方源码。
 - lint：Ruff E9/F 与 ESLint recommended/JSX 使用规则，不混入全库格式化。ESLint 9 与当前 react 插件兼容，但安装器已提示版本停止支持，后续升级需一起验证 JSX 插件，不以强制忽略 peer 冲突解决。
 - CI：GitHub Actions 在 Ubuntu、Python 3.10/3.14、Node 24 执行与本地相同的 scripts/check.py，依赖安装后检查离线运行。强制要求 Icarus，不把缺工具跳过 HDL 当通过。真实 CI 状态须单独核实，不等同于本地检查。
+
+## D007：P1.1 独立 IP schema 与兼容迁移
+
+- 背景：现有模块直接内联于设计 modules，使用 sources 数组、range 原始索引、signed 与参数 min/max；计划示例的 source/width 不足以保留这些信息。
+- 选项：直接替换旧格式；或新增独立元数据 API 并显式迁移。
+- 决定：新增根目录 ip.schema.json 和 bdip.py，采用 Draft 2020-12/jsonschema，不改旧 load_design、GUI 或生成器。schema_version=1 只属于新 IP 文件；旧设计不强行添加未知字段。requirements-ip.txt 单独声明依赖，开发依赖和 CI 包含它。
+- 无损字段：额外有序源码放 additional_sources；port 保留可选 range/signed，parameter 保留 min/max。符号范围的 width 是比较/三目表达式，不按默认参数数值固化。原有源码、设计、golden 不改写。
+- 来源边界：迁移要求显式 workspace_root，只哈希范围内的已登记源文件；未知许可证用 NOASSERTION，角色不猜测/不确认。load/save 仅处理元数据，不验证源码新鲜度。另存通过非序列化 base_dir 重写相对源码路径；失败不替换原文件。
+- 有意推迟：表达式求值/默认值约束检查到 P1.3，角色建议到 P1.4，版本库和导入命令到 P1.5，协议接口到 P2.5。v1 interfaces 仅允许空数组，版本号仅三段发布号。具体字段、限制和 API 见 docs/ip-metadata.md。
+- 安全与本地化：文件/对象上限 1 MiB，拒绝重复 JSON 字段、NaN/Infinity、非法标识符、关键字和正则结尾换行绕过。新领域错误统一 code/location，中文消息放 locales/zh-CN.json；不新增硬编码 UI 文案。

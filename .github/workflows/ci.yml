@@ -27,7 +27,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: requirements-dev.txt
+          cache-dependency-path: |
+            requirements-dev.txt
+            requirements-ip.txt
       - uses: actions/setup-node@v4
         with:
           node-version: "24"

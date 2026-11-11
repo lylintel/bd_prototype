@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BD Studio IP Metadata v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "version", "display_name", "description", "tags", "source", "language", "parameters", "ports", "interfaces"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": { "$ref": "#/$defs/identifier" },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?![\\s\\S])" },
+    "display_name": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "description": { "type": "string", "maxLength": 65536 },
+    "tags": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 128 } },
+    "source": { "$ref": "#/$defs/source" },
+    "additional_sources": { "type": "array", "maxItems": 199, "items": { "$ref": "#/$defs/source" } },
+    "language": { "enum": ["verilog-2005", "systemverilog"] },
+    "parameters": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/parameter" } },
+    "ports": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/port" } },
+    "interfaces": { "type": "array", "maxItems": 0 }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_$]*(?![\\s\\S])",
+      "not": { "enum": [
+        "always", "and", "assign", "automatic", "begin", "buf", "bufif0", "bufif1", "case", "casex", "casez", "cell",
+        "cmos", "config", "deassign", "default", "defparam", "design", "disable", "edge", "else", "end", "endcase",
+        "endconfig", "endfunction", "endgenerate", "endmodule", "endprimitive", "endspecify", "endtable", "endtask", "event",
+        "for", "force", "forever", "fork", "function", "generate", "genvar", "highz0", "highz1", "if", "ifnone", "incdir",
+        "include", "initial", "inout", "input", "instance", "integer", "join", "large", "liblist", "library", "localparam",
+        "macromodule", "medium", "module", "nand", "negedge", "nmos", "nor", "noshowcancelled", "not", "notif0", "notif1",
+        "or", "output", "parameter", "pmos", "posedge", "primitive", "pull0", "pull1", "pulldown", "pullup",
+        "pulsestyle_ondetect", "pulsestyle_onevent", "rcmos", "real", "realtime", "reg", "release", "repeat", "rnmos",
+        "rpmos", "rtran", "rtranif0", "rtranif1", "scalared", "showcancelled", "signed", "small", "specify", "specparam",
+        "strong0", "strong1", "supply0", "supply1", "table", "task", "time", "tran", "tranif0", "tranif1", "tri", "tri0",
+        "tri1", "triand", "trior", "trireg", "unsigned", "use", "vectored", "wait", "wand", "weak0", "weak1", "while",
+        "wire", "wor", "xnor", "xor", "uwire",
+        "accept_on", "alias", "always_comb", "always_ff", "always_latch", "assert", "assume", "before", "bind", "bins",
+        "binsof", "bit", "break", "byte", "chandle", "checker", "class", "clocking", "const", "constraint", "context",
+        "continue", "cover", "covergroup", "coverpoint", "cross", "dist", "do", "endchecker", "endclass", "endclocking",
+        "endgroup", "endinterface", "endpackage", "endprogram", "endproperty", "endsequence", "enum", "eventually", "expect",
+        "export", "extends", "extern", "final", "first_match", "foreach", "forkjoin", "iff", "ignore_bins", "illegal_bins",
+        "implements", "implies", "import", "inside", "int", "interconnect", "interface", "intersect", "join_any", "join_none",
+        "let", "local", "logic", "longint", "matches", "modport", "nettype", "new", "nexttime", "null", "package", "packed",
+        "priority", "program", "property", "protected", "pure", "rand", "randc", "randcase", "randsequence", "ref", "reject_on",
+        "restrict", "return", "s_always", "s_eventually", "s_nexttime", "s_until", "s_until_with", "sequence", "shortint",
+        "shortreal", "soft", "solve", "static", "string", "strong", "struct", "super", "sync_accept_on", "sync_reject_on",
+        "tagged", "this", "throughout", "timeprecision", "timeunit", "type", "typedef", "union", "unique", "unique0", "until",
+        "until_with", "untyped", "var", "virtual", "void", "wait_order", "weak", "wildcard", "with", "within"
+      ] }
+    },
+    "expression": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S" },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "path", "sha256", "license"],
+      "properties": {
+        "kind": { "const": "verilog" },
+        "path": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?![A-Za-z]:)(?!/)[^\\\\\u0000-\u001f]+(?![\\s\\S])" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}(?![\\s\\S])" },
+        "license": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "parameter": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "type", "default"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "type": { "const": "int" },
+        "default": { "$ref": "#/$defs/expression" },
+        "min": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "max": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+      }
+    },
+    "role": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "confidence", "confirmed"],
+      "properties": {
+        "kind": { "enum": ["clock", "reset", "data", "control", "unknown"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "confirmed": { "type": "boolean" },
+        "polarity": { "enum": ["high", "low", "unknown"] },
+        "async": { "oneOf": [{ "type": "boolean" }, { "const": "unknown" }] }
+      },
+      "if": { "properties": { "kind": { "const": "reset" } } },
+      "then": { "required": ["polarity", "async"] },
+      "else": { "not": { "anyOf": [{ "required": ["polarity"] }, { "required": ["async"] }] } }
+    },
+    "port": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "dir", "width"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "dir": { "enum": ["in", "out", "inout"] },
+        "width": { "$ref": "#/$defs/expression" },
+        "signed": { "type": "boolean" },
+        "range": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "items": { "oneOf": [{ "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }, { "$ref": "#/$defs/expression" }] }
+        },
+        "role": { "$ref": "#/$defs/role" }
+      }
+    }
+  }
+}
