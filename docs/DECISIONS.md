@@ -75,3 +75,12 @@
 - 实际安装矩阵 [42959289371](https://github.com/lylintel/bd_prototype/actions/runs/42959289371)：Windows/Linux 的 Python 3.14 安装/解析均成功，两边 Python 3.10 安装失败。包元数据确认 pyslang 12.1.0 Requires-Python >=3.11。
 - 最终策略调整：pyslang 单列 requirements-pyslang.txt 为可选后端，旧 Python 不强装；requirements-parser.txt 固定跨平台 yowasp-yosys 0.70.0.0.post1259、runtime 1.96、wasmtime 47.0.1（均支持 Python 3.9+）。Python 3.10 必须实际通过 Yosys，3.14 同时验证 Yosys/pyslang；不跳过解析、不删除组合。真实四组合转绿前仍不得进入 P1.2。
 - Yosys 与 pyslang 产物分别有字节 golden；Yosys 原生 JSON 的端口范围已求值，正式解析器必须保留这个限制并拒绝或明确诊断无法无损导入的参数关系，不将求值后的范围伪装成原表达式。
+- 最终验收：[42960020833](https://github.com/lylintel/bd_prototype/actions/runs/42960020833)，对应 aa8c4b4；Windows/Linux × Python 3.10/3.14 四项解析全部成功，两项完整检查也成功。Windows 3.10 实际执行 Yosys 用时 1m39s，不是安装后跳过。
+
+## D010：P1.2 使用未简化 Yosys AST
+
+- 经本机实际探测，read_verilog -defer -dump_ast1 保留参数表达式、localparam、端口顺序和源码行号，解决 write_json 求值后丢失范围关系的问题。
+- 为保证 Python 3.10 与 3.14 输出相同，正式解析以固定 Yosys 为主，pyslang 保持可选，避免两个 AST 路径生成不一致的元数据。读取结构化节点记录，不自写 Verilog 语法解析器；不运行 elaboration/proc。
+- localparam 展开为原参数表达式，不新增元数据字段，因此继续使用 P1.1 schema v1；不修改旧设计/HDL golden。无法表达的多维接口、数组或特殊类型必须给诊断，不退化成错误位宽。
+- 拒绝预处理指令、限 1 MiB 源码/32 MiB AST/180 秒；暂存文件名和命令固定，源路径须在显式授权根目录内。错误位置回映输入 basename/行号，新消息走已有中文资源。
+- 正式夹具 13 个，人工预期接口投影冻结在 interfaces.golden.json；四平台解析矩阵也运行正式夹具和原 HDL golden。

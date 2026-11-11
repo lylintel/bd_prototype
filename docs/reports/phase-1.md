@@ -15,13 +15,21 @@
 - 禁用 site-packages 后，`python -S bdtool.py validate examples/counter_compare.json` 仍通过，验证原 CLI 不依赖新增包。新增文件无编辑器诊断。
 - 远端运行见 [Checks](https://github.com/lylintel/bd_prototype/actions/workflows/ci.yml)，以本任务提交的 Python 3.10/3.14 矩阵结果为准；本地测试不替代远端结果。
 
+## P1.2 交付范围
+
+- 开工前检查独立提交 0f54c92，补齐 P0.3 SHA/远端成功证据、明确 LF 和严格字节比较。
+- spike 实际发现 pyslang 12.1.0 需要 Python 3.11+，Python 3.10 的两个组合安装失败。现改为可选依赖，并固定便携 Yosys。aa8c4b4 的四组合解析及两项完整 CI 均成功，记录见 DECISIONS D009。
+- 正式解析器读取 Yosys 未简化 AST，提取 ANSI/非 ANSI、多模块、参数、localparam、inout、符号性和范围方向。localparam 保留为展开后的参数表达式，不固化位宽。
+- 13 个夹具及人工 JSON golden；语法错误行号、路径、大小、工具缺失、超时和 warning 有测试。原 HDL golden 不变。解析 API 不写 IP 库。
+- P1.2 本地 scripts/check.py 通过：124 项 Python 测试、57 个子测试、19 项前端测试，lint/typecheck/build 全绿。定向解析/golden 检查 18 项通过；四组合 CI 已接入正式夹具。
+
 ## 未完成与限制
 
-- 仅 P1.1，本阶段整体尚未完成。P1.2–P1.8 均未实施，不宣称已有 Verilog 导入器或扩充后的内置库。
+- 本阶段整体尚未完成。P1.3–P1.7 未实施，P1.8 按用户要求暂不做；不宣称已有 GUI 导入器或扩充后的内置库。
 - width/default 是表达式字符串，但尚不求值；原生成器仍不支持 inout 或新增的协议接口。v1 interfaces 必须为空。
 - 许可证缺失记 NOASSERTION；不猜时钟/复位角色。load/save 不重新读取源码校验哈希。版本目录、去重和升版流程留待 P1.5。
 - 安装依赖需要网络，测试不需要外网或真实 LLM。旧 RTL CLI 继续不依赖额外 Python 包。
 
 ## 下一项
 
-P1.2：按计划增加 Verilog/SystemVerilog 解析器，先建立至少 12 个语法夹具和期望输出，再接入解析与降级诊断。P1.1 用法见 [IP 元数据说明](../ip-metadata.md)。
+P1.3：安全 Pratt 表达式求值器。P1.1 用法见 [IP 元数据说明](../ip-metadata.md)，P1.2 用法和限制见 [RTL 接口解析](../ip-import.md)。

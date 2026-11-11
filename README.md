@@ -28,7 +28,7 @@
 
 ## IP 元数据
 
-P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、许可证、参数表达式和端口角色的独立 IP 格式。counter/compare_eq 可通过 API 自动迁移，保留原设计和 HDL 输出；此阶段尚无 Verilog 解析器或 GUI 导入入口。
+P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、许可证、参数表达式和端口角色的独立 IP 格式。counter/compare_eq 可通过 API 自动迁移，保留原设计和 HDL 输出。P1.2 已提供跨平台 RTL 接口解析 API，使用方法和限制见 [docs/ip-import.md](docs/ip-import.md)；GUI 导入入口尚未实现。
 
 仅使用 IP 元数据 API 时安装 `python -m pip install -r requirements-ip.txt`；开发安装已包含该依赖。字段、迁移示例和限制见 [docs/ip-metadata.md](docs/ip-metadata.md)。
 

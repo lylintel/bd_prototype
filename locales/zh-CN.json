@@ -11,5 +11,16 @@
   "IP_LEGACY_INVALID": "{location}: 旧模块元数据无效：{reason}",
   "IP_SOURCE_OUTSIDE_WORKSPACE": "{location}: 源码路径超出授权工作区。",
   "IP_SOURCE_READ": "{location}: 无法读取已登记的 RTL 源文件。",
-  "IP_SOURCE_OVERWRITE": "{location}: IP 元数据不能覆盖已登记的 RTL 源文件。"
+  "IP_SOURCE_OVERWRITE": "{location}: IP 元数据不能覆盖已登记的 RTL 源文件。",
+  "IP_PARSE_ERROR": "{path}:{line}: Verilog 语法解析失败。",
+  "IP_PARSE_UNSUPPORTED": "{path}:{line}: 暂不支持此接口类型或表达式，未丢弃信息后继续导入。",
+  "IP_PARSE_METADATA": "{path}:{line}: 提取的接口不符合 IP 元数据约束。",
+  "IP_PARSE_PATH": "{path}:{line}: 文件超出授权工作区。",
+  "IP_PARSE_READ": "{path}:{line}: 无法读取 UTF-8 源文件。",
+  "IP_PARSE_SIZE": "{path}:{line}: 源文件或 AST 超过大小限制。",
+  "IP_PARSE_PREPROCESSOR": "{path}:{line}: 暂不接受预处理指令，请先提供不含宏或包含文件的源码。",
+  "IP_PARSE_TIMEOUT": "{path}:{line}: 解析超时，未导入。",
+  "IP_PARSE_TOOL": "{path}:{line}: 无法启动解析器，请安装 requirements-parser.txt 中的依赖。",
+  "IP_PARSE_EMPTY": "{path}:{line}: 未找到可导入的模块。",
+  "IP_PARSE_WARNING": "{path}:{line}: 解析器报告非致命警告，请检查源声明；接口仍已提取。"
 }
