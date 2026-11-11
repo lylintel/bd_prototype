@@ -1,0 +1,10 @@
+{
+  "i18n.missingKey": "缺少界面文案资源：{key}",
+  "i18n.missingParameter": "界面文案缺少参数：{name}",
+  "common.cancel": "取消",
+  "common.close": "关闭",
+  "common.confirm": "确认",
+  "common.retry": "重试",
+  "common.loading": "加载中",
+  "common.count": "{count} 项"
+}

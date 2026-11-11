@@ -19,4 +19,14 @@ export default [
       "no-unused-vars": ["error", { args: "none", caughtErrors: "none" }],
     },
   },
+  {
+    files: ["src/ip/**/*.{js,jsx}"],
+    rules: {
+      "react/jsx-no-literals": ["error", { noStrings: true, ignoreProps: true }],
+      "no-restricted-syntax": ["error", {
+        selector: "JSXAttribute[name.name=/^(title|placeholder|aria-label)$/][value.type='Literal']",
+        message: "Use resource-backed t() for new interface text.",
+      }],
+    },
+  },
 ];

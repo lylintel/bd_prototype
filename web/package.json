@@ -7,7 +7,7 @@
     "build": "vite build",
     "typecheck": "tsc -p jsconfig.json",
     "lint": "eslint src",
-    "test": "node --test src/model.test.js src/copilot.test.js"
+    "test": "node --test src/model.test.js src/copilot.test.js src/i18n.test.js"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
