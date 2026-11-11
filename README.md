@@ -56,6 +56,8 @@ npm.cmd --prefix web ci
 
 Linux/macOS 首次在 web 目录执行 `npx playwright install --with-deps chromium`，随后使用 `.venv/bin/python scripts/check.py`。CI 测试 Python 3.10/3.14 与 Node 24，缺少 HDL 工具会失败，不接受跳过仿真的假绿；另有四组合解析矩阵。安装步骤需要网络，检查步骤不依赖外网。仅运行原有 Python 单测仍可用 `python -m unittest discover -s tests -v`；golden 必须使用 `python -m pytest tests/golden`，维护规则见 [tests/golden/README.md](tests/golden/README.md)。
 
+浏览器 CI 固定使用 Ubuntu 24.04，避免滚动镜像超出固定 Playwright 版本的支持范围；解析器仍在最新 Linux/Windows 镜像测试。其他 Linux 发行版应先确认浏览器依赖支持。
+
 ## 网页 GUI
 
 首次克隆后，在项目根目录创建虚拟环境并构建前端。需要 Python 3.10+（Copilot 助手需要 3.11+）及 Node.js 20.19+ 或 22.12+，推荐 Node.js 24。Windows PowerShell：
