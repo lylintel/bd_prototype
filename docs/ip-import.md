@@ -34,7 +34,19 @@ for diagnostic in result.diagnostics:
 - Yosys 语法错误返回原输入的行号；无法取得位置的工具错误使用第 1 行。非致命 warning 提供通用警告，不阻止有效模块返回；原始编译器输出不直接进入 UI。
 - 同一文件中某个接口不受支持时，其余可提取模块可返回；调用者仍须检查 diagnostics，不能把部分结果当作整个文件成功。
 
-## Golden
+## P1.4 角色建议
+
+`ip_import.roles.suggest_roles(metadata)` 返回副本；`suggest_role(port)` 提供单端口建议。只根据名称判断，不把建议当作硬件行为证据：
+
+- clk/clock：clock，置信度 0.95；后缀 _clk：0.9。
+- rst/reset/rstn/resetn：reset，0.95；_rst_n/_reset_n/_rst/_reset：0.9。
+- 通用 _n：低置信度 0.25 的 reset 建议，可能只是低有效数据/片选，必须人工核对。
+- 复位后缀 n 表示低有效，其余高有效；async 一律 unknown，confirmed 一律 false。
+- 所有已确认角色原样保留；未匹配的名称保留原角色。不会仅因为运行建议而修改源码、设计或已有确认。
+
+规则结果冻结在 tests/fixtures/roles.golden.json；无前端文案或自动连线副作用。
+
+## 解析 Golden
 
 tests/fixtures/verilog 中 13 个源文件包含人工定义的 interfaces.golden.json。投影锁定模块顺序、参数表达式、端口顺序、方向、原始范围/符号性和错误行号，比较原始 UTF-8 字节。源码 SHA-256 与原文件独立校验；完整元数据仍通过 P1.1 schema。
 

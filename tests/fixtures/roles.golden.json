@@ -1,0 +1,88 @@
+{
+  "clk": {
+    "kind": "clock",
+    "confidence": 0.95,
+    "confirmed": false
+  },
+  "clock": {
+    "kind": "clock",
+    "confidence": 0.95,
+    "confirmed": false
+  },
+  "sample_clk": {
+    "kind": "clock",
+    "confidence": 0.9,
+    "confirmed": false
+  },
+  "CLK": {
+    "kind": "clock",
+    "confidence": 0.95,
+    "confirmed": false
+  },
+  "rst": {
+    "kind": "reset",
+    "confidence": 0.95,
+    "confirmed": false,
+    "polarity": "high",
+    "async": "unknown"
+  },
+  "reset": {
+    "kind": "reset",
+    "confidence": 0.95,
+    "confirmed": false,
+    "polarity": "high",
+    "async": "unknown"
+  },
+  "rstn": {
+    "kind": "reset",
+    "confidence": 0.95,
+    "confirmed": false,
+    "polarity": "low",
+    "async": "unknown"
+  },
+  "resetn": {
+    "kind": "reset",
+    "confidence": 0.95,
+    "confirmed": false,
+    "polarity": "low",
+    "async": "unknown"
+  },
+  "sys_rst_n": {
+    "kind": "reset",
+    "confidence": 0.9,
+    "confirmed": false,
+    "polarity": "low",
+    "async": "unknown"
+  },
+  "sys_reset_n": {
+    "kind": "reset",
+    "confidence": 0.9,
+    "confirmed": false,
+    "polarity": "low",
+    "async": "unknown"
+  },
+  "sys_rst": {
+    "kind": "reset",
+    "confidence": 0.9,
+    "confirmed": false,
+    "polarity": "high",
+    "async": "unknown"
+  },
+  "data_n": {
+    "kind": "reset",
+    "confidence": 0.25,
+    "confirmed": false,
+    "polarity": "low",
+    "async": "unknown"
+  },
+  "chip_select_n": {
+    "kind": "reset",
+    "confidence": 0.25,
+    "confirmed": false,
+    "polarity": "low",
+    "async": "unknown"
+  },
+  "enable": null,
+  "data": null,
+  "reset_done": null
+}
