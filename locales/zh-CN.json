@@ -21,6 +21,7 @@
   "IP_PARSE_PREPROCESSOR": "{path}:{line}: 暂不接受预处理指令，请先提供不含宏或包含文件的源码。",
   "IP_PARSE_TIMEOUT": "{path}:{line}: 解析超时，未导入。",
   "IP_PARSE_TOOL": "{path}:{line}: 无法启动解析器，请安装 requirements-parser.txt 中的依赖。",
+  "IP_PARSE_VERSION": "{path}:{line}: Yosys 解析后端运行时版本不匹配，已拒绝解析。请使用 requirements-parser.txt 安装固定版本。",
   "IP_PARSE_EMPTY": "{path}:{line}: 未找到可导入的模块。",
   "IP_PARSE_WARNING": "{path}:{line}: 解析器报告非致命警告，请检查源声明；接口仍已提取。",
   "EXPR_SYNTAX": "range expressions allow 受支持的整数运算，位置 {offset} 存在无效语法。",

@@ -2,6 +2,13 @@
 
 本地最终验收通过，P1.8 按要求不做。远端门禁以本次提交的 [Checks](https://github.com/lylintel/bd_prototype/actions/workflows/ci.yml) 为准，不将本地结果冒充远端成功。
 
+Phase 2A 开工前复核（2026-11-11）：9c928e9 的 [原始运行](https://github.com/lylintel/bd_prototype/actions/runs/42988783259/attempts/1)
+六项任务成功；另行完整复跑三次：[attempt 2](https://github.com/lylintel/bd_prototype/actions/runs/42988783259/attempts/2)、
+[attempt 3](https://github.com/lylintel/bd_prototype/actions/runs/42988783259/attempts/3)、
+[attempt 4](https://github.com/lylintel/bd_prototype/actions/runs/42988783259/attempts/4)。
+每轮均含 Python 3.10/3.14 的完整门禁（各四条真实浏览器流程）和四项解析矩阵。
+三轮全部成功，未修改测试或开启重试以掩盖不稳定；这是有限次稳定性证据，不是无故障保证。
+
 | 内容 | 提交 |
 | --- | --- |
 | P0 开工前核验 | 0f54c92 |
@@ -13,7 +20,7 @@
 | P1.5 | 7803092 |
 | 独立 i18n 基础 | 98cc60f |
 | P1.6 与浏览器 CI 镜像修复 | 4de8962、fe3858a |
-| P1.7 | 本提交 |
+| P1.7 | 9c928e962f43d12b9a45ede25dbaf5a28d7980cd |
 
 ## P1.1 交付范围
 

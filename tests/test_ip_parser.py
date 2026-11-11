@@ -1,4 +1,5 @@
 import hashlib
+import importlib.metadata
 import json
 from pathlib import Path
 import subprocess
@@ -11,6 +12,15 @@ from ip_import.parser import parse_file
 FIXTURES = Path(__file__).parent / "fixtures" / "verilog"
 
 
+@pytest.mark.parametrize("package", ["yowasp-yosys", "yowasp-runtime", "wasmtime"])
+def test_runtime_version_mismatch_rejects_before_parsing(monkeypatch, package):
+    version = importlib.metadata.version
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "0.0.0" if name == package else version(name))
+    result = parse_file(FIXTURES / "ansi.v")
+    assert not result.modules
+    assert result.diagnostics[0].code == "IP_PARSE_VERSION"
+
+
 def projection(result):
     return {
         "modules": [[module.id, [[parameter.name, parameter.default] for parameter in module.parameters],
@@ -18,6 +28,14 @@ def projection(result):
                       for port in module.ports]] for module in result.modules],
         "diagnostics": [[item.code, item.line] for item in result.diagnostics if item.severity == "error"],
     }
+
+
+def test_runtime_missing_distribution_is_explicit(monkeypatch):
+    def missing(name):
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(importlib.metadata, "version", missing)
+    assert parse_file(FIXTURES / "ansi.v").diagnostics[0].code == "IP_PARSE_TOOL"
 
 
 def test_all_fixtures_match_interface_golden():

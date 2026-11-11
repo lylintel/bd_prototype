@@ -11,6 +11,11 @@
 
 pytest 属于开发依赖；运行测试需安装 requirements-dev。pyslang 是单独的可选依赖，不是解析 API 的前提。跨平台安装 spike 证明 pyslang 12.1.0 不支持 Python 3.10，因此正式解析统一使用固定 YoWASP Yosys。
 
+固定运行时为 yowasp-yosys==0.70.0.0.post1259、yowasp-runtime==1.96、wasmtime==47.0.1。
+每次 parse_file 在启动当前解释器 scripts 目录中的后端前，核对已安装分发包的实际版本；
+版本偏离返回 IP_PARSE_VERSION，不读取不兼容的 AST，也不静默降级。缺包返回 IP_PARSE_TOOL。
+安装或修复使用上述 requirements-parser.txt 命令；升级需同步版本契约并重新通过四组合解析 golden。
+
 ```python
 from pathlib import Path
 from ip_import.parser import parse_file

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import hashlib
+from importlib import metadata
 from pathlib import Path
 import re
 import subprocess
@@ -14,6 +15,7 @@ from bdip import IpMetadata, IpMetadataError, MESSAGES, _legacy_width
 
 MAX_SOURCE_BYTES = 1024 * 1024
 MAX_AST_BYTES = 32 * 1024 * 1024
+BACKEND_VERSIONS = {"yowasp-yosys": "0.70.0.0.post1259", "yowasp-runtime": "1.96", "wasmtime": "47.0.1"}
 NODE = re.compile(r"^( *)(AST_\w+) <[^<>]+:(\d+)\.\d+-\d+\.\d+> \[[^]]+\](.*)$")
 OPERATORS = {"ADD": "+", "SUB": "-", "MUL": "*", "DIV": "/", "MOD": "%", "POW": "**",
              "LT": "<", "LE": "<=", "GT": ">", "GE": ">=", "EQ": "==", "NE": "!=",
@@ -178,6 +180,11 @@ def parse_file(path: Path, *, workspace_root: Path | None = None, license_name: 
         return failed("IP_PARSE_READ")
     if "`" in text:
         return failed("IP_PARSE_PREPROCESSOR", text[:text.index("`")].count("\n") + 1)
+    try:
+        if any(metadata.version(package) != expected for package, expected in BACKEND_VERSIONS.items()):
+            return failed("IP_PARSE_VERSION")
+    except metadata.PackageNotFoundError:
+        return failed("IP_PARSE_TOOL")
     executable = Path(sysconfig.get_path("scripts")) / ("yowasp-yosys.exe" if sys.platform == "win32" else "yowasp-yosys")
     try:
         with tempfile.TemporaryDirectory() as directory:
