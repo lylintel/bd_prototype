@@ -9,11 +9,12 @@ def check(resolved):
         for endpoint in net.endpoints:
             if resolved.advanced:
                 continue
-            if endpoint.key in owners:
+            key = endpoint.key
+            if key in owners:
                 findings.append(issue("E002", {**endpoint.location, "net": net.name}, net=net.name,
-                                      drivers=len(net.drivers), reason="endpoint_reused", endpoint=endpoint.key, other_net=owners[endpoint.key]))
+                                      drivers=len(net.drivers), reason="endpoint_reused", endpoint=key, other_net=owners[key]))
             else:
-                owners[endpoint.key] = net.name
+                owners[key] = net.name
     if resolved.advanced:
         counts = {net.name: len(net.drivers) for net in resolved.nets}
         for uses in resolved.usage.values():

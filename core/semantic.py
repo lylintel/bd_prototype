@@ -1,4 +1,5 @@
 from copy import deepcopy
+from dataclasses import dataclass
 import json
 
 import bdtool
@@ -9,6 +10,14 @@ from core.rules import e001, e002, e003, e004, e005, e006, e007, e008, w010
 
 
 RULES = (e001, e002, e003, e004, e005, e006, e007, e008, w010)
+
+
+@dataclass(frozen=True)
+class ValidationChanges:
+    instances: frozenset[str] = frozenset()
+    nets: frozenset[str] = frozenset()
+    external_ports: frozenset[str] = frozenset()
+    library_changed: bool = False
 
 
 def _plain(port):
@@ -68,7 +77,8 @@ def _findings(resolved):
             *[item for rule in RULES for item in rule.check(resolved)]]
 
 
-def validate(document, library):
+def validate(document, library, *, changes: ValidationChanges | None = None):
+    """Validate fully; change hints reserve the Phase 4 incremental boundary."""
     return _findings(resolve(document, library))
 
 

@@ -4,12 +4,16 @@ from core.diagnostics import issue
 
 def check(resolved):
     findings = []
+    valid_names = set()
 
     def check_name(name, location):
+        if isinstance(name, str) and name in valid_names:
+            return
         try:
             bdtool._name(name, "identifier")
             if len(name) > 256:
                 raise bdtool.DesignError("length")
+            valid_names.add(name)
         except bdtool.DesignError:
             findings.append(issue("E008", location, name=str(name), reason="identifier"))
 
@@ -37,10 +41,14 @@ def check(resolved):
             continue
         pending = list(net["endpoints"])
         visited = 0
-        while pending and visited < 256 * max(1, len(net["endpoints"])):
+        limit = 256 * max(1, len(pending))
+        while pending and visited < limit:
             endpoint = pending.pop()
             visited += 1
             if not isinstance(endpoint, dict):
+                continue
+            if (len(endpoint) == 2 and isinstance(endpoint.get("inst"), str) and isinstance(endpoint.get("port"), str)
+                    and endpoint["inst"] in valid_names and endpoint["port"] in valid_names):
                 continue
             if isinstance(endpoint.get("concat"), list):
                 pending.extend(endpoint["concat"][:128])

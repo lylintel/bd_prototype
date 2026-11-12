@@ -38,6 +38,15 @@ P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、
 
 导入预览命令：`python -m bdstudio ip import path/to/rtl --recursive --dry-run`，移除 `--dry-run` 才写入本地版本库。源码变化需显式 `--version` 升版；用户导入源码默认不进入 Git。
 
+## 版本化设计语义
+
+GUI 与新语义 API 支持明确的 IP 版本引用、参数表达式、可定位诊断和显式修复。v3 端点支持切片、定宽常量和拼接，
+可从连线属性编辑；示例见 [examples/semantic/connections.json](examples/semantic/connections.json)。旧示例、旧 CLI/API 和原 HDL golden 保持兼容。
+格式、限制与迁移见 [docs/design-semantics.md](docs/design-semantics.md)。v2/v3 不能直接交给只接受旧格式的 CLI。
+
+自动校验防抖为 150ms。性能生成器可用 `python -m scripts.synthetic_design --instances 2000 --connections 4 --samples 11` 运行；
+P2.6 的本地完整性能门禁尚未稳定通过，独立 CLI 通过不等于完整验收通过，实测数据和后续预算建议见 [D022](docs/DECISIONS.md#d022p26-有限优化与性能验收阻塞2026-11-12)。
+
 ## 开发检查
 
 CI 与本地共用 [scripts/check.py](scripts/check.py)，依次执行 Ruff、全部 Python/golden 测试、ESLint、应用 JS/JSX 类型检查、前端单测、生产构建和隔离真实后端的 Playwright 验收。任一步失败立即返回非零状态。检查不请求真实 LLM，不需要登录或 SDK；只使用本机临时 HTTP 服务和 mock。
@@ -102,9 +111,9 @@ Linux/macOS 将 `npm.cmd` 换成 `npm`。依赖由锁文件固定；构建结果
 
 1. 默认载入计数器与比较器示例。从左侧拖入模块，或用其加号、双击添加实例。新模块通过“登记 RTL 模块”填写已有源码的路径和手工接口元数据。
 2. 从驱动端口拖线到接收端口，也可依次点击两个端口。已有驱动端的后续连线加入同一网络，形成扇出。Escape 取消连线。
-3. 选择实例，在右侧修改整数参数；Enter 或移出输入框提交。名称编辑会同步更新网络端点引用。端口右侧按钮用于外引或断开连接。
-4. 底部诊断使用核心原始错误信息；例如把比较器 `WIDTH` 改为 4，会得到 `nets.count_bus: width mismatch` 并禁用生成。未完成的设计仍可保存为草稿。
-5. 保存时同时写出硬件 JSON 和独立的 `.layout.json`，后者保存坐标、缩放及偏移。再次打开会恢复布局。保存到新目录时自动重写 RTL 相对路径，文件仍可直接用于原 CLI。
+3. 选择实例，在右侧修改参数值或表达式；Enter 或移出输入框提交。名称编辑会同步更新网络端点引用。端口右侧按钮用于外引或断开连接。
+4. 底部诊断以稳定代码、位置和资源化文案显示；把比较器 `WIDTH` 改为 4 会得到 E001 并禁用生成。支持定位、显式应用可证明的修复及撤销；未完成的设计仍可保存为草稿。
+5. 保存时同时写出硬件 JSON 和独立的 `.layout.json`，后者保存坐标、缩放及偏移。再次打开会恢复布局，保存到新目录时自动重写 RTL 相对路径。使用新语义功能后的版本化文件须通过 GUI/新 API 生成。
 6. “生成 HDL”将当前内存设计校验后写入 `build/gui/`，底部可查看 BD 和 wrapper、复制或下载代码。生成不等于保存设计；未保存标记会保持。
 
 还支持撤销/重做、删除所选节点或网络支路、缩放、适应画布、整理布局、外部端口方向/范围/符号性编辑，以及可应用修改的设计 JSON 视图。窄屏通过顶部按钮打开模块和属性抽屉，画布支持缩放和平移。

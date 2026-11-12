@@ -2,8 +2,8 @@ from core.diagnostics import issue
 
 
 def check(resolved):
-    connected = set()
-    for key, uses in resolved.usage.items():
+    connected = set(resolved.usage) if not resolved.advanced else set()
+    for key, uses in resolved.usage.items() if resolved.advanced else ():
         port = uses[0][1].shape
         start, end = min(port.bounds or (0, 0)), max(port.bounds or (0, 0))
         cursor = start

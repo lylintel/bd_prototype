@@ -109,3 +109,23 @@ P2.2 完整验收：410 项 Python 测试、57 个子测试、34 项前端单测
 P2.3 完整验收（2026-11-12）：433 项 Python 测试、57 个子测试、36 项前端单测、10 条真实浏览器流程全绿，
 Ruff/ESLint/typecheck/build 通过，scripts/check.py 退出码 0，日志 build/phase2-p23-check.log。
 新示例 strict golden、Icarus 编译与行为仿真通过；原 golden 未修改。手机常量与桌面拼接截图已人工检查。
+
+## P2.6 服务、防抖与基准
+
+自动检查固定防抖 150ms，重复修改取消旧定时器和请求；迟到结果/异常不会覆盖当前检查状态。
+validate 保持纯函数，每次只有一次 resolve，所有规则共享结果。参数/端口缓存与网络索引均限定单次调用。
+ValidationChanges 提供 instances/nets/external_ports/library_changed 提示字段；当前不使用提示缩小范围，仍返回完整结果，增量实现留 Phase 4。
+
+可复用基准（生成开销、源码 I/O、HTTP 和前端渲染不计入校验时间）：
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.synthetic_design --instances 2000 --connections 4 --seed 20261112 --samples 11
+```
+
+门槛按用户评审改为至少 10 次的中位数 <300ms 且最大值 <600ms；默认 11 次，不剔除首样本。
+生成器返回独立文档和完整 IpMetadata，可调整实例数、每实例连接数和 seed；源路径故意不对应文件，纯校验不读取它。
+这不是可执行硬件仿真设计。范围与原始数据详见 DECISIONS D022。
+
+2026-11-12 最终完整 Python 门禁 442 项 +57 子测试通过，仅性能失败（中位数 447.293ms、最大 762.031ms）。
+独立 CLI 为 283.791/341.119ms，不能代替完整门禁。前端 38 项单测、10 条浏览器流程及 lint/typecheck/build 通过。
+按用户限制停止进一步优化，P2.6 留在独立分支，性能验收尚未稳定通过；未实现 Phase 4 增量或 2B 域/协议功能。

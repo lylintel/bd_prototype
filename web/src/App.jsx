@@ -14,7 +14,7 @@ import Parameters from "./semantic/Parameters.jsx";
 import Diagnostics from "./semantic/Diagnostics.jsx";
 import Connections from "./semantic/Connections.jsx";
 import ExpressionNode from "./semantic/ExpressionNode.jsx";
-import { expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, syncDocument } from "./semantic/model.js";
+import { expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, scheduleInspection, syncDocument } from "./semantic/model.js";
 import "./semantic/semantic.css";
 
 const { Handle } = FlowComponents;
@@ -172,18 +172,16 @@ export default function App() {
 
   useEffect(() => {
     if (!design || !token) return;
-    const controller = new AbortController();
     setChecking(true);
-    const timer = setTimeout(() => {
-      api("/api/semantic/inspect", { design: document, base_dir: baseDir }, controller.signal).then((result) => {
+    return scheduleInspection(
+      (signal) => api("/api/semantic/inspect", { design: document, base_dir: baseDir }, signal),
+      (result) => {
         inspectedDesign.current = design;
         setInspection(normalizeInspection(result));
         setChecking(false);
-      }).catch((error) => {
-        if (error.name !== "AbortError") { setInspection({ ...emptyInspection, diagnostics: [error.message] }); setChecking(false); }
-      });
-    }, 180);
-    return () => { clearTimeout(timer); controller.abort(); };
+      },
+      (error) => { setInspection({ ...emptyInspection, diagnostics: [error.message] }); setChecking(false); },
+    );
   }, [design, document, baseDir, token]);
 
   useEffect(() => { if (document) setJsonDraft(JSON.stringify(document, null, 2)); }, [document]);

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
+from itertools import filterfalse
+from operator import attrgetter
 import re
+from typing import NamedTuple
 
 import bdtool
 from bdip import IpMetadata, IpRole
@@ -11,6 +14,7 @@ from core.expr import ExpressionError, evaluate
 
 MAX_ENDPOINT_NODES = 256
 CONSTANT = re.compile(r"([0-9]+)'([sS]?)[bBoOdDhH][0-9a-fA-F_]+")
+DRIVES = attrgetter("drives")
 
 
 @dataclass(frozen=True)
@@ -30,8 +34,7 @@ class ResolvedInstance:
     ports: dict[str, ResolvedPort]
 
 
-@dataclass(frozen=True)
-class PortReference:
+class PortReference(NamedTuple):
     endpoint: bdtool.Endpoint
     shape: ResolvedPort
     bounds: tuple[int, int]
@@ -46,8 +49,7 @@ class PortReference:
         return {"instance": self.endpoint.instance, "port": self.endpoint.port} if self.endpoint.instance is not None else {"external": self.endpoint.port}
 
 
-@dataclass(frozen=True)
-class ResolvedEndpoint:
+class ResolvedEndpoint(NamedTuple):
     raw: dict
     shape: ResolvedPort
     drives: bool
@@ -56,7 +58,7 @@ class ResolvedEndpoint:
 
     @property
     def expression(self) -> bool:
-        return bool({"slice", "const", "concat"} & self.raw.keys())
+        return "slice" in self.raw or "const" in self.raw or "concat" in self.raw
 
     @property
     def key(self) -> str:
@@ -73,14 +75,12 @@ class ResolvedEndpoint:
 class ResolvedNet:
     name: str
     endpoints: tuple[ResolvedEndpoint, ...]
+    drivers: tuple[ResolvedEndpoint, ...] = field(init=False, compare=False, repr=False)
+    sinks: tuple[ResolvedEndpoint, ...] = field(init=False, compare=False, repr=False)
 
-    @property
-    def drivers(self) -> tuple[ResolvedEndpoint, ...]:
-        return tuple(endpoint for endpoint in self.endpoints if endpoint.drives)
-
-    @property
-    def sinks(self) -> tuple[ResolvedEndpoint, ...]:
-        return tuple(endpoint for endpoint in self.endpoints if not endpoint.drives)
+    def __post_init__(self):
+        object.__setattr__(self, "drivers", tuple(filter(DRIVES, self.endpoints)))
+        object.__setattr__(self, "sinks", tuple(filterfalse(DRIVES, self.endpoints)))
 
 
 @dataclass(frozen=True)
@@ -175,12 +175,19 @@ def endpoint_text(raw: dict, symbols: dict | None = None) -> str:
     return value
 
 
-def _endpoint(raw, ports, instances, budget, depth=0):
+def _endpoint(raw, ports, instances, budget, depth=0, index=0):
     budget[0] += 1
     if depth > 16 or budget[0] > MAX_ENDPOINT_NODES:
         raise EndpointError("endpoint_limit")
     if not isinstance(raw, dict):
         raise EndpointError("endpoint_shape")
+    if len(raw) == 2 and isinstance(raw.get("inst"), str) and isinstance(raw.get("port"), str):
+        instance = instances.get(raw["inst"])
+        shape = instance.ports.get(raw["port"]) if instance else None
+        if shape is not None:
+            drives = shape.direction == "output"
+            reference = PortReference(bdtool.Endpoint(raw["inst"], raw["port"]), shape, shape.bounds or (0, 0), drives)
+            return ResolvedEndpoint(dict(raw), shape, drives, (reference,), index)
     if set(raw) == {"const"}:
         text = raw["const"]
         match = CONSTANT.fullmatch(text.strip()) if isinstance(text, str) and len(text) <= 4096 else None
@@ -191,7 +198,7 @@ def _endpoint(raw, ports, instances, budget, depth=0):
         except ExpressionError as error:
             raise EndpointError(error.code) from error
         width = int(match[1])
-        return ResolvedEndpoint(dict(raw), ResolvedPort("output", (width - 1, 0), bool(match[2])), True)
+        return ResolvedEndpoint(dict(raw), ResolvedPort("output", (width - 1, 0), bool(match[2])), True, index=index)
     if set(raw) == {"concat"}:
         if not isinstance(raw["concat"], list) or not 1 <= len(raw["concat"]) <= 128:
             raise EndpointError("concat_size")
@@ -203,7 +210,7 @@ def _endpoint(raw, ports, instances, budget, depth=0):
             raise EndpointError("width_range")
         drives = children[0].drives
         shape = ResolvedPort("output" if drives else "input", (width - 1, 0), False)
-        return ResolvedEndpoint(dict(raw), shape, drives, tuple(reference for child in children for reference in child.references))
+        return ResolvedEndpoint(dict(raw), shape, drives, tuple(reference for child in children for reference in child.references), index)
     location = {}
     if set(raw) in ({"ext"}, {"ext", "slice"}) and isinstance(raw["ext"], str):
         shape = ports.get(raw["ext"])
@@ -235,7 +242,7 @@ def _endpoint(raw, ports, instances, budget, depth=0):
         bounds = (left, right)
         selected = ResolvedPort(shape.direction, (abs(left - right), 0), False, shape.role)
     reference = PortReference(endpoint, shape, bounds, drives)
-    return ResolvedEndpoint(dict(raw), selected, drives, (reference,))
+    return ResolvedEndpoint(dict(raw), selected, drives, (reference,), index)
 
 
 def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) -> Resolution:
@@ -299,11 +306,11 @@ def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) 
             continue
         endpoints = []
         for endpoint_index, raw in enumerate(item["endpoints"]):
-            if document["schema_version"] == 2 and isinstance(raw, dict) and {"slice", "const", "concat"} & raw.keys():
+            if document["schema_version"] == 2 and isinstance(raw, dict) and ("slice" in raw or "const" in raw or "concat" in raw):
                 findings.append(issue("D007", {"net": item["name"]}, reason="version"))
                 continue
             try:
-                endpoints.append(replace(_endpoint(raw, ports, instances, [0]), index=endpoint_index))
+                endpoints.append(_endpoint(raw, ports, instances, [0], index=endpoint_index))
             except EndpointError as error:
                 findings.append(issue(error.code, {**error.location, "net": item["name"]}, reason=error.reason,
                                       **({"reference": str(raw)[:512]} if error.code == "E004" else {})))

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { syncDocument, parameterValue, diagnosticMessage, normalizeInspection, replaceEndpoint, projectConnections, renameSemantic } from "./model.js";
+import { syncDocument, parameterValue, diagnosticMessage, normalizeInspection, replaceEndpoint, projectConnections, renameSemantic, scheduleInspection } from "./model.js";
 
 test("canvas edits retain explicit versions and do not mutate the original", () => {
   const original = { schema_version: 2, name: "top", ports: {}, project_ips: [], instances: [{ name: "unit_0", ip: { id: "unit", version: "2.0.0" }, params: { WIDTH: 8 } }], nets: [] };
@@ -59,4 +59,46 @@ test("explicit endpoint changes upgrade a copy and expression nodes stay present
   assert.equal(graph.edges.length, 1);
   assert.equal(graph.edges[0].target, "@b");
   assert.equal(next.instances.length, 0);
+});
+
+test("inspection coalesces changes with exactly 150ms debounce", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const requests = [], results = [];
+  const schedule = (value) => scheduleInspection(async () => { requests.push(value); return value; }, (value) => results.push(value), assert.fail);
+  const cancel = schedule("old");
+  context.mock.timers.tick(100);
+  cancel();
+  const stop = schedule("latest");
+  context.mock.timers.tick(149);
+  assert.deepEqual(requests, []);
+  context.mock.timers.tick(1);
+  await Promise.resolve();
+  assert.deepEqual(requests, ["latest"]);
+  assert.deepEqual(results, ["latest"]);
+  stop();
+});
+
+test("cancelled in-flight inspections cannot publish stale results or errors", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const results = [], errors = [];
+  let complete, reject, signal;
+  const cancel = scheduleInspection((value) => { signal = value; return new Promise((resolve) => { complete = resolve; }); },
+    (value) => results.push(value), (error) => errors.push(error));
+  context.mock.timers.tick(150);
+  cancel();
+  assert.equal(signal.aborted, true);
+  complete("stale");
+  await Promise.resolve();
+  const cancelFailure = scheduleInspection(() => new Promise((_, fail) => { reject = fail; }),
+    (value) => results.push(value), (error) => errors.push(error));
+  context.mock.timers.tick(150);
+  cancelFailure();
+  reject(new Error("stale failure"));
+  await Promise.resolve();
+  assert.deepEqual(results, []);
+  assert.deepEqual(errors, []);
+  scheduleInspection(async () => { throw new Error("current failure"); }, assert.fail, (error) => errors.push(error.message));
+  context.mock.timers.tick(150);
+  await Promise.resolve();
+  assert.deepEqual(errors, ["current failure"]);
 });
