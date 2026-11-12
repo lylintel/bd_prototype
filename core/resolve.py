@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
+import re
 
 import bdtool
 from bdip import IpMetadata, IpRole
 from core.diagnostics import Diagnostic, issue
 from core.expr import ExpressionError, evaluate
+
+
+MAX_ENDPOINT_NODES = 256
+CONSTANT = re.compile(r"([0-9]+)'([sS]?)[bBoOdDhH][0-9a-fA-F_]+")
 
 
 @dataclass(frozen=True)
@@ -26,18 +31,42 @@ class ResolvedInstance:
 
 
 @dataclass(frozen=True)
-class ResolvedEndpoint:
-    raw: dict
+class PortReference:
+    endpoint: bdtool.Endpoint
     shape: ResolvedPort
+    bounds: tuple[int, int]
     drives: bool
 
     @property
     def key(self) -> str:
-        return f"{self.raw['inst']}.{self.raw['port']}" if "inst" in self.raw else f"@{self.raw['ext']}"
+        return f"{self.endpoint.instance}.{self.endpoint.port}" if self.endpoint.instance is not None else f"@{self.endpoint.port}"
 
     @property
     def location(self) -> dict:
-        return {"instance": self.raw["inst"], "port": self.raw["port"]} if "inst" in self.raw else {"external": self.raw["ext"]}
+        return {"instance": self.endpoint.instance, "port": self.endpoint.port} if self.endpoint.instance is not None else {"external": self.endpoint.port}
+
+
+@dataclass(frozen=True)
+class ResolvedEndpoint:
+    raw: dict
+    shape: ResolvedPort
+    drives: bool
+    references: tuple[PortReference, ...] = ()
+    index: int = 0
+
+    @property
+    def expression(self) -> bool:
+        return bool({"slice", "const", "concat"} & self.raw.keys())
+
+    @property
+    def key(self) -> str:
+        return endpoint_text(self.raw)
+
+    @property
+    def location(self) -> dict:
+        if "inst" in self.raw:
+            return {"instance": self.raw["inst"], "port": self.raw["port"]}
+        return {"external": self.raw["ext"]} if "ext" in self.raw else {}
 
 
 @dataclass(frozen=True)
@@ -61,6 +90,8 @@ class Resolution:
     instances: dict[str, ResolvedInstance]
     nets: tuple[ResolvedNet, ...]
     diagnostics: tuple[Diagnostic, ...]
+    usage: dict[str, tuple[tuple[str, PortReference], ...]] = field(default_factory=dict)
+    advanced: bool = False
 
 
 class ParameterError(ValueError):
@@ -127,10 +158,90 @@ def instance_ports(metadata: IpMetadata, values: dict) -> dict[str, ResolvedPort
     return result
 
 
+class EndpointError(ValueError):
+    def __init__(self, reason, location=None, code="D007"):
+        self.reason, self.location, self.code = reason, location or {}, code
+
+
+def endpoint_text(raw: dict, symbols: dict | None = None) -> str:
+    if "const" in raw:
+        return raw["const"].strip()
+    if "concat" in raw:
+        return "{" + ", ".join(endpoint_text(child, symbols) for child in raw["concat"]) + "}"
+    key = f"{raw['inst']}.{raw['port']}" if "inst" in raw else f"@{raw['ext']}"
+    value = symbols[key] if symbols is not None else key
+    if "slice" in raw:
+        value += f"[{raw['slice'][0]}:{raw['slice'][1]}]"
+    return value
+
+
+def _endpoint(raw, ports, instances, budget, depth=0):
+    budget[0] += 1
+    if depth > 16 or budget[0] > MAX_ENDPOINT_NODES:
+        raise EndpointError("endpoint_limit")
+    if not isinstance(raw, dict):
+        raise EndpointError("endpoint_shape")
+    if set(raw) == {"const"}:
+        text = raw["const"]
+        match = CONSTANT.fullmatch(text.strip()) if isinstance(text, str) and len(text) <= 4096 else None
+        if match is None or not 1 <= int(match[1]) <= 256:
+            raise EndpointError("constant_width")
+        try:
+            evaluate(text)
+        except ExpressionError as error:
+            raise EndpointError(error.code) from error
+        width = int(match[1])
+        return ResolvedEndpoint(dict(raw), ResolvedPort("output", (width - 1, 0), bool(match[2])), True)
+    if set(raw) == {"concat"}:
+        if not isinstance(raw["concat"], list) or not 1 <= len(raw["concat"]) <= 128:
+            raise EndpointError("concat_size")
+        children = [_endpoint(child, ports, instances, budget, depth + 1) for child in raw["concat"]]
+        if len({child.drives for child in children}) != 1:
+            raise EndpointError("concat_direction")
+        width = sum(child.shape.width for child in children)
+        if width > 65536:
+            raise EndpointError("width_range")
+        drives = children[0].drives
+        shape = ResolvedPort("output" if drives else "input", (width - 1, 0), False)
+        return ResolvedEndpoint(dict(raw), shape, drives, tuple(reference for child in children for reference in child.references))
+    location = {}
+    if set(raw) in ({"ext"}, {"ext", "slice"}) and isinstance(raw["ext"], str):
+        shape = ports.get(raw["ext"])
+        endpoint = bdtool.Endpoint(None, raw["ext"])
+        location = {"external": raw["ext"]}
+        drives = shape is not None and shape.direction == "input"
+    elif set(raw) in ({"inst", "port"}, {"inst", "port", "slice"}) and isinstance(raw["inst"], str) and isinstance(raw["port"], str):
+        instance = instances.get(raw["inst"])
+        shape = instance.ports.get(raw["port"]) if instance else None
+        endpoint = bdtool.Endpoint(raw["inst"], raw["port"])
+        location = {"instance": raw["inst"], "port": raw["port"]}
+        drives = shape is not None and shape.direction == "output"
+    else:
+        raise EndpointError("endpoint_shape")
+    if shape is None:
+        raise EndpointError("reference", location, "E004")
+    selected = shape
+    bounds = shape.bounds or (0, 0)
+    if "slice" in raw:
+        selection = raw["slice"]
+        if not isinstance(selection, list) or len(selection) != 2 or any(type(bound) is not int for bound in selection):
+            raise EndpointError("slice_shape", location)
+        if shape.bounds is None:
+            raise EndpointError("scalar_slice", location)
+        left, right = selection
+        if (min(selection) < min(bounds) or max(selection) > max(bounds)
+                or (bounds[0] >= bounds[1] and left < right) or (bounds[0] < bounds[1] and left > right)):
+            raise EndpointError("slice_bounds", location)
+        bounds = (left, right)
+        selected = ResolvedPort(shape.direction, (abs(left - right), 0), False, shape.role)
+    reference = PortReference(endpoint, shape, bounds, drives)
+    return ResolvedEndpoint(dict(raw), selected, drives, (reference,))
+
+
 def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) -> Resolution:
     findings, ports, instances, nets = [], {}, {}, []
     if (not isinstance(document, dict) or type(document.get("schema_version")) is not int
-            or document["schema_version"] != 2 or not isinstance(document.get("name"), str)
+            or document["schema_version"] not in (2, 3) or not isinstance(document.get("name"), str)
             or set(document) - {"schema_version", "name", "ports", "instances", "nets", "project_ips"}
             or not isinstance(document.get("instances"), list) or len(document["instances"]) > 20000
             or not isinstance(document.get("nets"), list) or len(document["nets"]) > 100000
@@ -187,22 +298,21 @@ def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) 
             findings.append(issue("D001", {"path": f"$.nets[{ordinal}]"}, reason="net"))
             continue
         endpoints = []
-        for raw in item["endpoints"]:
-            shape = None
-            location = {"net": item["name"]}
-            if isinstance(raw, dict) and set(raw) == {"ext"} and isinstance(raw["ext"], str):
-                shape = ports.get(raw["ext"])
-                location["external"] = raw["ext"]
-                drives = shape is not None and shape.direction == "input"
-            elif (isinstance(raw, dict) and set(raw) == {"inst", "port"}
-                    and isinstance(raw["inst"], str) and isinstance(raw["port"], str)):
-                instance = instances.get(raw["inst"])
-                shape = instance.ports.get(raw["port"]) if instance else None
-                location.update(instance=raw["inst"], port=raw["port"])
-                drives = shape is not None and shape.direction == "output"
-            if shape is None:
-                findings.append(issue("E004", location, reference=str(raw)))
-            else:
-                endpoints.append(ResolvedEndpoint(dict(raw), shape, drives))
+        for endpoint_index, raw in enumerate(item["endpoints"]):
+            if document["schema_version"] == 2 and isinstance(raw, dict) and {"slice", "const", "concat"} & raw.keys():
+                findings.append(issue("D007", {"net": item["name"]}, reason="version"))
+                continue
+            try:
+                endpoints.append(replace(_endpoint(raw, ports, instances, [0]), index=endpoint_index))
+            except EndpointError as error:
+                findings.append(issue(error.code, {**error.location, "net": item["name"]}, reason=error.reason,
+                                      **({"reference": str(raw)[:512]} if error.code == "E004" else {})))
         nets.append(ResolvedNet(item["name"], tuple(endpoints)))
-    return Resolution(document, ports, instances, tuple(nets), tuple(findings))
+    usage = {}
+    for net in nets:
+        for endpoint in net.endpoints:
+            for reference in endpoint.references:
+                usage.setdefault(reference.key, []).append((net.name, reference))
+    return Resolution(document, ports, instances, tuple(nets), tuple(findings),
+                      {key: tuple(values) for key, values in usage.items()},
+                      any(endpoint.expression for net in nets for endpoint in net.endpoints))

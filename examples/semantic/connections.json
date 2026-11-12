@@ -1,0 +1,20 @@
+{
+  "schema_version": 3,
+  "name": "connections_bd",
+  "ports": {
+    "data": {"direction": "input", "range": [15, 0]},
+    "select": {"direction": "input"},
+    "result": {"direction": "output", "range": [7, 0]},
+    "fixed": {"direction": "output", "range": [7, 0]}
+  },
+  "instances": [
+    {"name": "mux_0", "ip": {"id": "bd_mux2", "version": "1.0.0"}, "params": {"WIDTH": 8}}
+  ],
+  "nets": [
+    {"name": "slice_bus", "endpoints": [{"ext": "data", "slice": [7, 0]}, {"inst": "mux_0", "port": "input0"}]},
+    {"name": "concat_bus", "endpoints": [{"concat": [{"ext": "data", "slice": [15, 12]}, {"const": "4'd5"}]}, {"inst": "mux_0", "port": "input1"}]},
+    {"name": "select_net", "endpoints": [{"ext": "select"}, {"inst": "mux_0", "port": "select"}]},
+    {"name": "result_bus", "endpoints": [{"inst": "mux_0", "port": "result"}, {"ext": "result"}]},
+    {"name": "constant_bus", "endpoints": [{"const": "8'd5"}, {"ext": "fixed"}]}
+  ]
+}

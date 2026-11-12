@@ -22,7 +22,7 @@ def prepare(workspace, document, base_dir):
         project = tuple(migrate_legacy_modules(document, base, workspace_root=workspace.root).values())
         ids = {metadata.id for metadata in project}
     else:
-        if document.get("schema_version") != 2:
+        if document.get("schema_version") not in (2, 3):
             raise DesignFormatError(issue("D001", {}, reason="schema_version"))
         raw_project = document.get("project_ips", [])
         if not isinstance(raw_project, list) or len(raw_project) > 200:
@@ -61,6 +61,18 @@ def prepare(workspace, document, base_dir):
     return prepared, tuple(library)
 
 
+def _canvas_pins(endpoint, depth=0):
+    if not isinstance(endpoint, dict) or depth > 16:
+        return []
+    if "inst" in endpoint and "port" in endpoint:
+        return [f"{endpoint['inst']}.{endpoint['port']}"]
+    if "ext" in endpoint:
+        return [f"@{endpoint['ext']}"]
+    if isinstance(endpoint.get("concat"), list):
+        return [pin for child in endpoint["concat"][:128] for pin in _canvas_pins(child, depth + 1)]
+    return []
+
+
 def canvas_document(document, library):
     modules = {}
     for metadata in library:
@@ -82,8 +94,7 @@ def canvas_document(document, library):
     nets = {}
     for item in document.get("nets", []):
         if isinstance(item, dict) and isinstance(item.get("name"), str):
-            nets[item["name"]] = [f"{endpoint['inst']}.{endpoint['port']}" if "inst" in endpoint else f"@{endpoint['ext']}"
-                                 for endpoint in item.get("endpoints", []) if isinstance(endpoint, dict) and ("inst" in endpoint and "port" in endpoint or "ext" in endpoint)]
+            nets[item["name"]] = list(dict.fromkeys(pin for endpoint in item.get("endpoints", []) for pin in _canvas_pins(endpoint)))
     return {"name": document.get("name", ""), "modules": modules, "instances": instances,
             "ports": deepcopy(document.get("ports", {})), "nets": nets}
 

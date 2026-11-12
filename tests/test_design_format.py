@@ -46,7 +46,7 @@ def test_legacy_ip_reference_never_guesses(legacy_bundle, mode):
     assert issue["message"]
 
 
-@pytest.mark.parametrize("field,value", [("schema_version", 3), ("schema_version", True), ("instances", {}), ("nets", {}), ("unknown", 1)])
+@pytest.mark.parametrize("field,value", [("schema_version", 4), ("schema_version", True), ("instances", {}), ("nets", {}), ("unknown", 1)])
 def test_versioned_structure_rejects_invalid_fields(legacy_bundle, field, value):
     original, library = legacy_bundle
     document = migrate(original, library)

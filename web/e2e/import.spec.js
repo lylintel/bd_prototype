@@ -221,3 +221,88 @@ test("net diagnostics select visible invalid connections", async ({ page }, test
   await expect(page.locator('.react-flow__edge.selected[data-id^="count_bus|"]').first()).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("diagnostic-net.png") });
 });
+
+async function selectCountBus(page) {
+  await page.locator('.react-flow__edge[data-id^="count_bus|"] .react-flow__edge-textwrapper').first().click();
+}
+
+async function designJson(page) {
+  await page.getByRole("tab", { name: "设计 JSON", exact: true }).click();
+  return JSON.parse(await page.getByLabel(t("semantic.designJson"), { exact: true }).inputValue());
+}
+
+test("slice settings match the receiving width and remain undoable", async ({ page }, testInfo) => {
+  await openEditor(page);
+  await page.locator('.react-flow__node[data-id="compare_0"]').dblclick();
+  const width = page.getByLabel(t("semantic.parameterLabel", { instance: "compare_0", name: "WIDTH" }), { exact: true });
+  await expect(width).toBeEnabled();
+  await width.fill("4");
+  await width.press("Tab");
+  await expect(page.locator('.semantic-diagnostic[data-code="E001"]')).toBeVisible();
+  await selectCountBus(page);
+  await page.getByRole("button", { name: t("semantic.editEndpoint", { index: 1 }), exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: t("semantic.connectionTitle", { name: "count_bus" }), exact: true });
+  await dialog.getByLabel(t("semantic.useSlice", { path: "1" }), { exact: true }).check();
+  await dialog.getByLabel(t("semantic.leftIndex", { path: "1" }), { exact: true }).fill("3");
+  await dialog.getByLabel(t("semantic.rightIndex", { path: "1" }), { exact: true }).fill("0");
+  await page.screenshot({ path: testInfo.outputPath("slice-settings.png") });
+  await dialog.getByRole("button", { name: t("semantic.applyConnection"), exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  const document = await designJson(page);
+  expect(document.schema_version).toBe(3);
+  expect(document.nets.find((net) => net.name === "count_bus").endpoints[0].slice).toEqual([3, 0]);
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("待修复");
+});
+
+test("mobile constant settings can be cancelled and create only a display node", async ({ page }, testInfo) => {
+  await openEditor(page);
+  const before = await designJson(page);
+  await selectCountBus(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "属性面板", exact: true }).click();
+  await page.getByRole("button", { name: t("semantic.editEndpoint", { index: 1 }), exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: t("semantic.connectionTitle", { name: "count_bus" }), exact: true });
+  await dialog.getByLabel(t("semantic.endpointType", { path: "1" }), { exact: true }).selectOption("constant");
+  await dialog.getByLabel(t("semantic.constantValue", { path: "1" }), { exact: true }).fill("8'd9");
+  const bounds = await dialog.boundingBox();
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("constant-mobile.png") });
+  await dialog.getByRole("button", { name: t("common.cancel"), exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  expect(await designJson(page)).toEqual(before);
+  await page.getByRole("button", { name: t("semantic.editEndpoint", { index: 1 }), exact: true }).click();
+  await dialog.getByLabel(t("semantic.endpointType", { path: "1" }), { exact: true }).selectOption("constant");
+  await dialog.getByLabel(t("semantic.constantValue", { path: "1" }), { exact: true }).fill("8'd9");
+  await dialog.getByRole("button", { name: t("semantic.applyConnection"), exact: true }).click();
+  await expect(page.locator(".expression-node")).toBeVisible();
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  const document = await designJson(page);
+  expect(document.instances).toHaveLength(2);
+  expect(document.nets.find((net) => net.name === "count_bus").endpoints[0]).toEqual({ const: "8'd9" });
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(page.locator(".expression-node")).toHaveCount(0);
+});
+
+test("concat settings retain member order and explicit slices", async ({ page }, testInfo) => {
+  await openEditor(page);
+  await selectCountBus(page);
+  await page.getByRole("button", { name: t("semantic.editEndpoint", { index: 1 }), exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: t("semantic.connectionTitle", { name: "count_bus" }), exact: true });
+  await dialog.getByLabel(t("semantic.endpointType", { path: "1" }), { exact: true }).selectOption("concat");
+  await dialog.getByLabel(t("semantic.useSlice", { path: "1.1" }), { exact: true }).check();
+  await dialog.getByLabel(t("semantic.leftIndex", { path: "1.1" }), { exact: true }).fill("3");
+  await dialog.getByLabel(t("semantic.rightIndex", { path: "1.1" }), { exact: true }).fill("0");
+  await dialog.getByRole("button", { name: t("semantic.addMember", { path: "1" }), exact: true }).click();
+  await dialog.getByLabel(t("semantic.constantValue", { path: "1.2" }), { exact: true }).fill("4'd0");
+  await page.screenshot({ path: testInfo.outputPath("concat-settings.png") });
+  await dialog.getByRole("button", { name: t("semantic.applyConnection"), exact: true }).click();
+  await expect(page.locator(".expression-node")).toBeVisible();
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  const document = await designJson(page);
+  expect(document.nets.find((net) => net.name === "count_bus").endpoints[0]).toEqual({ concat: [
+    { inst: "counter_0", port: "count", slice: [3, 0] }, { const: "4'd0" },
+  ] });
+});

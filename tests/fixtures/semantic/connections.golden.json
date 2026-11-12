@@ -1,0 +1,8 @@
+{
+  "valid": true,
+  "diagnostics": [],
+  "files": {
+    "connections_bd.v": "module connections_bd (\n    input wire [15:0] data,\n    input wire select,\n    output wire [7:0] result,\n    output wire [7:0] fixed\n);\n\n    wire [7:0] __bd_mux_0_input0;\n    wire [7:0] __bd_mux_0_input1;\n    wire __bd_mux_0_select;\n    wire [7:0] __bd_mux_0_result;\n    wire [7:0] slice_bus;\n    wire [7:0] concat_bus;\n    wire select_net;\n    wire [7:0] result_bus;\n    wire [7:0] constant_bus;\n\n    assign slice_bus = data[7:0];\n    assign __bd_mux_0_input0 = slice_bus;\n    assign concat_bus = {data[15:12], 4'd5};\n    assign __bd_mux_0_input1 = concat_bus;\n    assign select_net = select;\n    assign __bd_mux_0_select = select_net;\n    assign result_bus = __bd_mux_0_result;\n    assign result = result_bus;\n    assign constant_bus = 8'd5;\n    assign fixed = constant_bus;\n\n    bd_mux2 #(\n        .WIDTH(8)\n    ) mux_0 (\n        .input0(__bd_mux_0_input0),\n        .input1(__bd_mux_0_input1),\n        .select(__bd_mux_0_select),\n        .result(__bd_mux_0_result)\n    );\nendmodule\n",
+    "connections_bd_wrapper.v": "module connections_bd_wrapper (\n    input wire [15:0] data,\n    input wire select,\n    output wire [7:0] result,\n    output wire [7:0] fixed\n);\n\n    connections_bd bd_i (\n        .data(data),\n        .select(select),\n        .result(result),\n        .fixed(fixed)\n    );\nendmodule\n"
+  }
+}

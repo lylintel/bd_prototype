@@ -3,6 +3,8 @@ from core.resolve import ParameterError, instance_ports, parameters
 
 
 def _fix(resolved, source, target):
+    if source.expression or target.expression:
+        return None
     name = target.raw.get("inst")
     instance = resolved.instances.get(name)
     rows = [item for item in resolved.document.get("instances", []) if isinstance(item, dict) and item.get("name") == name]
@@ -29,7 +31,9 @@ def check(resolved):
             continue
         source = net.drivers[0]
         for target in net.sinks:
-            if (source.shape.width, source.shape.bounds, source.shape.signed) != (target.shape.width, target.shape.bounds, target.shape.signed):
+            mismatch = (source.shape.width, source.shape.signed) != (target.shape.width, target.shape.signed)
+            mismatch = mismatch or (not source.expression and not target.expression and source.shape.bounds != target.shape.bounds)
+            if mismatch:
                 findings.append(issue("E001", {**target.location, "net": net.name}, fix=_fix(resolved, source, target), source=source.key, target=target.key,
                                       source_width=source.shape.width, target_width=target.shape.width,
                                       reason="width" if source.shape.width != target.shape.width else "shape"))

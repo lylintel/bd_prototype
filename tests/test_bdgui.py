@@ -113,6 +113,19 @@ class EditorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.workspace.semantic_fix({"design": result["document"], "base_dir": "examples", "diagnostic": diagnostic})
 
+    def test_v3_connection_expressions_survive_service_and_save(self):
+        document = self.workspace.semantic_inspect(self.data, "examples")["document"]
+        document["schema_version"] = 3
+        expression = {"concat": [{"inst": "counter_0", "port": "count", "slice": [3, 0]}, {"const": "4'd0"}]}
+        document["nets"][2]["endpoints"][0] = expression
+        result = self.workspace.semantic_inspect(document, "examples")
+        self.assertTrue(result["valid"], result["diagnostics"])
+        self.assertIn("counter_0.count", result["canvas"]["nets"]["count_bus"])
+        self.assertEqual(result["connections"][2]["endpoints"][0]["width"], 8)
+        saved = self.workspace.save({"design": document, "base_dir": "examples", "path": "designs/expressions.json"})
+        self.assertEqual(saved["design"]["nets"][2]["endpoints"][0], expression)
+        self.assertTrue(saved["inspection"]["valid"], saved["inspection"]["diagnostics"])
+
     def test_rejects_paths_outside_workspace_and_invalid_layout(self):
         with self.assertRaisesRegex(bdtool.DesignError, "inside the workspace"):
             self.workspace.path("../outside.json")

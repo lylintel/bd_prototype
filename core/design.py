@@ -69,12 +69,19 @@ def load_document(text: str) -> dict:
         raise _invalid("$", "json") from error
 
 
-def migrate(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) -> dict:
+def migrate(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata], *, target_version: int | None = None) -> dict:
     if not isinstance(document, dict):
         raise _invalid("$", "object")
+    if target_version not in (None, 2, 3):
+        raise _invalid("$.schema_version", "version")
     if "schema_version" in document:
         check_document(document)
-        return deepcopy(document)
+        if target_version is not None and target_version < document["schema_version"]:
+            raise _invalid("$.schema_version", "downgrade")
+        result = deepcopy(document)
+        if target_version is not None:
+            result["schema_version"] = target_version
+        return result
     if set(document) != {"name", "modules", "ports", "instances", "nets"}:
         raise _invalid("$", "fields")
     if not all(isinstance(document[key], dict) for key in ("modules", "ports", "instances", "nets")):
@@ -140,7 +147,7 @@ def migrate(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) 
             else:
                 raise _invalid(f"$.nets.{name}", "endpoint")
         nets.append({"name": name, "endpoints": converted})
-    result = {"schema_version": 2, "name": document["name"], "ports": deepcopy(document["ports"]),
+    result = {"schema_version": target_version or 2, "name": document["name"], "ports": deepcopy(document["ports"]),
               "instances": instances, "nets": nets, "project_ips": [item.to_dict() for item in selected.values()]}
     check_document(result)
     return result

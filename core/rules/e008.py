@@ -35,9 +35,15 @@ def check(resolved):
     for net in resolved.document.get("nets", []):
         if not isinstance(net, dict) or not isinstance(net.get("name"), str) or not isinstance(net.get("endpoints"), list):
             continue
-        for endpoint in net["endpoints"]:
+        pending = list(net["endpoints"])
+        visited = 0
+        while pending and visited < 256 * max(1, len(net["endpoints"])):
+            endpoint = pending.pop()
+            visited += 1
             if not isinstance(endpoint, dict):
                 continue
+            if isinstance(endpoint.get("concat"), list):
+                pending.extend(endpoint["concat"][:128])
             location = {"net": net["name"]}
             for field, label in (("inst", "instance"), ("port", "port"), ("ext", "external")):
                 if field in endpoint and isinstance(endpoint[field], str):

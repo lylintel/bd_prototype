@@ -12,7 +12,9 @@ import { IP_DRAG_TYPE, addImported, findImportedDrop, originForDefinition } from
 import { t } from "./i18n.js";
 import Parameters from "./semantic/Parameters.jsx";
 import Diagnostics from "./semantic/Diagnostics.jsx";
-import { normalizeInspection, syncDocument } from "./semantic/model.js";
+import Connections from "./semantic/Connections.jsx";
+import ExpressionNode from "./semantic/ExpressionNode.jsx";
+import { expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, syncDocument } from "./semantic/model.js";
 import "./semantic/semantic.css";
 
 const { Handle } = FlowComponents;
@@ -68,7 +70,7 @@ function BlockNode({ data, selected }) {
   </div>;
 }
 
-const nodeTypes = { block: BlockNode };
+const nodeTypes = { block: BlockNode, expression: ExpressionNode };
 const edgeTypes = { circuit: CircuitEdge };
 
 function defaultPosition(id, design) {
@@ -115,6 +117,7 @@ export default function App() {
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [ipImportOpen, setIpImportOpen] = useState(false);
+  const [connectionOpen, setConnectionOpen] = useState(false);
   const [ipRevision, setIpRevision] = useState(0);
   const [ipCatalog, setIpCatalog] = useState({ baseDir: "", entries: [] });
   const [toast, setToast] = useState(null);
@@ -132,6 +135,7 @@ export default function App() {
   const layout = history?.current.layout;
   const connectionReady = !checking && !busy && inspectedDesign.current === design;
   const interfaces = connectionReady ? inspection.interfaces : emptyInspection.interfaces;
+  const expressionGraph = projectConnections(inspection.connections ?? [], layout?.nodes ?? {});
 
   function notify(message, error = false) { setToast({ message, error }); }
 
@@ -143,7 +147,7 @@ export default function App() {
   }
 
   function acceptDocument(result) {
-    const versioned = result.design.schema_version === 2;
+    const versioned = [2, 3].includes(result.design.schema_version);
     const canvas = validateDocumentShape(versioned ? result.inspection.canvas : result.design);
     setHistory({ past: [], current: { design: canvas, document: versioned ? result.design : null, layout: { ...initialLayout, ...result.layout } }, future: [] });
     setBaseDir(result.base_dir);
@@ -185,6 +189,7 @@ export default function App() {
   useEffect(() => { if (document) setJsonDraft(JSON.stringify(document, null, 2)); }, [document]);
   useEffect(() => {
     if (!nodesReady || !viewportRequest) return;
+    if (viewportRequest.waitFor && !flow.getNode(viewportRequest.waitFor)) return;
     if (viewportRequest.fit) flow.fitView({ padding: 0.16, maxZoom: 1 });
     else flow.setViewport(viewportRequest.viewport);
     setViewportRequest(null);
@@ -291,11 +296,13 @@ export default function App() {
       result.push({ id, type: "block", position: layout.nodes[id] ?? defaultPosition(id, design), selected: selection?.id === id,
         data: { name, external: true, ports: [endpointInfo(design, id, interfaces)], onPin: pickPin, active: pendingPin, connectable: connectionReady, highlight: structured ? errorNodes.has(id) : errors.includes(`ports.${name}:`) } });
     }
+      result.push(...expressionGraph.nodes.map((node) => ({ ...node, selected: selection?.type === "net" && selection.id === node.data.net })));
     setNodes((previous) => result.map((node) => ({ ...node, measured: previous.find((item) => item.id === node.id)?.measured })));
   }, [design, layout, inspection, selection, pendingPin, connectionReady]);
 
   const invalidNets = new Set((inspection.structuredDiagnostics ?? []).filter((item) => item.severity === "error").map((item) => item.location.net).filter(Boolean));
   const edges = design ? Object.entries(design.nets).flatMap(([net, pins]) => {
+    if (expressionGraph.nets.has(net)) return [];
     const drivers = pins.filter((pin) => endpointInfo(design, pin)?.drives);
     const driver = drivers[0] ?? pins.find((pin) => endpointInfo(design, pin));
     if (!driver) return [];
@@ -306,7 +313,11 @@ export default function App() {
       style: { stroke: selection?.id === net && (!selection.sink || selection.sink === sink) ? "#0a8f7b" : invalidNets.has(net) ? "#ba4545" : (shape?.range ? "#477caa" : "#8c969f"), strokeWidth: shape?.range ? 2.4 : 1.5 },
       labelStyle: { fill: "#66747e", fontSize: 11, fontFamily: "IBM Plex Mono, monospace" }, labelBgStyle: { fill: "#f8fafb", fillOpacity: 0.95 }, labelBgPadding: [7, 3], labelBgBorderRadius: 3,
     }));
-  }) : [];
+  }).concat(expressionGraph.edges.map((edge) => ({ ...edge, selected: selection?.type === "net" && selection.id === edge.data.net,
+    style: { stroke: selection?.id === edge.data.net ? "#0a8f7b" : invalidNets.has(edge.data.net) ? "#ba4545" : "#477caa", strokeWidth: edge.data.width > 1 ? 2.4 : 1.5 },
+    labelStyle: { fill: "#66747e", fontSize: 11, fontFamily: "IBM Plex Mono, monospace" },
+    labelBgStyle: { fill: "#f8fafb", fillOpacity: 0.95 }, labelBgPadding: [7, 3], labelBgBorderRadius: 3,
+  }))) : [];
 
   function insertModule(module, position) {
     let id;
@@ -434,7 +445,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event) => {
-      if (!design || busy || modal || ipImportOpen || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+      if (!design || busy || modal || ipImportOpen || connectionOpen || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveDialog(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
@@ -455,7 +466,7 @@ export default function App() {
         flow.fitView({ nodes: [{ id }], duration: 250, maxZoom: 1.15, padding: 0.4 });
       } else if (location.net && Object.hasOwn(design.nets, location.net)) {
         setSelection({ type: "net", id: location.net });
-        const ids = [...new Set(design.nets[location.net].map(nodeId))];
+        const ids = [...new Set([...design.nets[location.net].map(nodeId), ...flow.getNodes().filter((node) => node.data.net === location.net).map((node) => node.id)])];
         flow.fitView({ nodes: ids.map((id) => ({ id })), duration: 250, maxZoom: 1.15, padding: 0.4 });
       } else setSelection(null);
       setMobilePanel("inspector");
@@ -497,6 +508,19 @@ export default function App() {
     } catch (error) { notify(error.message, true); }
   }
 
+  async function applyConnection(name, index, endpoint) {
+    const current = editorState.current;
+    const snapshot = current.history.current;
+    if (!connectionReady || current.busy) throw new Error(t("semantic.notReady"));
+    const candidate = replaceEndpoint(snapshot.document ?? inspection.document, name, index, endpoint);
+    const result = await api("/api/semantic/inspect", { design: candidate, base_dir: current.baseDir });
+    if (editorState.current.history.current !== snapshot || editorState.current.baseDir !== current.baseDir) throw new Error(t("semantic.notReady"));
+    if (!result.canvas || !result.document) throw new Error(normalizeInspection(result).diagnostics[0]);
+    const applied = mutate((next) => { for (const key of Object.keys(next)) delete next[key]; Object.assign(next, result.canvas); }, t("semantic.connectionChanged"), false, result.document);
+    if (applied && (endpoint.const !== undefined || endpoint.concat)) setViewportRequest({ fit: true, waitFor: expressionId(name, index) });
+    return applied;
+  }
+
   if (!design) return <div className="boot-screen"><CircuitBoard size={36} /><h1>BD Studio</h1>{fatal ? <><p role="alert">{fatal}</p><button onClick={() => location.reload()}>重新连接</button></> : <LoaderCircle className="spin" size={20} />}</div>;
 
   const moduleNames = Object.keys(design.modules).filter((name) => [name, ...Object.keys(design.modules[name].ports)].some((value) => value.toLowerCase().includes(search.toLowerCase())));
@@ -507,11 +531,16 @@ export default function App() {
   const external = selectionNode?.startsWith("@") ? design.ports[selectionNode.slice(1)] : null;
   const definition = instance ? design.modules[instance.module] : null;
   const selectedNet = selection?.type === "net" ? design.nets[selection.id] : null;
+  const semanticDocument = history.current.document ?? inspection.document;
+  const selectedNetRecord = selectedNet && semanticDocument?.nets.find((net) => net.name === selection.id);
+  const connectionPorts = [...Object.keys(design.ports).map(externalId), ...Object.entries(design.instances).flatMap(([name, item]) =>
+    Object.keys(design.modules[item.module]?.ports ?? {}).map((port) => `${name}.${port}`))].map((value) => ({ ...endpointInfo(design, value, interfaces), value }));
   const totalPins = Object.values(design.instances).reduce((count, item) => count + Object.keys(design.modules[item.module]?.ports ?? {}).length, 0);
 
   const renameSelected = (name) => {
     let newId;
-    const ok = mutate((next, nextLayout) => { newId = renameNode(next, nextLayout, selectionNode, name); }, "名称与端点引用已更新");
+    const replacement = history.current.document ? renameSemantic(history.current.document, selectionNode, name) : null;
+    const ok = mutate((next, nextLayout) => { newId = renameNode(next, nextLayout, selectionNode, name); }, "名称与端点引用已更新", false, replacement);
     if (ok) setSelection({ type: "node", id: newId });
     return ok;
   };
@@ -569,8 +598,8 @@ export default function App() {
             fitView={!Object.keys(layout.nodes).length} fitViewOptions={{ padding: 0.16, maxZoom: 1 }} defaultViewport={layout.viewport}
             onNodesChange={(changes) => setNodes((current) => applyNodeChanges(changes.filter((change) => change.type !== "remove"), current))}
             onNodeDragStop={(_, node) => mutate((next, nextLayout) => { nextLayout.nodes[node.id] = node.position; }, "画布位置已更新")}
-            onNodeClick={(_, node) => { setSelection({ type: "node", id: node.id }); setPendingPin(null); }}
-            onNodeDoubleClick={(_, node) => { setSelection({ type: "node", id: node.id }); setMobilePanel("inspector"); }}
+            onNodeClick={(_, node) => { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setPendingPin(null); }}
+            onNodeDoubleClick={(_, node) => { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setMobilePanel("inspector"); }}
             onEdgeClick={(_, edge) => { setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setPendingPin(null); }}
             onPaneClick={() => { setSelection(null); setPendingPin(null); setMobilePanel(null); }}
             onConnect={(connection) => connect(connection.sourceHandle, connection.targetHandle)}
@@ -633,9 +662,14 @@ export default function App() {
               <label className="check-field"><input type="checkbox" checked={Boolean(external.signed)} onChange={(event) => mutate((next) => { next.ports[selectionNode.slice(1)].signed = event.target.checked; })} />Signed</label>
             </section>
           </> : selectedNet ? <>
-            <div className="inspector-object"><div className="inspector-symbol teal"><Workflow size={25} /></div><span>SIGNAL NET</span><h2>{selection.id}</h2><code>{selectedNet.length} endpoints</code></div>
-            <section className="property-section"><h3>网络</h3><label className="field-label">名称<CommitInput label="网络名称" value={selection.id} onCommit={(name) => { const ok = mutate((next) => renameNet(next, selection.id, name)); if (ok) setSelection({ type: "net", id: name }); return ok; }} /></label></section>
-            <section className="property-section"><h3>端点</h3>{selectedNet.map((endpoint) => <div className="net-endpoint" key={endpoint}><div><span>{endpointInfo(design, endpoint)?.drives ? "DRIVER" : "SINK"}</span><code>{endpoint}</code></div><IconButton icon={Unplug} label={`断开 ${endpoint}`} onClick={() => { mutate((next) => disconnectPort(next, endpoint)); setSelection(null); }} /></div>)}</section>
+            <div className="inspector-object"><div className="inspector-symbol teal"><Workflow size={25} /></div><span>SIGNAL NET</span><h2>{selection.id}</h2><code>{t("semantic.endpointCount", { count: selectedNetRecord?.endpoints.length ?? selectedNet.length })}</code></div>
+            <section className="property-section"><h3>网络</h3><label className="field-label">名称<CommitInput label="网络名称" value={selection.id} onCommit={(name) => {
+              const replacement = history.current.document ? renameSemantic(history.current.document, selection.id, name, "net") : null;
+              const ok = mutate((next) => renameNet(next, selection.id, name), undefined, false, replacement);
+              if (ok) setSelection({ type: "net", id: name }); return ok;
+            }} /></label></section>
+            <Connections document={semanticDocument} name={selection.id} ports={connectionPorts} resolved={inspection.connections?.find((net) => net.name === selection.id)}
+              disabled={!connectionReady} onApply={applyConnection} onOpenChange={setConnectionOpen} />
           </> : <>
             <div className="inspector-object"><div className="inspector-symbol teal"><Workflow size={25} strokeWidth={1.5} /></div><span>BLOCK DESIGN</span><h2>{design.name}</h2><code>Verilog-2005</code></div>
             <section className="property-section"><h3>设计</h3><label className="field-label">模块名称<CommitInput label="设计名称" value={design.name} onCommit={(value) => mutate((next) => { checkName({ instances: {}, ports: {}, nets: {} }, value); next.name = value; })} /></label><div className="source-path"><span>Design file</span><code>{documentPath || "未保存"}</code><span>Source base</span><code>{baseDir}/</code></div></section>

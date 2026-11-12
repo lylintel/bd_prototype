@@ -2,7 +2,17 @@ from core.diagnostics import issue
 
 
 def check(resolved):
-    connected = {endpoint.key for net in resolved.nets for endpoint in net.endpoints}
+    connected = set()
+    for key, uses in resolved.usage.items():
+        port = uses[0][1].shape
+        start, end = min(port.bounds or (0, 0)), max(port.bounds or (0, 0))
+        cursor = start
+        for low, high in sorted((min(reference.bounds), max(reference.bounds)) for _, reference in uses):
+            if low > cursor:
+                break
+            cursor = max(cursor, high + 1)
+        if cursor > end:
+            connected.add(key)
     findings = []
     for name, instance in resolved.instances.items():
         for port, shape in instance.ports.items():
