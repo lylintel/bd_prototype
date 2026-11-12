@@ -10,6 +10,9 @@ import { resolveDesignUpdate } from "./copilot.js";
 import { ImportButton, LibraryList, OriginBadge } from "./ip/Library.jsx";
 import { IP_DRAG_TYPE, addImported, findImportedDrop, originForDefinition } from "./ip/model.js";
 import { t } from "./i18n.js";
+import Parameters from "./semantic/Parameters.jsx";
+import { normalizeInspection, syncDocument } from "./semantic/model.js";
+import "./semantic/semantic.css";
 
 const { Handle } = FlowComponents;
 const initialLayout = { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } };
@@ -123,6 +126,7 @@ export default function App() {
   const editorState = useRef(null);
   editorState.current = { history, baseDir, busy };
   const design = history?.current.design;
+  const document = history?.current.document ?? design;
   const layout = history?.current.layout;
   const connectionReady = !checking && !busy && inspectedDesign.current === design;
   const interfaces = connectionReady ? inspection.interfaces : emptyInspection.interfaces;
@@ -137,12 +141,13 @@ export default function App() {
   }
 
   function acceptDocument(result) {
-    validateDocumentShape(result.design);
-    setHistory({ past: [], current: { design: result.design, layout: { ...initialLayout, ...result.layout } }, future: [] });
+    const versioned = result.design.schema_version === 2;
+    const canvas = validateDocumentShape(versioned ? result.inspection.canvas : result.design);
+    setHistory({ past: [], current: { design: canvas, document: versioned ? result.design : null, layout: { ...initialLayout, ...result.layout } }, future: [] });
     setBaseDir(result.base_dir);
     setDocumentPath(result.path);
-    inspectedDesign.current = result.design;
-    setInspection(result.inspection);
+    inspectedDesign.current = canvas;
+    setInspection(normalizeInspection(result.inspection));
     setSaved(true);
     setSelection(null);
     setPendingPin(null);
@@ -164,18 +169,18 @@ export default function App() {
     const controller = new AbortController();
     setChecking(true);
     const timer = setTimeout(() => {
-      api("/api/inspect", { design, base_dir: baseDir }, controller.signal).then((result) => {
+      api("/api/semantic/inspect", { design: document, base_dir: baseDir }, controller.signal).then((result) => {
         inspectedDesign.current = design;
-        setInspection(result);
+        setInspection(normalizeInspection(result));
         setChecking(false);
       }).catch((error) => {
         if (error.name !== "AbortError") { setInspection({ ...emptyInspection, diagnostics: [error.message] }); setChecking(false); }
       });
     }, 180);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [design, baseDir, token]);
+  }, [design, document, baseDir, token]);
 
-  useEffect(() => { if (design) setJsonDraft(JSON.stringify(design, null, 2)); }, [design]);
+  useEffect(() => { if (document) setJsonDraft(JSON.stringify(document, null, 2)); }, [document]);
   useEffect(() => {
     if (!nodesReady || !viewportRequest) return;
     if (viewportRequest.fit) flow.fitView({ padding: 0.16, maxZoom: 1 });
@@ -195,7 +200,7 @@ export default function App() {
     return () => dialog?.close();
   }, [modal?.kind]);
 
-  function mutate(update, message) {
+  function mutate(update, message, upgrade = false, replacement = null) {
     const current = editorState.current;
     if (!current.history || current.busy) return false;
     try {
@@ -203,6 +208,13 @@ export default function App() {
       const previousDesign = previous.current.design;
       const next = clone(previous.current);
       update(next.design, next.layout);
+      const changed = JSON.stringify(next.design) !== JSON.stringify(previousDesign);
+      if (replacement) next.document = clone(replacement);
+      else if (changed && (previous.current.document || upgrade)) {
+        if (upgrade && inspectedDesign.current !== previousDesign) throw new Error(t("semantic.notReady"));
+        next.document = syncDocument(previous.current.document ?? inspection.document, next.design,
+          [...(inspection.metadata ?? []), ...(ipCatalog.baseDir === current.baseDir ? ipCatalog.entries.map((entry) => entry.metadata) : [])]);
+      } else if (!changed) next.document = previous.current.document;
       if (JSON.stringify(next) === JSON.stringify(previous.current)) return true;
       if (JSON.stringify(next.design) === JSON.stringify(previousDesign)) next.design = previousDesign;
       else { setChecking(true); setInspection({ ...emptyInspection }); }
@@ -265,7 +277,7 @@ export default function App() {
     const result = [];
     for (const [name, instance] of Object.entries(design.instances)) {
       const definition = design.modules[instance.module];
-      const parameters = Object.fromEntries(Object.entries(definition?.parameters ?? {}).map(([key, spec]) => [key, instance.parameters?.[key] ?? spec.default]));
+      const parameters = inspection.parameters?.[name] ?? Object.fromEntries(Object.entries(definition?.parameters ?? {}).map(([key, spec]) => [key, instance.parameters?.[key] ?? spec.default]));
       result.push({ id: name, type: "block", position: layout.nodes[name] ?? defaultPosition(name, design), selected: selection?.id === name,
         data: { name, module: instance.module, parameters, ports: Object.keys(definition?.ports ?? {}).map((port) => endpointInfo(design, `${name}.${port}`, interfaces)).filter(Boolean), onPin: pickPin, active: pendingPin, connectable: connectionReady, highlight: errors.includes(`instances.${name}.`) || errors.includes(`${name}.`) } });
     }
@@ -358,10 +370,8 @@ export default function App() {
     try {
       if (modal.kind === "save") {
         setBusy("保存中");
-        const result = await api("/api/save", { design, layout: { ...layout, viewport: flow.getViewport() }, base_dir: baseDir, path: modal.path });
-        inspectedDesign.current = result.design;
-        setHistory({ past: [], current: { design: result.design, layout: result.layout }, future: [] });
-        setBaseDir(result.base_dir); setDocumentPath(result.path); setInspection(result.inspection); setSaved(true);
+        const result = await api("/api/save", { design: document, layout: { ...layout, viewport: flow.getViewport() }, base_dir: baseDir, path: modal.path });
+        acceptDocument(result);
         notify(`已保存 ${result.path}`); setActivity(`设计与布局已保存 · ${result.path}`);
       } else if (modal.kind === "open") {
         if (!saved && !window.confirm("当前设计尚未保存，仍要打开其他设计吗？")) return;
@@ -397,7 +407,7 @@ export default function App() {
   async function generate() {
     try {
       setBusy("生成中");
-      const result = await api("/api/generate", { design, base_dir: baseDir });
+      const result = await api("/api/generate", { design: document, base_dir: baseDir });
       setInspection((previous) => ({ ...previous, files: result.files }));
       setTab("bd"); setPanelOpen(true);
       setActivity(`已生成 ${result.paths.join(" / ")}`); notify("两层 Verilog 已写入 build/gui/");
@@ -408,7 +418,7 @@ export default function App() {
   async function validateNow() {
     try {
       setChecking(true);
-      const result = await api("/api/inspect", { design, base_dir: baseDir });
+      const result = normalizeInspection(await api("/api/semantic/inspect", { design: document, base_dir: baseDir }));
       inspectedDesign.current = design;
       setInspection(result); setTab("diagnostics"); setPanelOpen(true);
       notify(result.valid ? "设计校验通过" : result.diagnostics[0], !result.valid);
@@ -436,6 +446,18 @@ export default function App() {
       const net = Object.keys(design.nets).find((name) => message.includes(`nets.${name}:`));
       if (net) { setSelection({ type: "net", id: net }); setMobilePanel("inspector"); }
     }
+  }
+
+  async function applyJson() {
+    try {
+      const parsed = JSON.parse(jsonDraft);
+      const snapshot = editorState.current.history.current;
+      const result = await api("/api/semantic/inspect", { design: parsed, base_dir: baseDir });
+      if (editorState.current.history.current !== snapshot) throw new Error(t("semantic.notReady"));
+      if (!result.canvas || !result.document) throw new Error(normalizeInspection(result).diagnostics[0]);
+      validateDocumentShape(result.canvas);
+      mutate((next) => { for (const key of Object.keys(next)) delete next[key]; Object.assign(next, result.canvas); }, t("semantic.jsonApplied"), false, result.document);
+    } catch (error) { notify(error.message, true); }
   }
 
   if (!design) return <div className="boot-screen"><CircuitBoard size={36} /><h1>BD Studio</h1>{fatal ? <><p role="alert">{fatal}</p><button onClick={() => location.reload()}>重新连接</button></> : <LoaderCircle className="spin" size={20} />}</div>;
@@ -540,7 +562,7 @@ export default function App() {
               <div className={`diagnostic-summary ${inspection.valid ? "success" : ""}`}>{checking ? <LoaderCircle size={18} className="spin" /> : inspection.valid ? <CircleCheck size={19} /> : <CircleAlert size={19} />}<div><strong>{checking ? "正在校验设计" : inspection.valid ? "所有连接检查通过" : "设计存在待修复项"}</strong><span>{inspection.valid ? `${totalPins} 个实例端口 · ${Object.keys(design.ports).length} 个外部端口 · ${Object.keys(design.nets).length} 条网络` : "DesignError"}</span></div>{inspection.valid && <span className="diagnostic-tag">VALID</span>}</div>
               {inspection.diagnostics.map((message) => <button className="diagnostic-error" key={message} onClick={() => focusDiagnostic(message)}><CircleAlert size={15} /><code>{message}</code><ArrowUpRight size={14} /></button>)}
               <div className="activity-line"><CheckCheck size={14} /><span>{activity}</span></div>
-            </> : tab === "json" ? <div className="json-editor"><div className="code-toolbar"><code>{documentPath || `${design.name}.json`}</code><button className="small-command" onClick={() => { try { const parsed = validateDocumentShape(JSON.parse(jsonDraft)); mutate((next) => { for (const key of Object.keys(next)) delete next[key]; Object.assign(next, parsed); }, "JSON 修改已应用"); } catch (error) { notify(error.message, true); } }}><Check size={13} />应用 JSON</button></div><textarea spellCheck={false} aria-label="设计 JSON" value={jsonDraft} onChange={(event) => setJsonDraft(event.target.value)} /></div>
+            </> : tab === "json" ? <div className="json-editor"><div className="code-toolbar"><code>{documentPath || `${design.name}.json`}</code><button className="small-command" onClick={applyJson}><Check size={13} />{t("semantic.applyJson")}</button></div><textarea spellCheck={false} aria-label={t("semantic.designJson")} value={jsonDraft} onChange={(event) => setJsonDraft(event.target.value)} /></div>
               : <div className="code-view"><div className="code-toolbar"><code>{filename}</code><div><IconButton icon={Copy} label="复制代码" disabled={!code} onClick={() => navigator.clipboard.writeText(code).then(() => notify("代码已复制")).catch((error) => notify(error.message, true))} /><IconButton icon={Download} label="下载 Verilog" disabled={!code} onClick={() => downloadFile(filename, code)} /></div></div>{code ? <pre><code>{code.split("\n").map((line, index) => <span className="code-line" key={index}><i>{index + 1}</i>{line}</span>)}</code></pre> : <div className="empty-small">{checking ? "正在生成预览" : "设计通过校验后可预览 HDL"}</div>}</div>}
           </div>}
         </OutputWindow>
@@ -552,7 +574,12 @@ export default function App() {
           {instance ? <>
             <div className="inspector-object"><div className="inspector-symbol"><Cpu size={24} strokeWidth={1.4} /></div><span>RTL INSTANCE</span><h2>{selectionNode}</h2><code>{instance.module}</code></div>
             <section className="property-section"><h3>实例</h3><label className="field-label">名称<CommitInput label="实例名称" value={selectionNode} onCommit={renameSelected} /></label><div className="source-path"><span>Source</span>{definition?.sources?.map((path) => <code key={path}>{path}</code>)}</div></section>
-            <section className="property-section"><h3>参数<span>{Object.keys(definition?.parameters ?? {}).length}</span></h3>{Object.entries(definition?.parameters ?? {}).map(([name, spec]) => <label className="parameter-field" key={`${selectionNode}.${name}`}><span><code>{name}</code><small>默认 {spec.default}</small></span><CommitInput label={name} type="number" step="1" value={instance.parameters?.[name] ?? spec.default} onCommit={(value) => mutate((next) => { next.instances[selectionNode].parameters ??= {}; next.instances[selectionNode].parameters[name] = parseInteger(value); }, `${selectionNode}.${name} 已更新`)} /></label>)}</section>
+            <Parameters instance={selectionNode} definition={definition} overrides={instance.parameters} resolved={inspection.parameters?.[selectionNode]}
+              disabled={!connectionReady || !inspection.document} onError={notify} onCommit={(name, value) => mutate((next) => {
+                next.instances[selectionNode].parameters ??= {};
+                if (value === undefined) delete next.instances[selectionNode].parameters[name];
+                else next.instances[selectionNode].parameters[name] = value;
+              }, t("semantic.parameterChanged"), true)} />
             <section className="property-section"><h3>端口<span>{Object.keys(definition?.ports ?? {}).length}</span></h3>{Object.keys(definition?.ports ?? {}).map((name) => {
               const endpoint = `${selectionNode}.${name}`;
               const port = endpointInfo(design, endpoint, inspection.interfaces);

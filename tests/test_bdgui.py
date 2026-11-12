@@ -69,6 +69,38 @@ class EditorTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, "port already in use"):
                 EditorServer(("127.0.0.1", 0), self.workspace)
 
+    def test_semantic_inspect_preserves_old_response_and_v2_roundtrip(self):
+        old = self.workspace.inspect(self.data, "examples")
+        semantic = self.workspace.semantic_inspect(self.data, "examples")
+        self.assertTrue(semantic["valid"], semantic["diagnostics"])
+        self.assertEqual(semantic["files"], old["files"])
+        self.assertEqual(self.workspace.inspect(self.data, "examples"), old)
+        document = semantic["document"]
+        document["instances"][0]["params"]["WIDTH"] = "4 * 3"
+        document["instances"][1]["params"]["WIDTH"] = 12
+        saved = self.workspace.save({"design": document, "base_dir": "examples", "path": "designs/v2.json"})
+        self.assertEqual(saved["design"]["schema_version"], 2)
+        self.assertTrue(saved["inspection"]["valid"], saved["inspection"]["diagnostics"])
+        self.assertIn(".WIDTH(12)", self.workspace.generate({"design": saved["design"], "base_dir": "designs"})["files"]["example_bd.v"])
+        self.assertEqual(self.data["instances"]["counter_0"]["parameters"]["WIDTH"], 8)
+
+    def test_semantic_inspect_checks_sources_before_validation(self):
+        document = self.workspace.semantic_inspect(self.data, "examples")["document"]
+        document["project_ips"][0]["source"]["sha256"] = "0" * 64
+        result = self.workspace.semantic_inspect(document, "examples")
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["diagnostics"][0]["code"], "D005")
+        document["project_ips"][0]["source"]["path"] = "../../outside.v"
+        self.assertEqual(self.workspace.semantic_inspect(document, "examples")["diagnostics"][0]["code"], "D005")
+
+    def test_semantic_snapshot_keeps_roles_without_legacy_definition(self):
+        shutil.copytree(ROOT / "ip_library/builtin", self.root / "ip_library/builtin")
+        document = {"schema_version": 2, "name": "sync_design", "ports": {}, "nets": [],
+                    "instances": [{"name": "sync_0", "ip": {"id": "bd_sync_2ff", "version": "1.0.0"}}]}
+        with patch("ip_import.library.IpLibrary.entries", side_effect=AssertionError("legacy view forbidden")):
+            result = self.workspace.semantic_inspect(document, ".")
+        self.assertEqual(result["interfaces"]["instances"]["sync_0"]["clk"]["role"]["kind"], "clock")
+
     def test_rejects_paths_outside_workspace_and_invalid_layout(self):
         with self.assertRaisesRegex(bdtool.DesignError, "inside the workspace"):
             self.workspace.path("../outside.json")
@@ -101,6 +133,12 @@ class EditorTests(unittest.TestCase):
             response = connection.getresponse()
             self.assertEqual(response.status, 200)
             self.assertTrue(json.loads(response.read())["valid"])
+            connection.request("POST", "/api/semantic/inspect", payload, headers)
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
+            semantic = json.loads(response.read())
+            self.assertTrue(semantic["valid"])
+            self.assertEqual(semantic["document"]["schema_version"], 2)
             connection.request("POST", "/api/generate", payload, {**headers, "Origin": "https://example.com"})
             response = connection.getresponse()
             self.assertEqual(response.status, 403)

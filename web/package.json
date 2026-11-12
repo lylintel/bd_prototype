@@ -8,7 +8,7 @@
     "typecheck": "tsc -p jsconfig.json",
     "lint": "eslint src e2e playwright.config.js",
     "test:e2e": "playwright test",
-    "test": "node --test src/model.test.js src/copilot.test.js src/i18n.test.js src/ip/model.test.js"
+    "test": "node --test src/model.test.js src/copilot.test.js src/i18n.test.js src/ip/model.test.js src/semantic/model.test.js"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",

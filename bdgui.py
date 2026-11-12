@@ -150,12 +150,24 @@ class Workspace:
                 continue
         return result
 
+    def semantic_inspect(self, data: object, base_dir: str) -> dict:
+        from bdsemantic import inspect_workspace
+
+        return inspect_workspace(self, data, base_dir)
+
     def load(self, filename: str) -> dict:
         path = self.path(filename)
         if path.suffix.lower() != ".json":
             raise bdtool.DesignError("path: expected a JSON design")
-        data = self.structure(json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=bdtool._unique_keys))
-        self.sources(data, path.parent)
+        data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=bdtool._unique_keys)
+        versioned = isinstance(data, dict) and "schema_version" in data
+        if versioned:
+            from core.design import check_document
+
+            check_document(data)
+        else:
+            data = self.structure(data)
+            self.sources(data, path.parent)
         layout_path = path.with_suffix(".layout.json")
         self.path(self.relative(layout_path))
         layout = json.loads(layout_path.read_text(encoding="utf-8")) if layout_path.is_file() else {}
@@ -164,7 +176,7 @@ class Workspace:
             "path": self.relative(path),
             "base_dir": self.relative(path.parent) or ".",
             "layout": check_layout(layout),
-            "inspection": self.inspect(data, self.relative(path.parent) or "."),
+            "inspection": (self.semantic_inspect if versioned else self.inspect)(data, self.relative(path.parent) or "."),
         }
 
     def list_designs(self) -> list[str]:
@@ -178,6 +190,10 @@ class Workspace:
         return sorted(paths)
 
     def save(self, payload: dict) -> dict:
+        if isinstance(payload.get("design"), dict) and "schema_version" in payload["design"]:
+            from bdsemantic import save_document
+
+            return save_document(self, payload)
         data = copy.deepcopy(self.structure(payload.get("design")))
         base = self.path(payload.get("base_dir", "."))
         target = self.path(payload.get("path", ""))
@@ -196,6 +212,10 @@ class Workspace:
         return self.load(self.relative(target))
 
     def generate(self, payload: dict) -> dict:
+        if isinstance(payload.get("design"), dict) and "schema_version" in payload["design"]:
+            from bdsemantic import generate_document
+
+            return generate_document(self, payload)
         data = self.structure(payload.get("design"))
         base = self.path(payload.get("base_dir", "."))
         sources = self.sources(data, base)
@@ -351,6 +371,8 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(self.server.copilot.clear(payload.get("conversation_id")))
             elif self.path == "/api/inspect":
                 self.json_response(workspace.inspect(payload.get("design"), payload.get("base_dir", ".")))
+            elif self.path == "/api/semantic/inspect":
+                self.json_response(workspace.semantic_inspect(payload.get("design"), payload.get("base_dir", ".")))
             elif self.path == "/api/save":
                 self.json_response(workspace.save(payload))
             elif self.path == "/api/generate":

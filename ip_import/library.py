@@ -11,7 +11,7 @@ import shutil
 import tempfile
 
 import bdtool
-from bdip import IpMetadata, IpMetadataError, MESSAGES, load_ip, save_ip
+from bdip import IpMetadata, IpMetadataError, IpSource, MESSAGES, load_ip, save_ip
 from core.expr import ExpressionError, evaluate
 from .parser import MAX_SOURCE_BYTES, parse_file
 from .roles import suggest_roles
@@ -355,6 +355,26 @@ class IpLibrary:
 
         collect(entry)
         return paths
+
+    def metadata_snapshot(self, ids: set[str], *, base_dir: Path) -> tuple[IpMetadata, ...]:
+        base = Path(base_dir).resolve()
+        if not base.is_relative_to(self.root):
+            raise LibraryError("IP_LIBRARY_PATH")
+        index = self._index()
+        result = []
+        for entry in index["entries"].values():
+            if entry["id"] not in ids:
+                continue
+            metadata = load_ip(self._path(entry["metadata"]))
+            if ((metadata.id, metadata.version, metadata.source.sha256) != (entry["id"], entry["version"], entry["source_sha256"])
+                    or _signature(metadata) != entry["interface_hash"]):
+                raise LibraryError("IP_LIBRARY_INTEGRITY", metadata.id)
+            paths = self._source_paths(entry, index)
+            source = replace(metadata.source, path=Path(os.path.relpath(paths[0], base)).as_posix())
+            additional = tuple(IpSource("verilog", Path(os.path.relpath(path, base)).as_posix(),
+                                        hashlib.sha256(path.read_bytes()).hexdigest(), "NOASSERTION") for path in paths[1:])
+            result.append(replace(metadata, source=source, additional_sources=additional, base_dir=base))
+        return tuple(result)
 
     def entries(self, *, base_dir: Path | None = None) -> list[dict]:
         base = Path(base_dir).resolve() if base_dir is not None else self.root

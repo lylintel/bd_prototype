@@ -1,0 +1,4 @@
+.semantic-parameters .parameter-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(64px, 86px) 28px; gap: 6px; }
+.semantic-parameters .parameter-field input { width: 100%; min-width: 0; }
+.semantic-parameters .parameter-field small { overflow-wrap: anywhere; }
+.semantic-parameters .parameter-field .icon-button { width: 28px; height: 28px; }

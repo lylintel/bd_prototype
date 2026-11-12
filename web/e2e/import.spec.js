@@ -150,3 +150,36 @@ test("all bundled IPs are available without creating a private index", async ({ 
   expect(response.ok()).toBe(true);
   expect((await response.json()).inspection.valid).toBe(true);
 });
+
+test("instance parameter expressions update widths and preserve versioned undo", async ({ page }, testInfo) => {
+  await openEditor(page);
+  const counter = page.locator('.react-flow__node[data-id="counter_0"]');
+  await counter.dblclick();
+  const width = page.getByLabel(t("semantic.parameterLabel", { instance: "counter_0", name: "WIDTH" }), { exact: true });
+  await expect(width).toBeEnabled();
+  await width.fill("4 * 3");
+  await width.press("Tab");
+  await expect(counter).toContainText("[11:0]");
+  await expect(page.locator(".diagnostic-error")).toContainText("12");
+  await page.locator('.react-flow__node[data-id="compare_0"]').dblclick();
+  const target = page.getByLabel(t("semantic.parameterLabel", { instance: "compare_0", name: "WIDTH" }), { exact: true });
+  await expect(target).toBeEnabled();
+  await target.fill("12");
+  await target.press("Tab");
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  await page.screenshot({ path: testInfo.outputPath("parameters-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const parameterBounds = await target.boundingBox();
+  expect(parameterBounds.x).toBeGreaterThanOrEqual(0);
+  expect(parameterBounds.x + parameterBounds.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("parameters-mobile.png") });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("tab", { name: "设计 JSON", exact: true }).click();
+  const document = JSON.parse(await page.getByLabel(t("semantic.designJson"), { exact: true }).inputValue());
+  expect(document.schema_version).toBe(2);
+  expect(document.instances[0].ip).toEqual({ id: "counter", version: "1.0.0" });
+  expect(document.instances[0].params.WIDTH).toBe("4 * 3");
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("待修复");
+  expect(readFileSync(path.join(server.directory, "examples/counter_compare.json"))).toEqual(readFileSync(path.join(root, "examples/counter_compare.json")));
+});

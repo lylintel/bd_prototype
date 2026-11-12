@@ -1,5 +1,11 @@
 {
   "D001": "设计格式无效：{reason}。",
+  "D002": "参数 {parameter} 无法解析：{reason}。",
+  "D003": "端口声明无法解析：{reason}。",
+  "D004": "设计暂不能生成：{reason}。",
+  "D005": "IP 来源或工作区操作无效：{reason}。",
+  "E001": "位宽或范围不匹配：{source} ({source_width}) → {target} ({target_width})。",
+  "E004": "端点不存在或尚未解析：{reference}。",
   "E005": "无法唯一解析 IP {ip}@{version}：{reason}。",
   "IP_SCHEMA_VERSION": "{location}: 缺少或不支持的 IP schema_version，需要整数 1。",
   "IP_SCHEMA_INVALID": "{location}: IP 元数据不符合 schema，检查规则 {rule}。",
