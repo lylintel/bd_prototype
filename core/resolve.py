@@ -134,6 +134,7 @@ def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) 
             or set(document) - {"schema_version", "name", "ports", "instances", "nets", "project_ips"}
             or not isinstance(document.get("instances"), list) or len(document["instances"]) > 20000
             or not isinstance(document.get("nets"), list) or len(document["nets"]) > 100000
+            or not isinstance(document.get("project_ips", []), list) or len(document.get("project_ips", [])) > 200
             or not isinstance(document.get("ports"), dict) or len(document["ports"]) > 20000):
         return Resolution({}, {}, {}, (), (issue("D001", {"path": "$"}, reason="structure"),))
     index = {}
@@ -152,7 +153,7 @@ def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) 
                 raise ValueError("port_width")
             ports[name] = resolved
         except (ValueError, ExpressionError) as error:
-            findings.append(issue("D003", {"external": name}, reason=str(error)))
+            findings.append(issue("D003", {"external": name}, reason=getattr(error, "code", str(error))))
     cache = {}
     for ordinal, item in enumerate(document["instances"]):
         if (not isinstance(item, dict) or set(item) - {"name", "ip", "params"} or not isinstance(item.get("name"), str)
@@ -169,7 +170,7 @@ def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) 
         metadata = candidates[0]
         overrides = item.get("params", {})
         try:
-            if not isinstance(overrides, dict) or any(type(value) not in (str, int) for value in overrides.values()):
+            if not isinstance(overrides, dict) or any(not isinstance(key, str) or type(value) not in (str, int) for key, value in overrides.items()):
                 raise ParameterError("", "type")
             cache_key = (metadata.id, metadata.version, tuple(sorted(overrides.items())))
             if cache_key not in cache:
@@ -179,7 +180,7 @@ def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) 
         except ParameterError as error:
             findings.append(issue("D002", {"instance": name, "parameter": error.name}, parameter=error.name, reason=error.reason))
         except (ValueError, ExpressionError) as error:
-            findings.append(issue("D003", {"instance": name}, reason=str(error)))
+            findings.append(issue("D003", {"instance": name}, reason=getattr(error, "code", str(error))))
     for ordinal, item in enumerate(document["nets"]):
         if (not isinstance(item, dict) or set(item) != {"name", "endpoints"} or not isinstance(item["name"], str)
                 or not isinstance(item["endpoints"], list) or len(item["endpoints"]) > 20000):

@@ -183,3 +183,41 @@ test("instance parameter expressions update widths and preserve versioned undo",
   await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("待修复");
   expect(readFileSync(path.join(server.directory, "examples/counter_compare.json"))).toEqual(readFileSync(path.join(root, "examples/counter_compare.json")));
 });
+
+test("diagnostic location selects the target and an explicit fix is undoable", async ({ page }, testInfo) => {
+  await openEditor(page);
+  await page.locator('.react-flow__node[data-id="counter_0"]').dblclick();
+  const width = page.getByLabel(t("semantic.parameterLabel", { instance: "counter_0", name: "WIDTH" }), { exact: true });
+  await expect(width).toBeEnabled();
+  await width.fill("12");
+  await width.press("Tab");
+  const diagnostic = page.locator('.semantic-diagnostic[data-code="E001"][data-net="count_bus"]');
+  await expect(diagnostic).toBeVisible();
+  await diagnostic.getByRole("button", { name: t("semantic.locate", { code: "E001" }), exact: true }).click();
+  await expect(page.locator('.react-flow__node[data-id="compare_0"]')).toHaveClass(/selected/);
+  await page.screenshot({ path: testInfo.outputPath("diagnostic-location.png") });
+  await diagnostic.getByRole("button", { name: t("semantic.applyFix"), exact: true }).click();
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  await expect(page.getByLabel(t("semantic.parameterLabel", { instance: "compare_0", name: "WIDTH" }), { exact: true })).toHaveValue("12");
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(diagnostic).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "属性面板", exact: true }).click();
+  await expect(diagnostic.getByRole("button", { name: t("semantic.applyFix"), exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("diagnostic-mobile.png") });
+});
+
+test("net diagnostics select visible invalid connections", async ({ page }, testInfo) => {
+  await openEditor(page);
+  await page.getByRole("tab", { name: "设计 JSON", exact: true }).click();
+  const editor = page.getByLabel(t("semantic.designJson"), { exact: true });
+  const document = JSON.parse(await editor.inputValue());
+  document.nets.count_bus.push("compare_0.match");
+  await editor.fill(JSON.stringify(document));
+  await page.getByRole("button", { name: t("semantic.applyJson"), exact: true }).click();
+  await page.getByRole("tab", { name: /^诊断/ }).click();
+  const diagnostic = page.locator('.semantic-diagnostic[data-code="E002"][data-net="count_bus"]').first();
+  await diagnostic.getByRole("button", { name: t("semantic.locate", { code: "E002" }), exact: true }).click();
+  await expect(page.locator('.react-flow__edge.selected[data-id^="count_bus|"]').first()).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("diagnostic-net.png") });
+});

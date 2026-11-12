@@ -1,0 +1,25 @@
+[
+  {
+    "code": "E001",
+    "severity": "error",
+    "location": {
+      "instance": "compare_0",
+      "port": "value",
+      "net": "count_bus"
+    },
+    "message": "位宽或范围不匹配：counter_0.count (12) → compare_0.value (8)。",
+    "params": {
+      "source": "counter_0.count",
+      "target": "compare_0.value",
+      "source_width": 12,
+      "target_width": 8,
+      "reason": "width"
+    },
+    "fix": {
+      "op": "set_param",
+      "inst": "compare_0",
+      "name": "WIDTH",
+      "value": 12
+    }
+  }
+]

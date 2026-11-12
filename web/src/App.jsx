@@ -11,6 +11,7 @@ import { ImportButton, LibraryList, OriginBadge } from "./ip/Library.jsx";
 import { IP_DRAG_TYPE, addImported, findImportedDrop, originForDefinition } from "./ip/model.js";
 import { t } from "./i18n.js";
 import Parameters from "./semantic/Parameters.jsx";
+import Diagnostics from "./semantic/Diagnostics.jsx";
 import { normalizeInspection, syncDocument } from "./semantic/model.js";
 import "./semantic/semantic.css";
 
@@ -101,6 +102,7 @@ export default function App() {
   const [token, setToken] = useState("");
   const [inspection, setInspection] = useState(emptyInspection);
   const [checking, setChecking] = useState(false);
+  const [fixing, setFixing] = useState(false);
   const [busy, setBusy] = useState("");
   const [saved, setSaved] = useState(true);
   const [selection, setSelection] = useState(null);
@@ -136,7 +138,7 @@ export default function App() {
   async function api(path, payload, signal) {
     const response = await fetch(path, payload === undefined ? { signal } : { method: "POST", headers: { "Content-Type": "application/json", "X-BD-Token": token }, body: JSON.stringify(payload), signal });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(normalizeInspection(result).diagnostics[0] || result.error || `HTTP ${response.status}`);
     return result;
   }
 
@@ -274,30 +276,34 @@ export default function App() {
   useEffect(() => {
     if (!design) return;
     const errors = inspection.diagnostics.join(" ");
+    const locations = (inspection.structuredDiagnostics ?? []).filter((item) => item.severity === "error").map((item) => item.location);
+    const errorNodes = new Set(locations.flatMap((item) => item.instance ? [item.instance] : item.external ? [externalId(item.external)] : []));
+    const structured = Boolean(inspection.structuredDiagnostics?.length);
     const result = [];
     for (const [name, instance] of Object.entries(design.instances)) {
       const definition = design.modules[instance.module];
       const parameters = inspection.parameters?.[name] ?? Object.fromEntries(Object.entries(definition?.parameters ?? {}).map(([key, spec]) => [key, instance.parameters?.[key] ?? spec.default]));
       result.push({ id: name, type: "block", position: layout.nodes[name] ?? defaultPosition(name, design), selected: selection?.id === name,
-        data: { name, module: instance.module, parameters, ports: Object.keys(definition?.ports ?? {}).map((port) => endpointInfo(design, `${name}.${port}`, interfaces)).filter(Boolean), onPin: pickPin, active: pendingPin, connectable: connectionReady, highlight: errors.includes(`instances.${name}.`) || errors.includes(`${name}.`) } });
+        data: { name, module: instance.module, parameters, ports: Object.keys(definition?.ports ?? {}).map((port) => endpointInfo(design, `${name}.${port}`, interfaces)).filter(Boolean), onPin: pickPin, active: pendingPin, connectable: connectionReady, highlight: structured ? errorNodes.has(name) : errors.includes(`instances.${name}.`) || errors.includes(`${name}.`) } });
     }
     for (const name of Object.keys(design.ports)) {
       const id = externalId(name);
       result.push({ id, type: "block", position: layout.nodes[id] ?? defaultPosition(id, design), selected: selection?.id === id,
-        data: { name, external: true, ports: [endpointInfo(design, id, interfaces)], onPin: pickPin, active: pendingPin, connectable: connectionReady, highlight: errors.includes(`ports.${name}:`) } });
+        data: { name, external: true, ports: [endpointInfo(design, id, interfaces)], onPin: pickPin, active: pendingPin, connectable: connectionReady, highlight: structured ? errorNodes.has(id) : errors.includes(`ports.${name}:`) } });
     }
     setNodes((previous) => result.map((node) => ({ ...node, measured: previous.find((item) => item.id === node.id)?.measured })));
   }, [design, layout, inspection, selection, pendingPin, connectionReady]);
 
+  const invalidNets = new Set((inspection.structuredDiagnostics ?? []).filter((item) => item.severity === "error").map((item) => item.location.net).filter(Boolean));
   const edges = design ? Object.entries(design.nets).flatMap(([net, pins]) => {
     const drivers = pins.filter((pin) => endpointInfo(design, pin)?.drives);
-    if (drivers.length !== 1) return [];
-    const driver = drivers[0];
+    const driver = drivers[0] ?? pins.find((pin) => endpointInfo(design, pin));
+    if (!driver) return [];
     const shape = endpointInfo(design, driver, interfaces);
     return pins.filter((pin) => pin !== driver && endpointInfo(design, pin)).map((sink) => ({
       id: `${net}|${sink}`, source: nodeId(driver), target: nodeId(sink), sourceHandle: driver, targetHandle: sink,
       type: "circuit", label: net, data: { net, sink }, selected: selection?.type === "net" && selection.id === net && (!selection.sink || selection.sink === sink),
-      style: { stroke: selection?.id === net && (!selection.sink || selection.sink === sink) ? "#0a8f7b" : (shape?.range ? "#477caa" : "#8c969f"), strokeWidth: shape?.range ? 2.4 : 1.5 },
+      style: { stroke: selection?.id === net && (!selection.sink || selection.sink === sink) ? "#0a8f7b" : invalidNets.has(net) ? "#ba4545" : (shape?.range ? "#477caa" : "#8c969f"), strokeWidth: shape?.range ? 2.4 : 1.5 },
       labelStyle: { fill: "#66747e", fontSize: 11, fontFamily: "IBM Plex Mono, monospace" }, labelBgStyle: { fill: "#f8fafb", fillOpacity: 0.95 }, labelBgPadding: [7, 3], labelBgBorderRadius: 3,
     }));
   }) : [];
@@ -440,12 +446,43 @@ export default function App() {
   });
 
   function focusDiagnostic(message) {
+    if (typeof message !== "string") {
+      const location = message.location ?? {};
+      const id = location.instance ?? (location.external ? externalId(location.external) : null);
+      setPendingPin(null);
+      if (id && (Object.hasOwn(design.instances, id) || id.startsWith("@") && Object.hasOwn(design.ports, id.slice(1)))) {
+        setSelection({ type: "node", id });
+        flow.fitView({ nodes: [{ id }], duration: 250, maxZoom: 1.15, padding: 0.4 });
+      } else if (location.net && Object.hasOwn(design.nets, location.net)) {
+        setSelection({ type: "net", id: location.net });
+        const ids = [...new Set(design.nets[location.net].map(nodeId))];
+        flow.fitView({ nodes: ids.map((id) => ({ id })), duration: 250, maxZoom: 1.15, padding: 0.4 });
+      } else setSelection(null);
+      setMobilePanel("inspector");
+      return;
+    }
     const id = Object.keys(design.instances).find((name) => message.includes(`${name}.`));
     if (id) { setSelection({ type: "node", id }); flow.fitView({ nodes: [{ id }], duration: 250, maxZoom: 1.15, padding: 0.4 }); setMobilePanel("inspector"); }
     else {
       const net = Object.keys(design.nets).find((name) => message.includes(`nets.${name}:`));
       if (net) { setSelection({ type: "net", id: net }); setMobilePanel("inspector"); }
     }
+  }
+
+  async function applyDiagnosticFix(diagnostic) {
+    if (fixing || busy || checking) return;
+    const snapshot = editorState.current.history.current;
+    const sourceBase = editorState.current.baseDir;
+    setFixing(true);
+    try {
+      const result = await api("/api/semantic/fix", { design: snapshot.document ?? snapshot.design, base_dir: sourceBase, diagnostic });
+      if (editorState.current.history.current !== snapshot || editorState.current.baseDir !== sourceBase) throw new Error(t("semantic.notReady"));
+      if (!result.canvas || !result.document) throw new Error(normalizeInspection(result).diagnostics[0]);
+      const applied = mutate((next) => { for (const key of Object.keys(next)) delete next[key]; Object.assign(next, result.canvas); }, t("semantic.fixApplied"), false, result.document);
+      if (!applied) throw new Error(t("semantic.notReady"));
+      notify(t("semantic.fixApplied"));
+    } catch (error) { notify(error.message, true); }
+    finally { setFixing(false); }
   }
 
   async function applyJson() {
@@ -560,7 +597,8 @@ export default function App() {
           {panelOpen && <div className="output-content" role="tabpanel">
             {tab === "diagnostics" ? <>
               <div className={`diagnostic-summary ${inspection.valid ? "success" : ""}`}>{checking ? <LoaderCircle size={18} className="spin" /> : inspection.valid ? <CircleCheck size={19} /> : <CircleAlert size={19} />}<div><strong>{checking ? "正在校验设计" : inspection.valid ? "所有连接检查通过" : "设计存在待修复项"}</strong><span>{inspection.valid ? `${totalPins} 个实例端口 · ${Object.keys(design.ports).length} 个外部端口 · ${Object.keys(design.nets).length} 条网络` : "DesignError"}</span></div>{inspection.valid && <span className="diagnostic-tag">VALID</span>}</div>
-              {inspection.diagnostics.map((message) => <button className="diagnostic-error" key={message} onClick={() => focusDiagnostic(message)}><CircleAlert size={15} /><code>{message}</code><ArrowUpRight size={14} /></button>)}
+              {inspection.structuredDiagnostics?.length ? <Diagnostics items={inspection.structuredDiagnostics} disabled={checking || Boolean(busy) || fixing} onFocus={focusDiagnostic} onFix={applyDiagnosticFix} />
+                : inspection.diagnostics.map((message) => <button className="diagnostic-error" key={message} onClick={() => focusDiagnostic(message)}><CircleAlert size={15} /><code>{message}</code><ArrowUpRight size={14} /></button>)}
               <div className="activity-line"><CheckCheck size={14} /><span>{activity}</span></div>
             </> : tab === "json" ? <div className="json-editor"><div className="code-toolbar"><code>{documentPath || `${design.name}.json`}</code><button className="small-command" onClick={applyJson}><Check size={13} />{t("semantic.applyJson")}</button></div><textarea spellCheck={false} aria-label={t("semantic.designJson")} value={jsonDraft} onChange={(event) => setJsonDraft(event.target.value)} /></div>
               : <div className="code-view"><div className="code-toolbar"><code>{filename}</code><div><IconButton icon={Copy} label="复制代码" disabled={!code} onClick={() => navigator.clipboard.writeText(code).then(() => notify("代码已复制")).catch((error) => notify(error.message, true))} /><IconButton icon={Download} label="下载 Verilog" disabled={!code} onClick={() => downloadFile(filename, code)} /></div></div>{code ? <pre><code>{code.split("\n").map((line, index) => <span className="code-line" key={index}><i>{index + 1}</i>{line}</span>)}</code></pre> : <div className="empty-small">{checking ? "正在生成预览" : "设计通过校验后可预览 HDL"}</div>}</div>}
@@ -578,7 +616,7 @@ export default function App() {
               disabled={!connectionReady || !inspection.document} onError={notify} onCommit={(name, value) => mutate((next) => {
                 next.instances[selectionNode].parameters ??= {};
                 if (value === undefined) delete next.instances[selectionNode].parameters[name];
-                else next.instances[selectionNode].parameters[name] = value;
+                else Object.defineProperty(next.instances[selectionNode].parameters, name, { value, writable: true, enumerable: true, configurable: true });
               }, t("semantic.parameterChanged"), true)} />
             <section className="property-section"><h3>端口<span>{Object.keys(definition?.ports ?? {}).length}</span></h3>{Object.keys(definition?.ports ?? {}).map((name) => {
               const endpoint = `${selectionNode}.${name}`;

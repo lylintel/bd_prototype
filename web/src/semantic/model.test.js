@@ -10,6 +10,7 @@ test("canvas edits retain explicit versions and do not mutate the original", () 
   assert.equal(result.instances[0].params.WIDTH, "4 * 3");
   assert.equal(original.instances[0].params.WIDTH, 8);
   assert.throws(() => syncDocument({ ...original, instances: [] }, canvas, [{ id: "unit", version: "1.0.0" }, { id: "unit", version: "2.0.0" }]));
+  assert.throws(() => syncDocument({ ...original, instances: [original.instances[0], original.instances[0]] }, canvas, []));
 });
 
 test("parameter input preserves expressions and rejects empty or excessive text", () => {

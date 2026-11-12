@@ -30,6 +30,7 @@ export function endpointObject(value) {
 
 export function syncDocument(previous, canvas, metadata) {
   if (!previous || previous.schema_version !== 2) throw new Error(t("semantic.notReady"));
+  if ([previous.instances, previous.nets].some((items) => new Set(items.map((item) => item.name)).size !== items.length)) throw new Error(t("semantic.duplicateDraft"));
   const candidates = [...(previous.project_ips ?? []), ...metadata];
   const instances = Object.entries(canvas.instances).map(([name, item]) => {
     let reference = previous.instances.find((instance) => instance.name === name && instance.ip.id === item.module)?.ip;

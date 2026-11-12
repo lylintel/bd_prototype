@@ -155,6 +155,15 @@ class Workspace:
 
         return inspect_workspace(self, data, base_dir)
 
+    def semantic_fix(self, payload: dict) -> dict:
+        from bdsemantic import prepare, inspect_workspace
+        from core.semantic import apply_fix
+
+        base_dir = payload.get("base_dir", ".")
+        document, library = prepare(self, payload.get("design"), base_dir)
+        candidate = apply_fix(document, library, payload.get("diagnostic"))
+        return inspect_workspace(self, candidate, base_dir)
+
     def load(self, filename: str) -> dict:
         path = self.path(filename)
         if path.suffix.lower() != ".json":
@@ -373,6 +382,8 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(workspace.inspect(payload.get("design"), payload.get("base_dir", ".")))
             elif self.path == "/api/semantic/inspect":
                 self.json_response(workspace.semantic_inspect(payload.get("design"), payload.get("base_dir", ".")))
+            elif self.path == "/api/semantic/fix":
+                self.json_response(workspace.semantic_fix(payload))
             elif self.path == "/api/save":
                 self.json_response(workspace.save(payload))
             elif self.path == "/api/generate":
@@ -384,7 +395,10 @@ class EditorHandler(BaseHTTPRequestHandler):
         except PermissionError as exc:
             self.json_response({"error": str(exc)}, 403)
         except (CopilotError, bdtool.DesignError, OSError, ValueError) as exc:
-            self.json_response({"error": str(exc)}, 400)
+            result = {"error": str(exc)}
+            if hasattr(exc, "diagnostic"):
+                result["diagnostics"] = [exc.diagnostic.to_dict()]
+            self.json_response(result, 400)
 
 
 def main(argv: list[str] | None = None) -> int:

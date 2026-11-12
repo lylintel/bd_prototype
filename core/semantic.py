@@ -1,7 +1,14 @@
+from copy import deepcopy
+import json
+
 import bdtool
+from core.design import DesignFormatError
 from core.diagnostics import issue
 from core.resolve import resolve
-from core.rules import e001
+from core.rules import e001, e002, e003, e004, e005, e006, e007, e008, w010
+
+
+RULES = (e001, e002, e003, e004, e005, e006, e007, e008, w010)
 
 
 def _plain(port):
@@ -21,42 +28,43 @@ def render(resolved):
     return bdtool.render_verilog(bdtool.Design(resolved.document["name"], ports, instances, nets, ()))
 
 
-def _generation_guard(resolved):
-    connected = set()
-    names = set(resolved.ports)
-    try:
-        bdtool._name(resolved.document.get("name"), "design")
-        for name in resolved.ports:
-            bdtool._name(name, "port")
-        for name, instance in resolved.instances.items():
-            bdtool._name(name, "instance")
-            if name in names or resolved.document["name"] in {instance.metadata.id, instance.metadata.id.removesuffix("_wrapper")}:
-                return False
-            names.add(name)
-        if len(resolved.instances) != len(resolved.document.get("instances", [])):
-            return False
-        for net in resolved.nets:
-            bdtool._name(net.name, "net")
-            if net.name in names or len(net.drivers) != 1 or not net.sinks:
-                return False
-            names.add(net.name)
-            for endpoint in net.endpoints:
-                if endpoint.key in connected:
-                    return False
-                connected.add(endpoint.key)
-        required = {f"@{name}" for name, port in resolved.ports.items() if port.direction == "output"}
-        required.update(f"{name}.{port}" for name, instance in resolved.instances.items()
-                        for port, shape in instance.ports.items() if shape.direction == "input")
-        return required <= connected
-    except bdtool.DesignError:
-        return False
+def _findings(resolved):
+    return [*[item for item in resolved.diagnostics if item.code not in {"E004", "E005"}],
+            *[item for rule in RULES for item in rule.check(resolved)]]
+
+
+def validate(document, library):
+    return _findings(resolve(document, library))
+
+
+def _identity(diagnostic):
+    raw = diagnostic.to_dict()
+    return json.dumps({key: raw[key] for key in ("code", "location", "params")}, sort_keys=True)
+
+
+def apply_fix(document, library, diagnostic):
+    if not isinstance(diagnostic, dict):
+        raise DesignFormatError(issue("D006", {}, reason="stale_fix"))
+    before = validate(document, library)
+    matching = next((item for item in before if item.fix is not None and
+                     all(item.to_dict().get(key) == diagnostic.get(key) for key in ("code", "location", "params", "fix"))), None)
+    if matching is None:
+        raise DesignFormatError(issue("D006", {}, reason="stale_fix"))
+    fix = matching.fix
+    candidate = deepcopy(document)
+    target = next(item for item in candidate["instances"] if item["name"] == fix["inst"])
+    target.setdefault("params", {})[fix["name"]] = fix["value"]
+    after = validate(candidate, library)
+    existing = {_identity(item) for item in before if item.severity == "error"}
+    remaining = {_identity(item) for item in after if item.severity == "error"}
+    if not remaining < existing:
+        raise DesignFormatError(issue("D006", matching.location, reason="unsafe_fix"))
+    return candidate
 
 
 def inspect_design(document, library):
     resolved = resolve(document, library)
-    findings = [*resolved.diagnostics, *e001.check(resolved)]
-    if not findings and not _generation_guard(resolved):
-        findings.append(issue("D004", {}, reason="connections_or_names"))
+    findings = _findings(resolved)
     valid = not any(item.severity == "error" for item in findings)
     return {"valid": valid, "diagnostics": [item.to_dict() for item in findings],
             "files": render(resolved) if valid else {},

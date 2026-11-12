@@ -101,6 +101,18 @@ class EditorTests(unittest.TestCase):
             result = self.workspace.semantic_inspect(document, ".")
         self.assertEqual(result["interfaces"]["instances"]["sync_0"]["clk"]["role"]["kind"], "clock")
 
+    def test_semantic_fix_revalidates_and_does_not_mutate_input(self):
+        self.data["instances"]["counter_0"]["parameters"]["WIDTH"] = 12
+        original = copy.deepcopy(self.data)
+        inspection = self.workspace.semantic_inspect(self.data, "examples")
+        diagnostic = next(item for item in inspection["diagnostics"] if item["code"] == "E001")
+        result = self.workspace.semantic_fix({"design": self.data, "base_dir": "examples", "diagnostic": diagnostic})
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["document"]["instances"][1]["params"]["WIDTH"], 12)
+        self.assertEqual(self.data, original)
+        with self.assertRaises(ValueError):
+            self.workspace.semantic_fix({"design": result["document"], "base_dir": "examples", "diagnostic": diagnostic})
+
     def test_rejects_paths_outside_workspace_and_invalid_layout(self):
         with self.assertRaisesRegex(bdtool.DesignError, "inside the workspace"):
             self.workspace.path("../outside.json")
@@ -139,6 +151,20 @@ class EditorTests(unittest.TestCase):
             semantic = json.loads(response.read())
             self.assertTrue(semantic["valid"])
             self.assertEqual(semantic["document"]["schema_version"], 2)
+            changed = copy.deepcopy(self.data)
+            changed["instances"]["counter_0"]["parameters"]["WIDTH"] = 12
+            diagnostic = self.workspace.semantic_inspect(changed, "examples")["diagnostics"][0]
+            fix_payload = {"design": changed, "base_dir": "examples", "diagnostic": diagnostic}
+            forged = copy.deepcopy(fix_payload)
+            forged["diagnostic"]["fix"]["value"] = 999
+            connection.request("POST", "/api/semantic/fix", json.dumps(forged), headers)
+            response = connection.getresponse()
+            self.assertEqual(response.status, 400)
+            self.assertEqual(json.loads(response.read())["diagnostics"][0]["code"], "D006")
+            connection.request("POST", "/api/semantic/fix", json.dumps(fix_payload), headers)
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertTrue(json.loads(response.read())["valid"])
             connection.request("POST", "/api/generate", payload, {**headers, "Origin": "https://example.com"})
             response = connection.getresponse()
             self.assertEqual(response.status, 403)

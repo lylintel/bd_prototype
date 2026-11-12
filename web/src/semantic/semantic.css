@@ -2,3 +2,10 @@
 .semantic-parameters .parameter-field input { width: 100%; min-width: 0; }
 .semantic-parameters .parameter-field small { overflow-wrap: anywhere; }
 .semantic-parameters .parameter-field .icon-button { width: 28px; height: 28px; }
+.semantic-diagnostic { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; border-bottom: 1px solid #dce2e5; padding: 5px 0; }
+.semantic-diagnostic .diagnostic-error { margin: 0; width: 100%; min-width: 0; }
+.semantic-diagnostic .diagnostic-error code { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.semantic-diagnostic .diagnostic-error code b { margin-right: 8px; }
+.semantic-diagnostic.warning .diagnostic-error { color: #896015; background: #fff9e9; border-color: #dfc795; }
+.semantic-diagnostic .small-command { white-space: nowrap; }
+@media (max-width: 480px) { .semantic-diagnostic { grid-template-columns: minmax(0, 1fr); } .semantic-diagnostic .small-command { justify-self: end; } }
