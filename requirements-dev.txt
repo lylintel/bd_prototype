@@ -1,6 +1,7 @@
 -r requirements-ip.txt
 -r requirements-parser.txt
 -r requirements-pyslang.txt
+-r requirements-ai.txt
 pytest==9.0.2
 ruff==0.14.14
 PyYAML==6.0.3

@@ -57,6 +57,11 @@ class FakeSession:
                 self.options["tools"][0].handler(SimpleNamespace(arguments={}))
                 await asyncio.sleep(0)
             return
+        if prompt == "catalog query":
+            tools = {tool.name: tool for tool in self.options["tools"]}
+            result = tools["bd_catalog"].handler(SimpleNamespace(arguments={"query": "bd_uart_rx UART 接收"}))
+            self.emit("assistant.message", content=result.text_result_for_llm)
+            return
         if prompt in ("metadata only", "typed proposal"):
             tools = {tool.name: tool for tool in self.options["tools"]}
             name = "bd_read_source" if prompt == "metadata only" else "bd_propose"
@@ -280,6 +285,19 @@ class CopilotTests(unittest.TestCase):
             self.assertTrue(proposal["requires_confirmation"])
             self.assertFalse(any(item["type"] == "design_update" for item in events))
             self.assertFalse((root / "build").exists())
+
+    def test_catalog_tool_returns_only_relevant_metadata_cards(self):
+        with tempfile.TemporaryDirectory(prefix="bd-search-") as directory:
+            root = Path(directory)
+            shutil.copytree(ROOT / "examples", root / "examples")
+            shutil.copytree(ROOT / "ip_library/builtin", root / "ip_library/builtin")
+            self.bridge.workspace = Workspace(root, "examples/counter_compare.json")
+            self.bridge.connect()
+            events = self.drain(self.send("catalog query", share_context=True, allow_design_changes=True, design=self.design, base_dir="examples"))
+            result = json.loads(next(item["content"] for item in events if item["type"] == "message"))
+            self.assertLessEqual(len(result["ips"]), 8)
+            self.assertEqual(result["ips"][0]["id"], "bd_uart_rx")
+            self.assertTrue(all(set(item) == {"id", "version", "ports", "parameters"} for item in result["ips"]))
 
     def test_cancel_aborts_sdk_and_rejects_concurrent_requests(self):
         self.bridge.connect()

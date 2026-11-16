@@ -32,6 +32,7 @@ jobs:
             requirements-ip.txt
             requirements-parser.txt
             requirements-pyslang.txt
+            requirements-ai.txt
       - uses: actions/setup-node@v4
         with:
           node-version: "24"

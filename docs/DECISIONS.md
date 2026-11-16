@@ -263,3 +263,14 @@ GUI 的 /state、/load 和保存后返回值现统一来自 semantic_inspect，�
 - P3.2-P3.4 用元数据检索和可替换 LLMClient 建立回路；反馈仅 code+params/location 和受影响实例的解析端口摘要，最多三轮。P3.5 完成逐条选择、颜色 diff、接受/放弃和单步撤销。P3.6/P3.7 验证注入、权限、缺失 IP 与 20 例无总线评测。所有测试用 mock/回放，真实模型评测仅手动。
 
 P2.6 的 main 合并提交 5cc18aa 已通过本地完整门禁与 [CI 43815584515](https://github.com/lylintel/bd_prototype/actions/runs/43815584515) 六项检查（含浏览器及阻塞预算步骤）；Phase 3 以此为基线。
+
+## D024：P3.2 元数据检索与共用查询集
+
+- 使用 rank-bm25 0.2.2 的 BM25Plus，不手写评分引擎；BM25Plus 在单文档/很小目录中不会出现 Okapi 的负 IDF 排序边界。额外用词项倒排表过滤完全不匹配的 IP，不能把基础分误当匹配。
+- 索引 id、显示名、描述、标签、端口名和参数名。标识符保留整体并拆分下划线，中文按字符及双字片段匹配。用户明确写出的完整 IP id 优先，其余按 BM25 分数及 id/version 稳定排序；不针对评测 case 特判。
+- 第一轮纯 BM25 漏掉两个明确命名的目标，未修改查询/门槛；通用 id 优先规则后，19/19 个有目标 IP 的查询 top-8 全命中。第 20 个为缺失 IP 陷阱，不计入命中分母。500 IP 的 11 次完整查询中位数 1.331ms、最大 2.146ms；索引构建不计入查询时间，没有查询结果缓存。
+- 卡片只含 id/version/parameters/ports，不带描述正文、源码路径或 RTL。描述参与检索但不进入模型卡片。卡片/紧凑网表实现集中在 ai/context.py，兼容 bdai 的原函数导出。
+- 旧 bd_catalog 也使用共用 top-8 检索，可选 query，缺省采用本轮用户请求；兼容定义哈希只包含返回的 IP，不再返回整个库。SDK 回归验证该范围与隐私边界。
+- SearchIndex 提供 search_ip(query,k=8)，默认最多 8、上限 32；目录上限 10000，重复 id/version 拒绝。backend 参数预留后端选择，当前仅 bm25，不实现 embedding。
+- requirements-ai 按 Python 版本固定 NumPy：3.10/3.11 使用 2.2.6，3.12+ 使用当前实测 2.5.5（其 Requires-Python 为 >=3.12）。开发及 Copilot 依赖包含 AI 依赖，CI 缓存跟踪该文件；纯 metadata/context 模块不提前导入 BM25。
+- tests/ai_eval/cases.yaml 先建立 20 条共用查询种子（10 简单、7 中等、3 陷阱），明确 3 个表达式场景、注入及缺失 IP；没有接口级端点用例。其完整拓扑期望、回放和评分在 P3.7 完成，目前不把检索测试称为完整模型评测。

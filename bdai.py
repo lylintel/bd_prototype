@@ -9,6 +9,7 @@ from time import monotonic
 from uuid import uuid4
 
 import bdtool
+from ai.context import compact_design as compact_design, metadata_card as metadata_card
 from bdip import migrate_legacy_modules
 from bdsemantic import canvas_document, prepare
 from core.design import DesignFormatError, check_document
@@ -49,22 +50,6 @@ def prepare_context(workspace, raw, base_dir):
             item = replace(item, source=relocated(item.source), additional_sources=tuple(relocated(source) for source in item.additional_sources), base_dir=base)
             metadata[(item.id, item.version)] = item
     return document, tuple(metadata[key] for key in sorted(metadata))
-
-
-def compact_design(document, library):
-    resolved = resolve(document, library)
-    return {"name": document["name"], "ports": {name: shape.to_dict() for name, shape in resolved.ports.items()},
-            "instances": [{"name": item["name"], "ip": item["ip"], "params": item.get("params", {}),
-                           "resolved_params": resolved.instances[item["name"]].parameters if item["name"] in resolved.instances else {},
-                           "ports": {name: shape.to_dict() for name, shape in resolved.instances[item["name"]].ports.items()}
-                           if item["name"] in resolved.instances else {}} for item in document["instances"]],
-            "nets": deepcopy(document["nets"])}
-
-
-def metadata_card(metadata):
-    return {"id": metadata.id, "version": metadata.version,
-            "parameters": [parameter.to_dict() for parameter in metadata.parameters],
-            "ports": [port.to_dict() for port in metadata.ports]}
 
 
 def _view(document, library, errors=()):

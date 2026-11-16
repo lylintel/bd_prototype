@@ -252,7 +252,7 @@ class CopilotBridge:
             "bd_validate": "Validate the current shared design with the local core. Returns diagnostics and port interfaces, no file writes.",
             "bd_preview": "Preview semantic diagnostics and port metadata; no RTL bodies or file writes.",
             "bd_workflow": "Read the trusted workflow skill, exact specification/plan contracts, original design hash and user-message evidence IDs. Start here for design changes.",
-            "bd_catalog": "Read authorized current/project IP definitions, source hashes, metadata conflicts and documentation. Never invent an IP or override a conflicting definition.",
+            "bd_catalog": "Search actual IP metadata and return at most eight relevant cards. Query defaults to the current user request; no RTL bodies are returned.",
             "bd_read_source": "Compatibility name: read only parameter and port metadata of one registered IP. RTL bodies are not available.",
             "bd_requirements": "Record a specification with requirement IDs, exact user quotes, all required dimensions, acceptance methods and open questions. Return blocking issues without inventing missing values.",
             "bd_plan": "Atomically preflight an explicit operation plan against the original design hash, known IP definitions, traced requirements and review obligations. Maximum three attempts per user turn.",
@@ -260,6 +260,7 @@ class CopilotBridge:
             "bd_propose": "Preview up to 200 typed operations with the semantic validator. A human must accept; no tool can confirm or apply changes.",
         }
         schemas = {
+            "bd_catalog": {"query": {"type": "string", "maxLength": 8000}},
             "bd_read_source": {"module": {"type": "string"}},
             "bd_requirements": {"specification": {"type": "object"}},
             "bd_plan": {"plan": {"type": "object"}},
@@ -293,16 +294,21 @@ class CopilotBridge:
                         if turn.workflow is None:
                             turn.workflow = DesignRun(self.workspace, context, conversation.evidence, turn.id)
                         workflow = turn.workflow
-                        required = set(schemas.get(tool_name, {})) - ({"summary"} if tool_name == "bd_propose" else set())
-                        arguments = bdtool._fields(invocation.arguments or {}, "tool.arguments", required, {"summary"} if tool_name == "bd_propose" else set())
+                        optional = {"summary"} if tool_name == "bd_propose" else {"query"} if tool_name == "bd_catalog" else set()
+                        required = set(schemas.get(tool_name, {})) - optional
+                        arguments = bdtool._fields(invocation.arguments or {}, "tool.arguments", required, optional)
                         if tool_name == "bd_workflow":
                             result = {"skill": workflow_instructions(), "contract": OPS_SCHEMA,
                                 "base_hash": workflow.base_hash, "user_evidence": conversation.evidence,
                                 "previous_specification": conversation.specification, "dimensions": DIMENSIONS, "checks": CHECKS}
                         elif tool_name == "bd_catalog":
+                            from ai.retrieval import SearchIndex
+
                             _, library = prepare_context(self.workspace, context["document"], context["base_dir"])
-                            result = {"ips": [metadata_card(item) for item in library],
-                                      "legacy_definition_hashes": {name: item["definition_hash"] for name, item in workflow.catalog["modules"].items()}}
+                            cards = SearchIndex(library).search_ip(arguments.get("query") or conversation.evidence[-1]["text"])
+                            identifiers = {item["id"] for item in cards}
+                            result = {"ips": cards,
+                                      "legacy_definition_hashes": {name: item["definition_hash"] for name, item in workflow.catalog["modules"].items() if name in identifiers}}
                         elif tool_name == "bd_read_source":
                             _, library = prepare_context(self.workspace, context["document"], context["base_dir"])
                             matches = [metadata_card(item) for item in library if item.id == arguments["module"]]
@@ -348,7 +354,7 @@ class CopilotBridge:
                     text = json.dumps({"code": exc.diagnostic.code, "params": exc.diagnostic.params}) if hasattr(exc, "diagnostic") else str(exc)
                     return self._sdk.Result(result_type="failure", text_result_for_llm=text)
             tools.append(self._sdk.Tool(name=name, description=descriptions[name], handler=invoke,
-                parameters={"type": "object", "properties": schemas.get(name, {}), "required": [key for key in schemas.get(name, {}) if key != "summary"], "additionalProperties": False,
+                parameters={"type": "object", "properties": schemas.get(name, {}), "required": [key for key in schemas.get(name, {}) if key not in {"summary", "query"}], "additionalProperties": False,
                             **({"$defs": OPS_SCHEMA["$defs"]} if name == "bd_propose" else {})},
                 skip_permission=True, defer="never"))
         return tools

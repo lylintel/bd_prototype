@@ -65,3 +65,19 @@ tests/semantics/test_ops.py 对六类操作各至少四条契约测试，并覆�
 P3.1 完整门禁：493 项 Python、68 子测试、40 项前端单测、12 条真实浏览器流程通过，Ruff/ESLint/typecheck/build 通过。
 日志 build/phase3-p31-check.log；本机独立性能中位数 371.766ms、最大 428.906ms，按用户批准策略告警，门禁退出 0，并不宣称该样本低于中位数预算。
 桌面与 390px 手机提案截图已检查。服务端 ops 与返回视图独立复制，回归测试防止返回对象修改待确认内容。
+
+## P3.2 元数据检索
+
+[ai/retrieval.py](../ai/retrieval.py) 的 SearchIndex(library).search_ip(query,k=8) 使用 BM25Plus，
+索引名称、描述、标签、端口及参数名。中文字符/双字片段与标识符下划线拆分并用；明确 id 优先，不匹配任何词项则不返回候选。
+相同分数按 id/version 排序，版本始终显式保留。目录上限 10000，查询最长 8000 字符，k 为 1–32；embedding 未实现。
+
+返回卡片只包含 id/version/parameters/ports，描述和源码不进入卡片。旧 SDK 的 bd_catalog 已采用同一 top-8 边界。
+安装依赖使用 `python -m pip install -r requirements-ai.txt`，开发/Copilot 安装已包含它。
+
+共用 20 条查询种子中，19 个有目标 IP 的查询均在 top-8 命中全部目标；缺失 IP 案例不计分母。
+500 IP 查询 11 次，中位数 1.331ms、最大 2.146ms，包含分词、评分、排序及卡片生成，不含索引构建。
+这些是检索回归指标，不是真实模型生成质量指标；20 条用例的完整期望与回放仍待 P3.7。
+
+P3.2 完整门禁：498 项 Python、68 子测试、40 项前端单测、12 条浏览器流程，lint/typecheck/build 全通过。
+日志 build/phase3-p32-check.log；本机独立校验性能中位数 265.503ms、最大 383.646ms。
