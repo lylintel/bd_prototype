@@ -1,5 +1,18 @@
 import { hasMessage, t } from "../i18n.js";
 
+export function scheduleInspection(request, onResult, onError) {
+  const controller = new AbortController();
+  const timer = setTimeout(async () => {
+    try {
+      const result = await request(controller.signal);
+      if (!controller.signal.aborted) onResult(result);
+    } catch (error) {
+      if (!controller.signal.aborted) onError(error);
+    }
+  }, 150);
+  return () => { clearTimeout(timer); controller.abort(); };
+}
+
 export function parameterValue(text) {
   const value = text.trim();
   if (!value || value.length > 4096) throw new Error(t("semantic.parameterInvalid"));

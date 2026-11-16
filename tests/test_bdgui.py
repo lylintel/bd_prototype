@@ -84,6 +84,57 @@ class EditorTests(unittest.TestCase):
         self.assertIn(".WIDTH(12)", self.workspace.generate({"design": saved["design"], "base_dir": "designs"})["files"]["example_bd.v"])
         self.assertEqual(self.data["instances"]["counter_0"]["parameters"]["WIDTH"], 8)
 
+    def test_gui_load_uses_semantics_not_legacy_inspection(self):
+        with patch.object(self.workspace, "inspect", side_effect=AssertionError("GUI must use semantic validation")):
+            loaded = self.workspace.load(self.workspace.design_path)
+        self.assertTrue(loaded["inspection"]["valid"])
+        self.assertEqual(loaded["inspection"]["document"]["schema_version"], 2)
+
+    def test_all_historical_design_fixtures_roundtrip_without_information_loss(self):
+        from bdsemantic import prepare
+        from core.design import migrate
+
+        shutil.copytree(ROOT / "src", self.root / "src")
+        shutil.copytree(ROOT / "ip_library/builtin", self.root / "ip_library/builtin")
+        (self.root / "designs").mkdir()
+        for name in ("web_demo.json", "web_demo.layout.json"):
+            shutil.copy2(ROOT / "designs" / name, self.root / "designs" / name)
+
+        def canonical(document, base):
+            result = copy.deepcopy(document)
+            for metadata in result.get("project_ips", []):
+                for source in [metadata["source"], *metadata.get("additional_sources", [])]:
+                    source["path"] = str((base / source["path"]).resolve())
+            result["project_ips"] = sorted(result.get("project_ips", []), key=lambda item: (item["id"], item["version"]))
+            return result
+
+        fixtures = ("examples/counter_compare.json", "examples/uart_loopback.json", "examples/builtin_counter.json",
+                    "src/ip_catalog.json", "designs/web_demo.json", "examples/semantic/connections.json")
+        for index, filename in enumerate(fixtures):
+            original_bytes = (self.root / filename).read_bytes()
+            loaded = self.workspace.load(filename)
+            prepared, library = prepare(self.workspace, loaded["design"], loaded["base_dir"])
+            versions = (3,) if prepared["schema_version"] == 3 else (2, 3)
+            for version in versions:
+                with self.subTest(fixture=filename, version=version):
+                    document = migrate(prepared, library, target_version=version)
+                    document["project_ips"] = [metadata.to_dict() for metadata in library]
+                    base = self.root / loaded["base_dir"]
+                    fixture = base / f"roundtrip_{index}_v{version}.json"
+                    fixture.write_text(json.dumps(document), encoding="utf-8")
+                    source = self.workspace.load(self.workspace.relative(fixture))
+                    saved = self.workspace.save({"design": source["design"], "base_dir": source["base_dir"],
+                                                 "path": f"designs/roundtrip/{index}_v{version}.json", "layout": loaded["layout"]})
+                    reopened = self.workspace.load(saved["path"])
+                    self.assertEqual(canonical(document, base), canonical(reopened["design"], self.root / reopened["base_dir"]))
+                    self.assertEqual(reopened["layout"], loaded["layout"])
+                    for field in ("valid", "diagnostics", "files", "interfaces", "parameters"):
+                        self.assertEqual(source["inspection"][field], reopened["inspection"][field], field)
+                    saved_again = self.workspace.save({"design": reopened["design"], "base_dir": reopened["base_dir"],
+                                                      "path": f"designs/roundtrip/deeper/{index}_v{version}.json", "layout": reopened["layout"]})
+                    self.assertEqual(canonical(document, base), canonical(saved_again["design"], self.root / saved_again["base_dir"]))
+            self.assertEqual((self.root / filename).read_bytes(), original_bytes)
+
     def test_semantic_inspect_checks_sources_before_validation(self):
         document = self.workspace.semantic_inspect(self.data, "examples")["document"]
         document["project_ips"][0]["source"]["sha256"] = "0" * 64
