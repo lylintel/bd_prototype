@@ -49,6 +49,19 @@ jobs:
       - name: Install browser for offline UI tests
         working-directory: web
         run: npx playwright install --with-deps chromium
+      - name: Collect five isolated performance runs
+        id: performance
+        run: python -m scripts.perf_gate --runs 5 --output build/performance-ci.json
+      - name: Enforce approved performance policy
+        continue-on-error: ${{ steps.performance.outputs.non_blocking == 'true' }}
+        run: python -m scripts.perf_gate --check build/performance-ci.json
+      - name: Publish performance samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-python-${{ matrix.python }}
+          path: build/performance-ci.json
+          if-no-files-found: warn
       - name: Run the same local checks
         run: python scripts/check.py
 

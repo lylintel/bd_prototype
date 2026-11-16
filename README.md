@@ -45,11 +45,16 @@ GUI 与新语义 API 支持明确的 IP 版本引用、参数表达式、可定�
 格式、限制与迁移见 [docs/design-semantics.md](docs/design-semantics.md)。v2/v3 不能直接交给只接受旧格式的 CLI。
 
 自动校验防抖为 150ms。性能生成器可用 `python -m scripts.synthetic_design --instances 2000 --connections 4 --samples 11` 运行；
-P2.6 的本地完整性能门禁尚未稳定通过，独立 CLI 通过不等于完整验收通过，实测数据和后续预算建议见 [D022](docs/DECISIONS.md#d022p26-有限优化与性能验收阻塞2026-11-12)。
+性能测量使用新子进程，每样本前收集 GC。本机预算超限仅告警，`scripts/check.py --strict-perf` 可强制失败；
+CI 五次测量与条件非阻塞策略、历史归因数据见 [docs/DECISIONS.md](docs/DECISIONS.md) 的 D022 补充（由用户批准，预算仍为 300/600ms）。
 
 ## 开发检查
 
 CI 与本地共用 [scripts/check.py](scripts/check.py)，依次执行 Ruff、全部 Python/golden 测试、ESLint、应用 JS/JSX 类型检查、前端单测、生产构建和隔离真实后端的 Playwright 验收。任一步失败立即返回非零状态。检查不请求真实 LLM，不需要登录或 SDK；只使用本机临时 HTTP 服务和 mock。
+
+功能检查完成后在新进程运行独立性能基准；预算超限默认醒目告警而不改变本机退出码，测量程序错误仍失败。
+追加 `--strict-perf` 可将预算超限设为失败。CI 在固定 Ubuntu runner 类别上先采集五次（每次 11 样本），
+逐次数据写 job summary 并归档；任一次超限时仅性能预算步骤自动非阻塞，功能检查始终阻塞。
 
 准备 Python 3.10+、Node.js 24 和 Icarus Verilog（`iverilog`、`vvp` 必须在 PATH；Ubuntu 可用 `sudo apt-get install iverilog`），已有虚拟环境后安装依赖：
 

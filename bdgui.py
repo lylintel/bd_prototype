@@ -185,7 +185,7 @@ class Workspace:
             "path": self.relative(path),
             "base_dir": self.relative(path.parent) or ".",
             "layout": check_layout(layout),
-            "inspection": (self.semantic_inspect if versioned else self.inspect)(data, self.relative(path.parent) or "."),
+            "inspection": self.semantic_inspect(data, self.relative(path.parent) or "."),
         }
 
     def list_designs(self) -> list[str]:

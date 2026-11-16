@@ -1,8 +1,16 @@
 import argparse
+import faulthandler
+import gc
+import hashlib
 import json
+import math
+import os
+from pathlib import Path
 import platform
 import random
 from statistics import median
+import subprocess
+import sys
 from time import perf_counter
 
 from bdip import IpMetadata
@@ -39,20 +47,79 @@ def synthetic_design(*, instance_count=2000, connections_per_instance=4, seed=20
     return {"schema_version": 2, "name": "synthetic_bd", "ports": {}, "instances": instances, "nets": nets}, (metadata,)
 
 
-def benchmark(*, instance_count=2000, connections_per_instance=4, seed=20261112, samples=11):
-    if type(samples) is not int or not 10 <= samples <= 100:
-        raise ValueError("samples must be between 10 and 100")
+def processor_name():
+    if sys.platform.startswith("linux"):
+        try:
+            for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
+                key, separator, value = line.partition(":")
+                if separator and key.strip() == "model name":
+                    return value.strip()
+        except OSError:
+            pass
+    return platform.processor() or platform.machine()
+
+
+def runtime_hooks():
+    monitoring = getattr(sys, "monitoring", None)
+    coverage = sys.modules.get("coverage")
+    coverage_class = getattr(coverage, "Coverage", None)
+    return {"trace": type(sys.gettrace()).__name__ if sys.gettrace() is not None else None,
+            "profile": type(sys.getprofile()).__name__ if sys.getprofile() is not None else None,
+            "faulthandler": faulthandler.is_enabled(),
+            "coverage_active": bool(coverage_class and coverage_class.current()),
+            "monitoring": {str(index): {"name": monitoring.get_tool(index), "events": monitoring.get_events(index)}
+                           for index in range(6) if monitoring and monitoring.get_tool(index) is not None},
+            "loaded_instrumentation": sorted(name for name in ("coverage", "pytest_cov", "pytest", "debugpy", "pydevd", "ddtrace") if name in sys.modules),
+            "instrumentation_env_present": [name for name in ("COVERAGE_PROCESS_START", "PYTEST_ADDOPTS", "PYTEST_DISABLE_PLUGIN_AUTOLOAD") if os.environ.get(name)]}
+
+
+def benchmark(*, instance_count=2000, connections_per_instance=4, seed=20261112, samples=11, gc_mode="on"):
+    if type(samples) is not int or not 11 <= samples <= 100:
+        raise ValueError("samples must be between 11 and 100")
+    if gc_mode not in ("on", "off"):
+        raise ValueError("gc_mode must be on or off")
     document, library = synthetic_design(instance_count=instance_count, connections_per_instance=connections_per_instance, seed=seed)
+    fingerprint = hashlib.sha256(json.dumps({"design": document, "library": [item.to_dict() for item in library]}, sort_keys=True).encode()).hexdigest()
     durations = []
-    for _ in range(samples):
-        started = perf_counter()
-        diagnostics = validate(document, library)
-        durations.append((perf_counter() - started) * 1000)
-        if diagnostics:
-            raise AssertionError([item.to_dict() for item in diagnostics])
-    return {"instances": instance_count, "connections_per_instance": connections_per_instance, "nets": len(document["nets"]),
+    was_enabled = gc.isenabled()
+    try:
+        (gc.enable if gc_mode == "on" else gc.disable)()
+        for _ in range(samples):
+            gc.collect()
+            started = perf_counter()
+            diagnostics = validate(document, library)
+            durations.append((perf_counter() - started) * 1000)
+            if diagnostics:
+                raise AssertionError([item.to_dict() for item in diagnostics])
+    finally:
+        (gc.enable if was_enabled else gc.disable)()
+    return {"schema_version": 1, "instances": instance_count, "connections_per_instance": connections_per_instance, "nets": len(document["nets"]),
             "seed": seed, "samples_ms": durations, "min_ms": min(durations), "median_ms": median(durations), "max_ms": max(durations),
-            "python": platform.python_version(), "platform": platform.platform(), "processor": platform.processor()}
+            "python": platform.python_version(), "platform": platform.platform(), "processor": processor_name(),
+            "cpu_count": os.cpu_count(), "pid": os.getpid(), "gc_mode": gc_mode, "collect_before_sample": True,
+            "design_sha256": fingerprint, "hooks": runtime_hooks()}
+
+
+def run_isolated(*, instance_count=2000, connections_per_instance=4, seed=20261112, samples=11, gc_mode="on"):
+    command = [sys.executable, "-m", "scripts.synthetic_design", "--instances", str(instance_count), "--connections", str(connections_per_instance),
+               "--seed", str(seed), "--samples", str(samples), "--gc", gc_mode]
+    completed = subprocess.run(command, cwd=Path(__file__).resolve().parents[1], capture_output=True, encoding="utf-8",
+                               timeout=120, env={**os.environ, "PYTHONUTF8": "1"})
+    try:
+        result = json.loads(completed.stdout)
+        durations = result["samples_ms"]
+        expected = {"schema_version": 1, "instances": instance_count, "connections_per_instance": connections_per_instance,
+                    "nets": instance_count * connections_per_instance, "seed": seed, "gc_mode": gc_mode, "collect_before_sample": True}
+        if (not isinstance(durations, list) or len(durations) != samples
+                or any(type(value) not in (float, int) or not math.isfinite(value) or value < 0 for value in durations)
+                or any(result.get(key) != value for key, value in expected.items())
+                or result["median_ms"] != median(durations) or result["max_ms"] != max(durations)
+                or result["budget_passed"] is not (result["median_ms"] < 300 and result["max_ms"] < 600)
+                or completed.returncode != (0 if result["budget_passed"] else 1)):
+            raise ValueError("invalid benchmark result")
+    except (ValueError, KeyError, TypeError) as error:
+        raise RuntimeError(f"Benchmark subprocess failed: {completed.stderr[-2000:]}") from error
+    return result
 
 
 def main(argv=None):
@@ -61,12 +128,14 @@ def main(argv=None):
     parser.add_argument("--connections", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20261112)
     parser.add_argument("--samples", type=int, default=11)
+    parser.add_argument("--gc", choices=("on", "off"), default="on")
     parser.add_argument("--median-ms", type=float, default=300)
     parser.add_argument("--max-ms", type=float, default=600)
     args = parser.parse_args(argv)
-    result = benchmark(instance_count=args.instances, connections_per_instance=args.connections, seed=args.seed, samples=args.samples)
+    result = benchmark(instance_count=args.instances, connections_per_instance=args.connections, seed=args.seed, samples=args.samples, gc_mode=args.gc)
+    result["budget_passed"] = result["median_ms"] < args.median_ms and result["max_ms"] < args.max_ms
     print(json.dumps(result, indent=2))
-    return 0 if result["median_ms"] < args.median_ms and result["max_ms"] < args.max_ms else 1
+    return 0 if result["budget_passed"] else 1
 
 
 if __name__ == "__main__":

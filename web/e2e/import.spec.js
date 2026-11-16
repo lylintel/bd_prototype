@@ -306,3 +306,32 @@ test("concat settings retain member order and explicit slices", async ({ page },
     { inst: "counter_0", port: "count", slice: [3, 0] }, { const: "4'd0" },
   ] });
 });
+
+test("initial badge and diagnostics use semantic validation even when legacy inspection passes", async ({ page }, testInfo) => {
+  const state = await (await page.request.get(`${server.url}/api/state`)).json();
+  const headers = { "X-BD-Token": state.token, Origin: server.url };
+  const source = "module counter #(parameter WIDTH=8)(input clk, input rst, output [WIDTH-1:0] count); assign count={WIDTH{1'b0}}; endmodule\n";
+  const imported = await page.request.post(`${server.url}/api/ip/import`, { headers, data: {
+    action: "commit", files: [{ name: "counter.v", content_b64: Buffer.from(source).toString("base64") }], license: "MIT",
+  } });
+  expect(imported.ok()).toBe(true);
+  await imported.text();
+  const legacy = await (await page.request.post(`${server.url}/api/inspect`, { headers, data: { design: state.design, base_dir: state.base_dir } })).json();
+  expect(legacy.valid).toBe(true);
+  const loaded = await (await page.request.get(`${server.url}/api/state`)).json();
+  expect(loaded.inspection.valid).toBe(false);
+  expect(loaded.inspection.diagnostics.some((item) => item.code === "E005" && item.severity === "error")).toBe(true);
+  const requests = [];
+  page.on("request", (request) => requests.push(new URL(request.url()).pathname));
+  await openEditor(page);
+  await expect(page.locator('.semantic-diagnostic[data-code="E005"]').first()).toBeVisible();
+  const badge = page.getByRole("button", { name: "校验设计", exact: true });
+  await expect(badge).toContainText("待修复");
+  await badge.click();
+  await expect(badge).toContainText("待修复");
+  await expect(page.locator(".diagnostic-summary")).not.toHaveClass(/success/);
+  await expect(page.getByRole("button", { name: "生成 HDL", exact: true })).toBeDisabled();
+  expect(requests).toContain("/api/semantic/inspect");
+  expect(requests).not.toContain("/api/inspect");
+  await page.screenshot({ path: testInfo.outputPath("semantic-badge-error.png") });
+});

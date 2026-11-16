@@ -1,8 +1,8 @@
 # Phase 2A 实施报告
 
-日期：2026-11-12。范围：开工前补丁、P2.0、P2.1、P2.2、P2.3、P2.6。
+初版：2026-11-12；测量与兼容收尾更新：2026-11-16。范围：开工前补丁、P2.0、P2.1、P2.2、P2.3、P2.6。
 
-## 结论
+## 2026-11-12 结论（历史）
 
 P2.1/P2.2/P2.3 功能及兼容验收完成。P2.6 的纯校验接口、150ms 防抖、可复用基准与有限优化已提交独立分支，
 但本地完整测试中的性能门禁仍失败，**不能宣布 Phase 2A 全部验收通过**。
@@ -96,3 +96,48 @@ cProfile、已核实的组合缓存/索引、唯一追加优化轮次和预算�
 3. 2B 接口分组建议先 AXI-Stream/APB，再 AXI-Lite；本轮没有新增协议级连接或自动归组。
 4. 仍不支持 inout 集成、任意 HDL 表达式端点、同名模块多版本链接；不是时序、综合、CDC 或板级签核工具。
 5. 现有 Vite use-client/较大 chunk 提示仍在，未通过修改构建警告阈值掩盖；渲染性能属于后续工作。
+
+## 2026-11-16 收尾
+
+本机完整 scripts/check.py 已通过：453 项 Python、68 子测试、38 项前端单测、11 条真实浏览器流程，
+Ruff/ESLint/typecheck/build 全绿；新进程性能中位数 298.538ms、最大 522.127ms。本轮 core 差异为空。
+日志 build/phase2-p26-close-check.log，性能 JSON 为 build/performance.json。远端五次采样及合并结果另行记录。
+
+用户批准调整测量/门禁，不再优化校验器：正式测量在新子进程中执行独立 CLI，每样本前 GC 收集，至少 11 次，
+不删除首样本，预算仍为 300/600ms。本机超限告警，--strict-perf 可失败；CI 五次测量逐次写 summary，
+任一次超限则仅预算步骤非阻塞，功能测试/测量异常不降级。归因原始数据与因果判断见 DECISIONS D022 补充。
+
+### 校验路径对照
+
+| 入口或显示 | 驱动路径 | 旧校验是否参与 GUI 状态 |
+| --- | --- | --- |
+| 首次 /api/state、打开 /api/load | Workspace.load → semantic_inspect → prepare → core.semantic.inspect_design | 否 |
+| 保存后刷新状态 | save → load → semantic_inspect | 否 |
+| 150ms 自动检查 | /api/semantic/inspect → 同一新语义路径 | 否 |
+| 顶栏手动校验 | validateNow → /api/semantic/inspect | 否 |
+| 顶栏通过/待修复、诊断面板 | 同一个 inspection 的 valid 与结构化 diagnostics，检查中有独立状态 | 否 |
+| 参数、JSON、连接编辑和显式修复 | 新语义检查/修复后更新同一 inspection | 否 |
+| /api/inspect、原 CLI 和 P0.2 基线 | 原 bdtool.validate_design/Workspace.inspect | 仅兼容，不用于 GUI 状态 |
+
+真实后端 Playwright 新增同名 IP 冲突用例，证明旧接口通过并不导致 GUI 通过；首次加载即 E005，
+顶栏待修复、诊断面板非 success、生成禁用，手动检查也不调用旧接口。未使用伪造校验响应。
+
+### 历史夹具清单
+
+这里的 v1 指无 schema_version 的旧设计，IP 元数据自身的 schema_version=1 不是设计 v1。
+
+| 历史设计文件/夹具族 | 输入格式 | 已测试的往返 |
+| --- | --- | --- |
+| examples/counter_compare.json | v1 | 加载→显式迁移 v2/v3→保存→再加载→再次保存至更深目录 |
+| examples/uart_loopback.json | v1 | 同上，包含 vendor 依赖路径 |
+| examples/builtin_counter.json | v1 | 同上，包含内置 IP 版本与角色 |
+| src/ip_catalog.json | v1 | 同上，保留空画布中未实例化的完整项目 IP 目录 |
+| designs/web_demo.json + .layout.json | v1 | 同上，保留非默认 THRESHOLD=19 及独立布局 |
+| examples/semantic/connections.json | v3 | 加载→同版本迁移→保存→再加载→深目录保存，保留全部表达式 |
+| 上述 v1 的 v2 派生历史格式、参数表达式用例 | v2 | 完整文档/metadata/角色/参数/布局/诊断/HDL 对比 |
+| tests/semantics/test_connections.py 五种历史场景 | v3 | slice、constant、concat、partial_sink、concat_sink 均加载→保存→再加载并保持 HDL |
+| 非法 JSON/重复键/NaN/未知版本/非法形状 | 拒绝夹具 | 原拒绝测试留在 CI；不宣称非法输入可以成功无损保存 |
+
+往返由 tests/test_bdgui.py 的历史夹具测试和既有参数/表达式测试执行，普通 pytest 即包含，因此随 CI 运行。
+完整文档比较仅将源码相对路径解析为实际同一文件，并按 id/version 比较项目快照集合；实例、网络和表达式顺序不被归一化。
+同时比较角色、参数、布局、诊断、解析接口及 HDL 字节，并验证原文件没有被写回。
