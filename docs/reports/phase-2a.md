@@ -100,6 +100,8 @@ cProfile、已核实的组合缓存/索引、唯一追加优化轮次和预算�
 
 ## 2026-11-16 收尾
 
+P2.6 已按用户批准的测量/门禁策略完成收尾并合入 main（5cc18aa）。合并后 [CI 43815584515](https://github.com/lylintel/bd_prototype/actions/runs/43815584515) 六项全部成功，含真实浏览器与预算检查；本机完整门禁亦通过。历史进程内测量的成因仍保持“未知”，没有继续优化校验器。
+
 本机完整 scripts/check.py 已通过：453 项 Python、68 子测试、38 项前端单测、11 条真实浏览器流程，
 Ruff/ESLint/typecheck/build 全绿；新进程性能中位数 298.538ms、最大 522.127ms。本次收尾相对已评审分支的 core 差异为空。
 日志 build/phase2-p26-close-check.log，性能 JSON 为 build/performance.json。

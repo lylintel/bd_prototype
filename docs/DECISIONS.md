@@ -250,3 +250,16 @@ GUI 的 /state、/load 和保存后返回值现统一来自 semantic_inspect，�
 每批的完整 11 个样本、设计指纹与钩子信息已上传对应 job 的 artifact，并写入 job summary；
 本机副本位于 build/perf-ci/43813514485/python-{3.10,3.14}.json。首次匿名归档列表请求遇到代理 504，
 通过同一代理使用现有授权重试成功，没有绕过访问策略，也未记录令牌或签名 URL。
+
+## D023：Phase 3 迁移边界（2026-11-16）
+
+- 已先阅读 ARCHITECTURE_NOTES 第 6 节，并以 main 5cc18aa 的实际 bdcopilot._tools、DesignRun.generate、CopilotPanel.send 核实。旧 SDK 九个 bd_* 工具读取完整共享设计；bd_read_source 可向模型返回登记 RTL；旧计划通过旧 apply_operations/bdtool 校验，bd_generate 先写 build/copilot 下设计和 HDL，再发 design_update，前端基线匹配即自动应用。它不是用户确认式 proposal 流程。
+- 复用本地 HTTP/NDJSON、SDK 连接/认证/取消、Host/Origin/token、防并发快照检查、现有布局及单步历史框架；复用完整 IpMetadata、新语义 resolve/validate 和已有文件保存边界。原 P0.2/旧 CLI 不改。
+- 替换 AI 编辑执行路径：模型只输出有界 typed ops，纯 apply_ops 产生草稿并调用新语义校验；显示提案，用户确认时再验证当前快照及所选 ops，整个接受动作只形成一次 undo。模型不能通过工具参数自行提供“用户已确认”。不再从 AI 工具直接生成最终 HDL、自动写画布或把整图 JSON 当作模型输出。
+- 旧对话 UI、status/connect/chat/cancel/clear 入口在迁移期间保留；旧编辑工具须兼容转换到同一 ops/proposal 边界，无法转换的操作明确报错，不能回退到旧直接写入路径。新流程稳定后，下线旧入口另立任务，本轮不删除入口。
+- 隐私边界：LLM 只得到元数据卡片和紧凑网表，不包含 RTL 源码、布局或坐标。旧工具的源码读取与 HDL 自动生成不能作为绕过新流程的通道；目录描述、参数表达式、名称和模型输出均视为数据。
+- P3.1 的 ops 文档使用独立 schema_version=1。端点 type 为 port/slice/const/concat，字段沿用 P2.3；应用时移除操作层 type，设计仍使用 v2/v3，不破坏已有格式。未知 type 返回 OP_ENDPOINT_TYPE，接口级端点留 2B，不猜测展开。
+- 六种操作先实现：add_instance/remove_instance/set_param/add_external_port/connect/disconnect。实体或操作结构错误整批回滚；合法操作产生但电气语义未通过的草稿保留用于修复，错误诊断阻止接受。重复操作要么幂等、要么稳定明确报错，不静默覆盖已有名称。
+- P3.2-P3.4 用元数据检索和可替换 LLMClient 建立回路；反馈仅 code+params/location 和受影响实例的解析端口摘要，最多三轮。P3.5 完成逐条选择、颜色 diff、接受/放弃和单步撤销。P3.6/P3.7 验证注入、权限、缺失 IP 与 20 例无总线评测。所有测试用 mock/回放，真实模型评测仅手动。
+
+P2.6 的 main 合并提交 5cc18aa 已通过本地完整门禁与 [CI 43815584515](https://github.com/lylintel/bd_prototype/actions/runs/43815584515) 六项检查（含浏览器及阻塞预算步骤）；Phase 3 以此为基线。

@@ -90,6 +90,61 @@ class EditorTests(unittest.TestCase):
         self.assertTrue(loaded["inspection"]["valid"])
         self.assertEqual(loaded["inspection"]["document"]["schema_version"], 2)
 
+    def test_ops_proposal_requires_confirmation_and_is_single_use(self):
+        operation = {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19}
+        proposal = self.workspace.propose_ops({"design": self.data, "base_dir": "examples", "ops": [operation]})
+        self.assertTrue(proposal["valid"])
+        self.assertEqual(proposal["document"]["instances"][1]["params"]["THRESHOLD"], 19)
+        self.assertEqual(self.data["instances"]["compare_0"]["parameters"]["THRESHOLD"], 9)
+        self.assertFalse((self.root / "build").exists())
+        payload = {"proposal_id": proposal["id"], "design": self.data, "base_dir": "examples", "selected": [0]}
+        with self.assertRaises(ValueError) as raised:
+            self.workspace.accept_ops(payload)
+        self.assertEqual(raised.exception.diagnostic.code, "AI_CONFIRM_REQUIRED")
+        accepted = self.workspace.accept_ops({**payload, "confirmed": True})
+        self.assertTrue(accepted["valid"])
+        self.assertEqual(accepted["document"]["instances"][1]["params"]["THRESHOLD"], 19)
+        with self.assertRaises(ValueError) as raised:
+            self.workspace.accept_ops({**payload, "confirmed": True})
+        self.assertEqual(raised.exception.diagnostic.code, "AI_STALE_PROPOSAL")
+        self.assertFalse((self.root / "build").exists())
+
+    def test_ops_proposal_rejects_stale_and_invalid_acceptance(self):
+        valid = self.workspace.propose_ops({"design": self.data, "base_dir": "examples", "ops": [
+            {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19}]})
+        changed = copy.deepcopy(self.data)
+        changed["instances"]["compare_0"]["parameters"]["THRESHOLD"] = 10
+        with self.assertRaises(ValueError) as raised:
+            self.workspace.accept_ops({"proposal_id": valid["id"], "design": changed, "base_dir": "examples", "selected": [0], "confirmed": True})
+        self.assertEqual(raised.exception.diagnostic.code, "AI_STALE_PROPOSAL")
+        invalid = self.workspace.propose_ops({"design": self.data, "base_dir": "examples", "ops": [
+            {"op": "set_param", "inst": "counter_0", "name": "WIDTH", "value": 12}]})
+        self.assertFalse(invalid["valid"])
+        self.assertTrue(any(item["code"] == "E001" for item in invalid["diagnostics"]))
+        with self.assertRaises(ValueError) as raised:
+            self.workspace.accept_ops({"proposal_id": invalid["id"], "design": self.data, "base_dir": "examples", "selected": [0], "confirmed": True})
+        self.assertEqual(raised.exception.diagnostic.code, "AI_INVALID_PROPOSAL")
+
+    def test_ops_selection_is_revalidated_and_discard_preserves_design(self):
+        proposal = self.workspace.propose_ops({"design": self.data, "base_dir": "examples", "ops": [
+            {"op": "set_param", "inst": "counter_0", "name": "WIDTH", "value": 12},
+            {"op": "set_param", "inst": "compare_0", "name": "WIDTH", "value": 12}]})
+        self.assertTrue(proposal["valid"])
+        with self.assertRaises(ValueError) as raised:
+            self.workspace.accept_ops({"proposal_id": proposal["id"], "design": self.data, "base_dir": "examples", "selected": [0], "confirmed": True})
+        self.assertEqual(raised.exception.diagnostic.code, "AI_INVALID_PROPOSAL")
+        self.assertTrue(self.workspace.discard_ops({"proposal_id": proposal["id"]})["discarded"])
+        self.assertTrue(self.workspace.load(self.workspace.design_path)["inspection"]["valid"])
+        self.assertEqual(self.data["instances"]["counter_0"]["parameters"]["WIDTH"], 8)
+
+    def test_proposal_return_value_cannot_mutate_stored_operations(self):
+        proposal = self.workspace.propose_ops({"design": self.data, "base_dir": "examples", "ops": [
+            {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19}]})
+        proposal["ops"][0]["value"] = 77
+        accepted = self.workspace.accept_ops({"proposal_id": proposal["id"], "design": self.data,
+            "base_dir": "examples", "selected": [0], "confirmed": True})
+        self.assertEqual(accepted["document"]["instances"][1]["params"]["THRESHOLD"], 19)
+
     def test_all_historical_design_fixtures_roundtrip_without_information_loss(self):
         from bdsemantic import prepare
         from core.design import migrate

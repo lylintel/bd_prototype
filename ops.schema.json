@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BD Studio typed operations v1",
+  "type": "object",
+  "required": ["schema_version", "ops"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1, "type": "integer"},
+    "ops": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/operation"}}
+  },
+  "$defs": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 256},
+    "value": {"oneOf": [{"type": "integer", "minimum": -2147483648, "maximum": 2147483647}, {"type": "string", "minLength": 1, "maxLength": 4096}]},
+    "params": {"type": "object", "maxProperties": 200, "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/value"}},
+    "address": {"oneOf": [{"required": ["inst", "port"], "not": {"required": ["ext"]}}, {"required": ["ext"], "not": {"anyOf": [{"required": ["inst"]}, {"required": ["port"]}]}}]},
+    "endpoint": {
+      "oneOf": [
+        {"type": "object", "required": ["type"], "additionalProperties": false,
+         "properties": {"type": {"const": "port"}, "inst": {"$ref": "#/$defs/name"}, "port": {"$ref": "#/$defs/name"}, "ext": {"$ref": "#/$defs/name"}}, "allOf": [{"$ref": "#/$defs/address"}]},
+        {"type": "object", "required": ["type", "slice"], "additionalProperties": false,
+         "properties": {"type": {"const": "slice"}, "inst": {"$ref": "#/$defs/name"}, "port": {"$ref": "#/$defs/name"}, "ext": {"$ref": "#/$defs/name"},
+                        "slice": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647}}}, "allOf": [{"$ref": "#/$defs/address"}]},
+        {"type": "object", "required": ["type", "const"], "additionalProperties": false,
+         "properties": {"type": {"const": "const"}, "const": {"type": "string", "minLength": 1, "maxLength": 4096}}},
+        {"type": "object", "required": ["type", "concat"], "additionalProperties": false,
+         "properties": {"type": {"const": "concat"}, "concat": {"type": "array", "minItems": 1, "maxItems": 128, "items": {"$ref": "#/$defs/endpoint"}}}}
+      ]
+    },
+    "operation": {
+      "oneOf": [
+        {"type": "object", "required": ["op", "ip", "version", "name"], "additionalProperties": false,
+         "properties": {"op": {"const": "add_instance"}, "ip": {"$ref": "#/$defs/name"}, "version": {"type": "string", "minLength": 1, "maxLength": 80}, "name": {"$ref": "#/$defs/name"}, "params": {"$ref": "#/$defs/params"}}},
+        {"type": "object", "required": ["op", "name"], "additionalProperties": false,
+         "properties": {"op": {"const": "remove_instance"}, "name": {"$ref": "#/$defs/name"}}},
+        {"type": "object", "required": ["op", "inst", "name", "value"], "additionalProperties": false,
+         "properties": {"op": {"const": "set_param"}, "inst": {"$ref": "#/$defs/name"}, "name": {"$ref": "#/$defs/name"}, "value": {"$ref": "#/$defs/value"}}},
+        {"type": "object", "required": ["op", "name", "dir", "width"], "additionalProperties": false,
+         "properties": {"op": {"const": "add_external_port"}, "name": {"$ref": "#/$defs/name"}, "dir": {"enum": ["in", "out"]}, "width": {"type": "string", "minLength": 1, "maxLength": 4096}, "signed": {"type": "boolean"},
+                        "range": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647}}}},
+        {"type": "object", "required": ["op", "from", "to"], "additionalProperties": false,
+         "properties": {"op": {"const": "connect"}, "from": {"$ref": "#/$defs/endpoint"}, "to": {"$ref": "#/$defs/endpoint"}, "net": {"$ref": "#/$defs/name"}}},
+        {"type": "object", "required": ["op", "from", "to"], "additionalProperties": false,
+         "properties": {"op": {"const": "disconnect"}, "from": {"$ref": "#/$defs/endpoint"}, "to": {"$ref": "#/$defs/endpoint"}, "net": {"$ref": "#/$defs/name"}}}
+      ]
+    }
+  }
+}

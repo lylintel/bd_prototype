@@ -356,14 +356,14 @@ class IpLibrary:
         collect(entry)
         return paths
 
-    def metadata_snapshot(self, ids: set[str], *, base_dir: Path) -> tuple[IpMetadata, ...]:
+    def metadata_snapshot(self, ids: set[str] | None = None, *, base_dir: Path) -> tuple[IpMetadata, ...]:
         base = Path(base_dir).resolve()
         if not base.is_relative_to(self.root):
             raise LibraryError("IP_LIBRARY_PATH")
         index = self._index()
         result = []
         for entry in index["entries"].values():
-            if entry["id"] not in ids:
+            if ids is not None and entry["id"] not in ids:
                 continue
             metadata = load_ip(self._path(entry["metadata"]))
             if ((metadata.id, metadata.version, metadata.source.sha256) != (entry["id"], entry["version"], entry["source_sha256"])

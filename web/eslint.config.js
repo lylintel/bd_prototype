@@ -20,7 +20,7 @@ export default [
     },
   },
   {
-    files: ["src/ip/**/*.{js,jsx}", "src/semantic/**/*.{js,jsx}"],
+    files: ["src/ip/**/*.{js,jsx}", "src/semantic/**/*.{js,jsx}", "src/ai/**/*.{js,jsx}"],
     rules: {
       "react/jsx-no-literals": ["error", { noStrings: true, ignoreProps: true }],
       "no-restricted-syntax": ["error", {

@@ -1,4 +1,5 @@
 import { clone, validateDocumentShape } from "./model.js";
+import { t } from "./i18n.js";
 
 export function canonicalDesign(value) {
   return JSON.stringify(value, (key, item) => item && typeof item === "object" && !Array.isArray(item)
@@ -66,6 +67,7 @@ export function updateCopilotMessages(messages, event, requestId) {
   }
   if (event.type === "error") return [...messages, { id: `${requestId}:error:${messages.length}`, role: "error", content: event.message }];
   if (event.type === "workflow") {
+    if (event.status === "pending_confirmation") return [...messages, { id: `${requestId}:workflow:${messages.length}`, role: "status", content: t("ai.pending") }];
     const stages = { bd_requirements: "需求已记录", bd_plan: "连接计划已通过预检查", bd_generate: "隔离 RTL 产物已生成" };
     return [...messages, { id: `${requestId}:workflow:${messages.length}`, role: "status",
       content: `${stages[event.stage] || event.stage}${event.status === "blocked" ? "，存在阻塞问题" : ""}`,

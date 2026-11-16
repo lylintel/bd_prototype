@@ -2,17 +2,19 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bot, CircleAlert, Copy, LoaderCircle, Plug, Plus, Send, ShieldCheck, Square, Wrench, X } from "lucide-react";
 import { readCopilotEvents, updateCopilotMessages } from "./copilot.js";
+import { t } from "./i18n.js";
+import Proposal from "./ai/Proposal.jsx";
 
 const toolLabels = { bd_design: "读取已共享设计", bd_validate: "校验设计", bd_preview: "预览 HDL",
-  bd_workflow: "读取设计工作流", bd_catalog: "查询授权 IP 目录", bd_read_source: "读取已登记 RTL",
-  bd_requirements: "记录可追踪需求", bd_plan: "预检查连接计划", bd_generate: "隔离生成 RTL" };
+  bd_workflow: "读取设计工作流", bd_catalog: "查询授权 IP 目录", bd_read_source: t("ai.readMetadata"),
+  bd_requirements: "记录可追踪需求", bd_plan: "预检查连接计划", bd_generate: t("ai.legacyProposal"), bd_propose: t("ai.proposeTool") };
 const toolStates = { running: "执行中", complete: "完成", failed: "未完成" };
 
 function Action({ icon: Icon, label, ...props }) {
   return <button type="button" className="icon-button" title={label} aria-label={label} {...props}><Icon size={16} strokeWidth={1.7} /></button>;
 }
 
-export default function CopilotPanel({ open, onClose, api, token, design, baseDir, onDesignUpdate }) {
+export default function CopilotPanel({ open, onClose, api, token, design, baseDir, onAcceptProposal }) {
   const [status, setStatus] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -22,15 +24,14 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
   const [conversationId, setConversationId] = useState(null);
   const [turns, setTurns] = useState(0);
   const [error, setError] = useState("");
+  const [proposal, setProposal] = useState(null);
   const controller = useRef(null);
   const requestId = useRef(null);
   const apiRef = useRef(api);
-  const designUpdateRef = useRef(onDesignUpdate);
   const feed = useRef(null);
   const followOutput = useRef(true);
 
   useEffect(() => { apiRef.current = api; }, [api]);
-  useEffect(() => { designUpdateRef.current = onDesignUpdate; }, [onDesignUpdate]);
   useEffect(() => {
     if (open) apiRef.current("/api/copilot/status").then(setStatus).catch((failure) => setError(failure.message));
     else if (controller.current) {
@@ -58,6 +59,7 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
   async function newConversation() {
     setError("");
     try {
+      if (proposal) await discardProposal(proposal);
       if (conversationId) await api("/api/copilot/clear", { conversation_id: conversationId });
       setConversationId(null);
       setMessages([]);
@@ -76,7 +78,7 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
   async function send(event) {
     event.preventDefault();
     const text = prompt.trim();
-    if (!text || generating || connecting || !status?.authenticated) return;
+    if (!text || proposal || generating || connecting || !status?.authenticated) return;
     const activeController = new AbortController();
     controller.current = activeController;
     requestId.current = null;
@@ -98,10 +100,9 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
           setTurns(received.turns);
         }
         if (received.type === "done") settled = true;
+        if (received.type === "proposal") setProposal(received.proposal);
         if (received.type === "design_update") {
-          const result = designUpdateRef.current?.(received) ?? { applied: false, message: "画布更新入口不可用，产物已保留。" };
-          setMessages((previous) => [...previous, { id: `${activeId}:design-update`, role: result.applied ? "status" : "error",
-            content: result.message, runDir: received.run_dir, diff: received.diff }]);
+          setMessages((previous) => [...previous, { id: `${activeId}:design-update`, role: "error", content: t("ai.legacyBlocked") }]);
         }
         setMessages((previous) => updateCopilotMessages(previous, received, activeId));
       });
@@ -115,6 +116,18 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
       requestId.current = null;
       setGenerating(false);
     }
+  }
+
+  async function acceptProposal(value, selected) {
+    if (!await onAcceptProposal(value, selected)) throw new Error(t("ai.acceptFailed"));
+    setProposal((current) => current?.id === value.id ? null : current);
+    setMessages((previous) => [...previous, { id: `${value.id}:accepted`, role: "status", content: t("ai.accepted") }]);
+  }
+
+  async function discardProposal(value) {
+    await api("/api/ops/discard", { proposal_id: value.id });
+    setProposal((current) => current?.id === value.id ? null : current);
+    setMessages((previous) => [...previous, { id: `${value.id}:discarded`, role: "status", content: t("ai.discarded") }]);
   }
 
   if (!open) return null;
@@ -136,11 +149,12 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
         </article>)}
       {generating && <div className="copilot-working"><LoaderCircle size={14} className="spin" />正在回复</div>}
     </div>
+    {proposal && <Proposal key={proposal.id} proposal={proposal} busy={generating} onAccept={acceptProposal} onDiscard={discardProposal} />}
     {error && <div className="copilot-notice error" role="alert"><CircleAlert size={15} /><span>{error}</span><Action icon={X} label="关闭 Copilot 错误" onClick={() => setError("")} /></div>}
     <form className="copilot-composer" onSubmit={send}>
-      <textarea aria-label="Copilot 消息输入" placeholder="输入消息" rows={3} maxLength={8000} value={prompt} disabled={generating} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form.requestSubmit(); } }} />
-      <div className="copilot-compose-actions"><span>{turns}/{status?.max_turns || 20} 条用户消息</span>{generating ? <button className="button secondary" type="button" onClick={stop}><Square size={13} />停止</button> : <button className="button primary" type="submit" disabled={!ready || !prompt.trim() || connecting}><Send size={14} />发送</button>}</div>
-      <footer className="copilot-policy"><ShieldCheck size={12} />设计编辑与隔离生成<span>不自动发送新消息</span></footer>
+      <textarea aria-label="Copilot 消息输入" placeholder="输入消息" rows={3} maxLength={8000} value={prompt} disabled={generating || Boolean(proposal)} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form.requestSubmit(); } }} />
+      <div className="copilot-compose-actions"><span>{turns}/{status?.max_turns || 20} 条用户消息</span>{generating ? <button className="button secondary" type="button" onClick={stop}><Square size={13} />停止</button> : <button className="button primary" type="submit" disabled={!ready || !prompt.trim() || connecting || Boolean(proposal)}><Send size={14} />发送</button>}</div>
+      <footer className="copilot-policy"><ShieldCheck size={12} />{t("ai.policy")}<span>{t("ai.manualSend")}</span></footer>
     </form>
   </aside>, document.body);
 }

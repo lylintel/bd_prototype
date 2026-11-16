@@ -6,7 +6,6 @@ import { addInstance, checkName, clone, connectionError, connectPorts, deleteNod
 import OutputWindow from "./OutputWindow.jsx";
 import CircuitEdge from "./CircuitEdge.jsx";
 import CopilotPanel from "./CopilotPanel.jsx";
-import { resolveDesignUpdate } from "./copilot.js";
 import { ImportButton, LibraryList, OriginBadge } from "./ip/Library.jsx";
 import { IP_DRAG_TYPE, addImported, findImportedDrop, originForDefinition } from "./ip/model.js";
 import { t } from "./i18n.js";
@@ -232,26 +231,24 @@ export default function App() {
     } catch (error) { notify(error.message, true); return false; }
   }
 
-  function applyCopilotDesign(event) {
-    try {
-      const current = editorState.current;
-      if (!current.history || current.busy) throw new Error("编辑器正在处理其他操作，未覆盖画布；请使用隔离产物。");
-      const updated = resolveDesignUpdate(current.history.current.design, current.baseDir, event);
-      const applied = mutate((next, nextLayout) => {
-        for (const key of Object.keys(next)) delete next[key];
-        Object.assign(next, updated);
-        const nodes = new Set([...Object.keys(next.instances), ...Object.keys(next.ports).map(externalId)]);
-        for (const id of Object.keys(nextLayout.nodes)) if (!nodes.has(id)) delete nextLayout.nodes[id];
-      }, "Copilot 已按可追踪计划更新设计，可撤销");
-      if (!applied) throw new Error("设计更新未应用，隔离产物已保留。");
-      setSelection(null);
-      setPendingPin(null);
-      notify("Copilot 设计已应用到画布，原设计文件未覆盖");
-      return { applied: true, message: "设计已自动应用到画布，可撤销；原设计文件未覆盖。" };
-    } catch (error) {
-      notify(error.message, true);
-      return { applied: false, message: error.message };
-    }
+  async function applyCopilotProposal(proposal, selected) {
+    const current = editorState.current;
+    if (!current.history || current.busy) throw new Error(t("semantic.notReady"));
+    const original = current.history.current.document ?? current.history.current.design;
+    const result = await api("/api/ops/accept", { proposal_id: proposal.id, selected, confirmed: true, design: original, base_dir: current.baseDir });
+    const latest = editorState.current;
+    if ((latest.history.current.document ?? latest.history.current.design) !== original || latest.baseDir !== current.baseDir) throw new Error(t("semantic.notReady"));
+    const applied = mutate((next, nextLayout) => {
+      for (const key of Object.keys(next)) delete next[key];
+      Object.assign(next, result.canvas);
+      const nodes = new Set([...Object.keys(next.instances), ...Object.keys(next.ports).map(externalId)]);
+      for (const id of Object.keys(nextLayout.nodes)) if (!nodes.has(id)) delete nextLayout.nodes[id];
+    }, t("ai.accepted"), false, result.document);
+    if (!applied) throw new Error(t("ai.acceptFailed"));
+    setSelection(null);
+    setPendingPin(null);
+    notify(t("ai.accepted"));
+    return true;
   }
 
   function undo() {
@@ -680,7 +677,7 @@ export default function App() {
     </main>
     <footer className="status-bar"><span><span className="session-dot" />{busy || "本地连接"}</span><span className="status-path">{documentPath || "Untitled"}</span><span>JSON <span className="status-divider">|</span> Verilog-2005</span></footer>
 
-    <CopilotPanel open={copilotOpen} onClose={() => setCopilotOpen(false)} api={api} token={token} design={design} baseDir={baseDir} onDesignUpdate={applyCopilotDesign} />
+    <CopilotPanel open={copilotOpen} onClose={() => setCopilotOpen(false)} api={api} token={token} design={document} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} />
 
     {toast && <div className={`toast ${toast.error ? "error" : ""}`} role={toast.error ? "alert" : "status"}>{toast.error ? <CircleAlert size={17} /> : <CircleCheck size={17} />}<span>{toast.message}</span><IconButton icon={X} label="关闭通知" onClick={() => setToast(null)} /></div>}
 

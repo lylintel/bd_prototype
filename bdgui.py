@@ -57,6 +57,9 @@ class Workspace:
     def __init__(self, root: Path, design_path: str):
         self.root = root.resolve()
         self.design_path = design_path
+        from bdai import ProposalStore
+
+        self.proposals = ProposalStore(self)
 
     def ip_library(self):
         try:
@@ -163,6 +166,15 @@ class Workspace:
         document, library = prepare(self, payload.get("design"), base_dir)
         candidate = apply_fix(document, library, payload.get("diagnostic"))
         return inspect_workspace(self, candidate, base_dir)
+
+    def propose_ops(self, payload: dict) -> dict:
+        return self.proposals.preview(payload)
+
+    def accept_ops(self, payload: dict) -> dict:
+        return self.proposals.accept(payload)
+
+    def discard_ops(self, payload: dict) -> dict:
+        return self.proposals.discard(payload)
 
     def load(self, filename: str) -> dict:
         path = self.path(filename)
@@ -384,6 +396,12 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(workspace.semantic_inspect(payload.get("design"), payload.get("base_dir", ".")))
             elif self.path == "/api/semantic/fix":
                 self.json_response(workspace.semantic_fix(payload))
+            elif self.path == "/api/ops/preview":
+                self.json_response(workspace.propose_ops(payload))
+            elif self.path == "/api/ops/accept":
+                self.json_response(workspace.accept_ops(payload))
+            elif self.path == "/api/ops/discard":
+                self.json_response(workspace.discard_ops(payload))
             elif self.path == "/api/save":
                 self.json_response(workspace.save(payload))
             elif self.path == "/api/generate":

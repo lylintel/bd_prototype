@@ -23,11 +23,12 @@ async function stopServer(value) {
   rmSync(value.directory, { recursive: true, force: true });
 }
 
-test.beforeEach(async () => {
+test.beforeEach(async ({ page }, testInfo) => {
   const directory = mkdtempSync(path.join(tmpdir(), "bd-import-e2e-"));
   cpSync(path.join(root, "examples"), path.join(directory, "examples"), { recursive: true });
   if (existsSync(path.join(root, "ip_library/builtin"))) cpSync(path.join(root, "ip_library/builtin"), path.join(directory, "ip_library/builtin"), { recursive: true });
-  const child = spawn(python, ["-u", "-m", "bdgui", "--workspace", directory, "--port", "0"], {
+  const serverModule = testInfo.title.includes("[mock-sdk]") ? "scripts.mock_copilot_server" : "bdgui";
+  const child = spawn(python, ["-u", "-m", serverModule, "--workspace", directory, "--port", "0"], {
     cwd: root, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32",
   });
   const exited = new Promise((resolve) => child.once("close", resolve));
@@ -334,4 +335,35 @@ test("initial badge and diagnostics use semantic validation even when legacy ins
   expect(requests).toContain("/api/semantic/inspect");
   expect(requests).not.toContain("/api/inspect");
   await page.screenshot({ path: testInfo.outputPath("semantic-badge-error.png") });
+});
+
+test("[mock-sdk] ops batch requires acceptance and one undo restores every change", async ({ page }, testInfo) => {
+  await openEditor(page);
+  const before = await designJson(page);
+  await page.getByRole("button", { name: /Copilot/ }).first().click();
+  await page.getByRole("button", { name: "连接 Copilot", exact: true }).click();
+  await expect(page.getByRole("button", { name: "检查连接", exact: true })).toBeEnabled();
+  await page.getByLabel("Copilot 模型", { exact: true }).selectOption("test-model");
+  await page.getByLabel("Copilot 消息输入", { exact: true }).fill("workflow threshold to 19 and width");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const proposal = page.getByRole("region", { name: t("ai.proposalTitle"), exact: true });
+  await expect(proposal).toBeVisible();
+  await expect(proposal.getByRole("button", { name: t("ai.accept"), exact: true })).toBeEnabled();
+  expect(await designJson(page)).toEqual(before);
+  await page.screenshot({ path: testInfo.outputPath("ops-proposal-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bounds = await proposal.boundingBox();
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("ops-proposal-mobile.png") });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await proposal.getByRole("button", { name: t("ai.accept"), exact: true }).click();
+  await expect(proposal).not.toBeVisible();
+  await page.getByRole("button", { name: "关闭 Copilot", exact: true }).click();
+  const changed = await designJson(page);
+  expect(changed.instances[0].params.WIDTH).toBe(12);
+  expect(changed.instances[1].params).toMatchObject({ WIDTH: 12, THRESHOLD: 19 });
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  expect(await designJson(page)).toEqual(before);
+  expect(readFileSync(path.join(server.directory, "examples/counter_compare.json"))).toEqual(readFileSync(path.join(root, "examples/counter_compare.json")));
 });

@@ -57,6 +57,14 @@ class FakeSession:
                 self.options["tools"][0].handler(SimpleNamespace(arguments={}))
                 await asyncio.sleep(0)
             return
+        if prompt in ("metadata only", "typed proposal"):
+            tools = {tool.name: tool for tool in self.options["tools"]}
+            name = "bd_read_source" if prompt == "metadata only" else "bd_propose"
+            arguments = {"module": "counter"} if name == "bd_read_source" else {"ops": [
+                {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19}]}
+            result = tools[name].handler(SimpleNamespace(arguments=arguments))
+            self.emit("assistant.message", content=result.text_result_for_llm)
+            return
         if prompt.startswith("workflow threshold"):
             tools = {tool.name: tool for tool in self.options["tools"]}
             def invoke(name, **arguments):
@@ -73,8 +81,12 @@ class FakeSession:
                 "source": {"message_id": evidence["id"], "quote": evidence["text"]}, "acceptance": {"method": "structural", "criteria": "THRESHOLD is 19"}}],
                 "dimensions": {name: {"value": None, "status": "not_applicable", "evidence": "Existing topology preserved for a parameter-only change", "blocking_stage": "none"} for name in DIMENSIONS}, "open_questions": []}
             invoke("bd_requirements", specification=specification)
+            operations = [{"op": "set_parameter", "instance": "compare_0", "parameter": "THRESHOLD", "value": 19, "requirement_ids": ["REQ-001"], "evidence": evidence["text"]}]
+            if prompt.endswith(" and width"):
+                operations.extend({"op": "set_parameter", "instance": name, "parameter": "WIDTH", "value": 12,
+                                   "requirement_ids": ["REQ-001"], "evidence": evidence["text"]} for name in ("counter_0", "compare_0"))
             invoke("bd_plan", plan={"schema_version": 1, "base_hash": workflow["base_hash"],
-                "operations": [{"op": "set_parameter", "instance": "compare_0", "parameter": "THRESHOLD", "value": 19, "requirement_ids": ["REQ-001"], "evidence": evidence["text"]}],
+                "operations": operations,
                 "checks": {name: {"status": "not_applicable", "evidence": "No topology or interface change"} for name in CHECKS}})
             generated = invoke("bd_generate")
             if generated:
@@ -215,7 +227,7 @@ class CopilotTests(unittest.TestCase):
         events = self.drain(turn)
         self.assertIn("did not share", next(item["content"] for item in events if item["type"] == "message"))
 
-    def test_workflow_permission_is_explicit_and_results_are_isolated(self):
+    def test_legacy_workflow_requires_ops_proposal_confirmation(self):
         with tempfile.TemporaryDirectory(prefix="bd-agent-") as directory:
             root = Path(directory)
             shutil.copytree(ROOT / "examples", root / "examples")
@@ -227,12 +239,15 @@ class CopilotTests(unittest.TestCase):
             self.assertFalse((root / "build").exists())
             turn = self.send("workflow threshold to 19", share_context=True, allow_design_changes=True, design=self.design, base_dir="examples")
             events = self.drain(turn)
-            update = next(item for item in events if item["type"] == "design_update")
-            self.assertEqual(update["base_design"]["instances"]["compare_0"]["parameters"]["THRESHOLD"], 9)
-            self.assertEqual(update["design"]["instances"]["compare_0"]["parameters"]["THRESHOLD"], 19)
-            self.assertTrue((root / update["run_dir"] / "generated/example_bd.v").is_file())
+            self.assertFalse(any(item["type"] == "design_update" for item in events))
+            proposal = next(item["proposal"] for item in events if item["type"] == "proposal")
+            self.assertEqual(proposal["ops"], [{"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19}])
+            self.assertEqual(proposal["document"]["instances"][1]["params"]["THRESHOLD"], 19)
+            self.assertFalse(list((root / "build").rglob("generated/*.v")))
             self.assertEqual(json.loads((root / "examples/counter_compare.json").read_text())["instances"]["compare_0"]["parameters"]["THRESHOLD"], 9)
-            self.assertEqual(update["verification"]["functional_simulation"], "not_run")
+            accepted = self.bridge.workspace.accept_ops({"proposal_id": proposal["id"], "design": self.design,
+                "base_dir": "examples", "selected": [0], "confirmed": True})
+            self.assertTrue(accepted["valid"])
             self.assertIn("build-bd-design", self.clients[0].sessions[-1].options["system_message"]["content"])
 
     def test_tools_validate_an_explicit_snapshot_without_writing(self):
@@ -244,6 +259,27 @@ class CopilotTests(unittest.TestCase):
         self.assertTrue(result["valid"])
         self.assertIn("counter_0", result["interfaces"]["instances"])
         self.assertIsNone(turn.conversation.context)
+
+    def test_metadata_only_tools_and_typed_proposals_preserve_v3(self):
+        with tempfile.TemporaryDirectory(prefix="bd-metadata-") as directory:
+            root = Path(directory)
+            shutil.copytree(ROOT / "examples", root / "examples")
+            self.bridge.workspace = Workspace(root, "examples/counter_compare.json")
+            self.bridge.connect()
+            events = self.drain(self.send("metadata only", share_context=True, allow_design_changes=True, design=self.design, base_dir="examples"))
+            metadata = json.loads(next(item["content"] for item in events if item["type"] == "message"))
+            self.assertFalse(metadata["rtl_access"])
+            self.assertNotIn("source", metadata["metadata"][0])
+            self.assertNotIn("module counter", json.dumps(metadata))
+            document = self.bridge.workspace.semantic_inspect(self.design, "examples")["document"]
+            document["schema_version"] = 3
+            document["nets"][2]["endpoints"][0] = {"concat": [{"inst": "counter_0", "port": "count", "slice": [3, 0]}, {"const": "4'd0"}]}
+            events = self.drain(self.send("typed proposal", share_context=True, allow_design_changes=True, design=document, base_dir="examples"))
+            proposal = next(item["proposal"] for item in events if item["type"] == "proposal")
+            self.assertEqual(proposal["document"]["nets"], document["nets"])
+            self.assertTrue(proposal["requires_confirmation"])
+            self.assertFalse(any(item["type"] == "design_update" for item in events))
+            self.assertFalse((root / "build").exists())
 
     def test_cancel_aborts_sdk_and_rejects_concurrent_requests(self):
         self.bridge.connect()
