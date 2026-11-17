@@ -65,6 +65,13 @@ jobs:
           if-no-files-found: warn
       - name: Run the same local checks
         run: python scripts/check.py
+      - name: Publish offline AI evaluation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-eval-python-${{ matrix.python }}
+          path: build/ai-eval/
+          if-no-files-found: warn
 
   pyslang-spike:
     name: Parser / ${{ matrix.os }} / Python ${{ matrix.python }}

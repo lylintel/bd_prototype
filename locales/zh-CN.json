@@ -1,4 +1,9 @@
 {
+  "AI_EVAL_TITLE": "AI 提案评测",
+  "AI_EVAL_SCOPE": "客户端：{client}；案例：{count}。Mock 分数不是实际模型质量。",
+  "AI_EVAL_DESCRIPTION": "评测类型化 AI 提案；real 模式会发送元数据到配置的服务",
+  "AI_EVAL_NETWORK_REQUIRED": "real 模式需要明确指定 --allow-network",
+  "AI_EVAL_MODEL_REQUIRED": "真实模式必须设置 BD_AI_MODEL",
   "AI_RATE_LIMIT": "AI 请求过于频繁：每 {seconds} 秒最多 {limit} 次",
   "D001": "设计格式无效：{reason}。",
   "D002": "参数 {parameter} 无法解析：{reason}。",

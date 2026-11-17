@@ -133,3 +133,27 @@ AI 请求限制为 256KiB、每 60 秒 10 次，新旧入口共用额度；超�
 所有模型输出必须经过 typed ops 白名单、标识符校验、新语义校验与人工确认。未知操作/接口端点、路径和关键字名称被拒绝，不执行 shell 或文本代码。
 remove_instance 在共享提案服务默认禁止。新面板可逐轮显式授权；旧 SDK 入口不支持扩大删除权限，应改用新面板。
 恶意描述夹具、越权 SDK、非法 ops、限流恢复、密钥不落盘及协议大小测试均离线执行。限流为本地单进程保护，不是公网服务安全认证。
+
+## P3.7 离线评测
+
+```powershell
+.\.venv\Scripts\python.exe -m bdstudio.ai_eval --client mock --report build/ai-eval
+.\.venv\Scripts\python.exe -m bdstudio.ai_eval --client mock --report build/ai-eval-next --compare build/ai-eval/report.json
+```
+
+tests/ai_eval/cases.yaml 是 20 条独立期望，replays.json 是固定完整响应。评测不会自动修改二者。
+scripts/ai_eval_fixtures.py --write 只用于维护回放；改完仍需对照独立期望和失败变异测试，不能以重建回放替代审查。
+每次实际执行检索、生成修复回路、typed ops 和新语义校验。未连接端口按实例名_端口名引出，实例名等于 IP ID；已存在的基线名称保留。
+实例/连线 F1 忽略集合顺序，连接忽略 net 名但保留方向、切片及拼接顺序。完全匹配还检查参数与外部接口，缺失 IP 和待澄清为预期拒绝，不计为“校验通过”。
+报告包含逐例差异、诊断、尝试次数、机器反馈 trace 和哈希，--compare 提供指标变化及回归案例。所有 20 例必须执行，不能跳过不支持的用例。
+
+初始 mock 结果：简单/中等 17/17，通过各自期望 20/20，实例/连线 F1=1，完全匹配率=1，missing_ip 正确率=1，检索命中 19/19。
+校验通过率为 18/20；缺失 ADC 和含糊时序两例按设计拒绝。固定回放用于回归，不衡量真实模型的生成能力。
+
+真实服务仅人工执行，需预先在本地环境设置 BD_AI_BASE_URL、BD_AI_MODEL、BD_AI_API_KEY（不要写进命令行或提交）。
+然后明确执行 --client real --allow-network --report build/ai-eval-real；这会发送提示及精简元数据，可能产生服务费用。
+本轮没有调用真实模型，没有进行模型质量、硬件 CDC、时序或功能签核。
+
+P3.7 最终本机完整门禁：543 项 Python、68 子测试、42 前端单测、17 条浏览器流程，加 20 条独立回路评测；lint/typecheck/build 全部通过。
+日志 build/phase3-p37-check.log；11 样本独立性能中位数 299.800ms、最大 446.511ms。四 IP 计数/比较/边沿/同步链已验证预览、接受、校验及单次撤销。
+与 Phase 3 前的 5cc18aa 比较，examples 与历史 golden 没有改动。报告比较命令已实际运行，同一输入无回归。

@@ -466,3 +466,24 @@ test("[mock-sdk] invalid pipeline proposal cannot be accepted", async ({ page })
   await page.getByRole("button", { name: t("ai.closeAssistant"), exact: true }).click();
   expect(await designJson(page)).toEqual(before);
 });
+
+test("[mock-sdk] four IP system is reviewed accepted validated and undone", async ({ page }, testInfo) => {
+  await openEditor(page);
+  await page.getByRole("button", { name: "新建设计", exact: true }).click();
+  const before = await designJson(page);
+  const proposal = await aiRequest(page, "连接 bd_counter、bd_compare、bd_edge_detect 和 bd_sync_2ff：计数、比较、边沿、同步四模块链，其余信号分别引出。");
+  await expect(proposal.getByRole("button", { name: t("ai.accept"), exact: true })).toBeEnabled();
+  await expect(page.locator('.react-flow__node.ai-preview-added').filter({ has: page.locator('.block-node') })).toHaveCount(4);
+  await expect(page.locator('.empty-canvas')).toHaveCount(0);
+  expect(await designJson(page)).toEqual(before);
+  await page.screenshot({ path: testInfo.outputPath("four-ip-preview.png") });
+  await proposal.getByRole("button", { name: t("ai.accept"), exact: true }).click();
+  await expect(proposal).not.toBeVisible();
+  await page.getByRole("button", { name: t("ai.closeAssistant"), exact: true }).click();
+  const after = await designJson(page);
+  expect(after.instances.map((item) => item.ip.id).sort()).toEqual(["bd_compare", "bd_counter", "bd_edge_detect", "bd_sync_2ff"]);
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toHaveClass(/valid/);
+  await page.screenshot({ path: testInfo.outputPath("four-ip-accepted.png") });
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  expect(await designJson(page)).toEqual(before);
+});

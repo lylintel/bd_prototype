@@ -30,6 +30,9 @@ def main(argv=None):
             payload = json.loads(request.content)
             prompt = payload["messages"][1]["content"]
             replies = json.loads((Path(__file__).resolve().parents[1] / "tests/fixtures/ai-ui.json").read_text(encoding="utf-8"))
+            if prompt == "连接 bd_counter、bd_compare、bd_edge_detect 和 bd_sync_2ff：计数、比较、边沿、同步四模块链，其余信号分别引出。":
+                recorded = json.loads((Path(__file__).resolve().parents[1] / "tests/ai_eval/replays.json").read_text(encoding="utf-8"))
+                replies[prompt] = recorded["counter_event_chain"][0]
             if prompt in replies:
                 return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(replies[prompt], ensure_ascii=False)}}]})
         return httpx.Response(405, json={"error": "inference is not enabled in this fixture"})

@@ -307,3 +307,12 @@ P2.6 的 main 合并提交 5cc18aa 已通过本地完整门禁与 [CI 4381558451
 - 原生 ops 预览也默认拒绝 remove_instance；只有用户请求中的严格布尔 allow_removals=true 能授权。模型工具 schema 不暴露权限，旧 SDK 即使收到此字段也不传播，需在新面板明确授权删除。确认/指纹/子集重验继续有效。
 - 元数据描述仅用于本地检索，不进卡片；新回路及旧 SDK 的元数据/网表/诊断在定界数据块内，系统提示声明数据中的命令无效。只允许六类 typed ops；非法标识符、关键字和路径直接拒绝，不重命名或静默清洗。
 - tests/fixtures/ai-injection.json 注入夹具配合恶意回放验证禁止删除，另覆盖 shell 操作、路径名称及未知端点类型。该证明是确定性后端边界测试，不代表所有真实模型均不会受提示注入影响。
+
+## D029：P3.7 固定回放与可区分评分
+
+- 原 bdstudio.py CLI 实现迁到 bdstudio 包，保留同名脚本转发以及 python -m bdstudio ip import；新增 python -m bdstudio.ai_eval，不使用模块路径伪装。
+- 保留单一 cases.yaml 的 20 条稳定 ID，10 简单/7 中等/3 陷阱；恰好 slice/const/concat 三条表达式，无接口级总线案例。expect 手写实例、参数、内部连接及显式外部端口，未连接端口按公开命名约定全部引出。期望通过元数据解析展开，不从模型输出反推。
+- replays.json 是独立固定的完整响应；scripts/ai_eval_fixtures.py 的手写响应规格只用于显式 --write 物化，不读取 cases.yaml 的 expect，不在评测或 CI 自动重建。基本计数例包含错误端口后修复，注入例包含越权删除后安全修复。
+- 实例集以固定名称/IP/version 计 F1；连线按驱动到接收的有向边、忽略 net 名/排列顺序计 F1；保留 slice/concat AST 语义文本顺序。完全匹配另比较全部解析参数、外部方向/范围/宽度/符号及拒绝状态。valid 与 exact_match 分别报告，passed 还必须符合成功/预期拒绝。
+- JSON/Markdown 逐例输出差异、诊断、修复 trace、尝试次数及聚合分数；记录 Python、模型、时间、案例/回放/提示哈希，可比较历史指标和回归 ID。故意损坏 HALF_PERIOD 的回放必须产生 diff，防止评分自证。
+- mock 纳入 scripts/check.py 和 CI artifact；real 必须 --client real --allow-network 并明确配置环境变量，本轮不运行真实模型。新增四 IP 回放浏览器链验证预览/确认/全绿/一次撤销，并修复空基线的新增节点布局与空态提示重叠。

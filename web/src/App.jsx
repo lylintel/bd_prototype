@@ -649,7 +649,7 @@ export default function App() {
           <div className="canvas-stamp"><CircuitBoard size={13} />STRUCTURAL RTL</div>
           {preview && <div className="ai-preview-legend"><strong>{t("ai.preview")}</strong><span className="added">{t("ai.added")}</span><span className="deleted">{t("ai.deleted")}</span><span className="modified">{t("ai.modified")}</span></div>}
           {pendingPin && <div className="connection-indicator"><span className="session-dot" /><code>{pendingPin}</code><IconButton icon={X} label="取消连线" onClick={() => setPendingPin(null)} /></div>}
-          {!nodes.length && <div className="empty-canvas"><Blocks size={38} strokeWidth={1} /><span>空白设计</span><button className="button secondary" onClick={() => setMobilePanel("library")}><Plus size={15} />添加模块</button></div>}
+          {!graph.nodes.length && <div className="empty-canvas"><Blocks size={38} strokeWidth={1} /><span>空白设计</span><button className="button secondary" onClick={() => setMobilePanel("library")}><Plus size={15} />添加模块</button></div>}
           <div className="canvas-controls"><IconButton icon={ZoomOut} label="缩小" onClick={() => flow.zoomOut({ duration: 150 })} /><span>{zoom}%</span><IconButton icon={ZoomIn} label="放大" onClick={() => flow.zoomIn({ duration: 150 })} /><span className="toolbar-divider" /><IconButton icon={Maximize2} label="适应所有节点" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div>
         </div>
 

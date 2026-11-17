@@ -74,7 +74,7 @@ export function mergePreview(baseNodes, baseEdges, nextNodes, nextEdges, changes
   let addedIndex = 0;
   const nodes = [...nextNodes, ...baseNodes.filter((node) => !nextIds.has(node.id))].map((node) => {
     const state = changes.nodes[node.id] ?? (!nextIds.has(node.id) ? "deleted" : !baseIds.has(node.id) ? "added" : "unchanged");
-    const position = basePositions.get(node.id) ?? { x: addedLeft, y: addedIndex++ * 260 };
+    const position = basePositions.get(node.id) ?? (baseNodes.length ? { x: addedLeft, y: addedIndex++ * 260 } : node.position);
     return { ...node, position, className: `ai-preview-${state}`, draggable: false, connectable: false,
       data: { ...node.data, onPin: () => {}, connectable: false, highlight: false } };
   });

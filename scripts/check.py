@@ -33,6 +33,7 @@ def main(argv=None):
     commands = [
         [sys.executable, "-m", "ruff", "check", "."],
         [sys.executable, "-m", "pytest", "-q"],
+        [sys.executable, "-m", "bdstudio.ai_eval", "--client", "mock", "--report", "build/ai-eval"],
         *[[npm, "--prefix", "web", "run", task] for task in ("lint", "typecheck", "test", "build", "test:e2e")],
     ]
     for command in commands:

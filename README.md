@@ -180,6 +180,10 @@ npm.cmd --prefix web run build
 安装 [requirements-ai.txt](requirements-ai.txt) 后可使用客户端；密钥只存会话内存或由 BD_AI_API_KEY 提供，不写入项目配置。
 配置与客户端的错误、重试和保密边界见 [docs/ai-editing.md](docs/ai-editing.md)。SDK 对话入口仍按下节安装。
 
+顶栏“AI 提案”支持自然语言生成、最多三轮修复、逐项选择和只读颜色差异；仅在接受后应用，一次撤销可回退整批。
+离线评测运行 `python -m bdstudio.ai_eval --client mock --report build/ai-eval`，可用 `--compare` 对照上次 JSON 报告。
+20 条固定回放已进入本地/CI 门禁；真实模型必须手动选择 `--client real --allow-network`，mock 分数不代表真实模型质量。
+
 现有对话采用“网页 -> 本地 Python 服务 -> 官方 Copilot SDK -> Copilot 运行时”。编辑已收敛到 typed ops、语义校验和用户确认；SDK 连接与对话入口保留。契约与迁移边界见 [docs/ai-editing.md](docs/ai-editing.md)。
 
 ### 安装与登录

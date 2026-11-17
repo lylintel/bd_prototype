@@ -37,4 +37,5 @@ test("preview preserves existing positions and places additions beyond deleted g
   assert.deepEqual(result.nodes.find((node) => node.id === "kept").position, { x: 400, y: 0 });
   assert.ok(result.nodes.find((node) => node.id === "added").position.x > 680);
   assert.deepEqual(result.nodes.find((node) => node.id === "removed").position, { x: 0, y: 0 });
+  assert.deepEqual(mergePreview([], [], candidate, [], { nodes: {}, nets: {} }).nodes.map((node) => node.position), candidate.map((node) => node.position));
 });
