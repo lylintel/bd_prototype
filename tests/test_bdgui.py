@@ -207,6 +207,32 @@ class EditorTests(unittest.TestCase):
         accepted = self.workspace.accept_ops({**payload, "confirmed": True})
         self.assertNotIn("aux", accepted["document"]["ports"])
 
+    def test_direct_proposal_cannot_bypass_deletion_permission(self):
+        from core.design import DesignFormatError
+
+        payload = {"design": self.data, "base_dir": "examples", "ops": [{"op": "remove_instance", "name": "compare_0"}]}
+        for permission in (False, None, "true", 1):
+            with self.assertRaises(DesignFormatError) as raised:
+                self.workspace.propose_ops({**payload, "allow_removals": permission})
+            self.assertIn(raised.exception.diagnostic.code, ("AI_OPERATION_FORBIDDEN", "AI_REQUEST"))
+        proposal = self.workspace.propose_ops({**payload, "allow_removals": True})
+        self.assertNotIn("compare_0", proposal["canvas"]["instances"])
+
+    def test_ai_rate_limit_is_shared_and_recovers_after_window(self):
+        from unittest.mock import patch
+        from core.design import DesignFormatError
+
+        with patch("bdai.monotonic", return_value=100):
+            for _ in range(10):
+                self.workspace.proposals.check_request({"prompt": "counter"})
+            with self.assertRaises(DesignFormatError) as raised:
+                self.workspace.proposals.check_request({"prompt": "counter"})
+            self.assertEqual(raised.exception.diagnostic.code, "AI_RATE_LIMIT")
+        with patch("bdai.monotonic", return_value=161):
+            self.workspace.proposals.check_request({"prompt": "counter"})
+        with self.assertRaises(DesignFormatError):
+            self.workspace.proposals.check_request({"prompt": "a" * (256 * 1024)})
+
     def test_all_historical_design_fixtures_roundtrip_without_information_loss(self):
         from bdsemantic import prepare
         from core.design import migrate

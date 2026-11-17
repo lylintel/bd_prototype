@@ -219,12 +219,14 @@ class Workspace:
         if not self._ai_generation_lock.acquire(blocking=False):
             fail("AI_BUSY")
         try:
+            self.proposals.check_request(payload)
             base_dir = payload.get("base_dir", ".")
             document, library = prepare_context(self, payload.get("design"), base_dir)
             expected = (fingerprint(document), fingerprint([item.to_dict() for item in library]))
             outcome = run_pipeline(document, library, payload.get("prompt"), self.create_llm_client(),
                                    allow_removals=payload.get("allow_removals", False))
-            return self.proposals.preview({"design": payload.get("design"), "base_dir": base_dir, "ops": outcome["ops"], "summary": outcome["summary"]},
+            return self.proposals.preview({"design": payload.get("design"), "base_dir": base_dir, "ops": outcome["ops"], "summary": outcome["summary"],
+                                           "allow_removals": payload.get("allow_removals", False)},
                                           outcome=outcome, expected=expected)
         finally:
             self._ai_generation_lock.release()

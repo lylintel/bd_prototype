@@ -1,4 +1,5 @@
 {
+  "AI_RATE_LIMIT": "AI 请求过于频繁：每 {seconds} 秒最多 {limit} 次",
   "D001": "设计格式无效：{reason}。",
   "D002": "参数 {parameter} 无法解析：{reason}。",
   "D003": "端口声明无法解析：{reason}。",

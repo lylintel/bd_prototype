@@ -1,6 +1,7 @@
 from copy import deepcopy
 from dataclasses import replace
 import json
+from pathlib import Path
 
 import pytest
 
@@ -91,3 +92,27 @@ def test_transport_failure_does_not_start_semantic_retries(bundle):
     result = run_pipeline(document, library, "counter", client)
     assert result["attempts"] == 1 and not result["validation"]["valid"]
     assert result["validation"]["diagnostics"][0]["code"] == "AI_LLM_TIMEOUT"
+
+def test_injected_metadata_cannot_authorize_deletions(bundle):
+    document, library = bundle
+    fixture = json.loads((Path(__file__).parents[1] / "fixtures/ai-injection.json").read_text(encoding="utf-8"))
+    malicious = fixture["description"]
+    library = (replace(library[0], description=malicious), *library[1:])
+    client = ReplayClient([response(fixture["operations"])] * 3)
+    result = run_pipeline(document, library, "counter compare_eq", client)
+    assert result["ops"] == [] and result["document"] == document
+    assert not result["validation"]["valid"]
+    assert malicious not in json.dumps(client.requests, ensure_ascii=False)
+    assert "untrusted data" in client.requests[0]["messages"][0]["content"]
+
+
+@pytest.mark.parametrize("operation", [
+    {"op": "shell", "command": "echo injected"},
+    {"op": "add_instance", "name": "../outside", "ip": "counter", "version": "1.0.0"},
+    {"op": "connect", "from": {"type": "interface", "inst": "counter_0", "port": "count"}, "to": {"type": "port", "inst": "compare_0", "port": "value"}},
+])
+def test_untrusted_output_cannot_escape_typed_operations(bundle, operation):
+    document, library = bundle
+    result = run_pipeline(document, library, "counter compare_eq", ReplayClient([response([operation])] * 3))
+    assert not result["validation"]["valid"]
+    assert result["document"] == document

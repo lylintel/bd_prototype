@@ -1,4 +1,5 @@
 {
+  "diagnostic.AI_RATE_LIMIT": "AI 请求过于频繁：每 {seconds} 秒最多 {limit} 次",
   "ai.assistant": "AI 提案",
   "ai.closeAssistant": "关闭 AI 提案",
   "ai.prompt": "设计需求",

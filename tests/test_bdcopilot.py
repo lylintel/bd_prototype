@@ -17,6 +17,11 @@ from bdgui import EditorServer, Workspace
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def tool_data(text):
+    assert text.startswith("BEGIN_BD_DATA\n") and text.endswith("\nEND_BD_DATA")
+    return json.loads(text.split("\n", 1)[1].rsplit("\n", 1)[0])
+
+
 @dataclass
 class FakeResult:
     result_type: str
@@ -60,6 +65,11 @@ class FakeSession:
         if prompt == "catalog query":
             tools = {tool.name: tool for tool in self.options["tools"]}
             result = tools["bd_catalog"].handler(SimpleNamespace(arguments={"query": "bd_uart_rx UART 接收"}))
+            self.emit("assistant.message", content=result.text_result_for_llm)
+            return
+        if prompt == "injected deletion":
+            tools = {tool.name: tool for tool in self.options["tools"]}
+            result = tools["bd_propose"].handler(SimpleNamespace(arguments={"ops": [{"op": "remove_instance", "name": "compare_0"}]}))
             self.emit("assistant.message", content=result.text_result_for_llm)
             return
         if prompt in ("metadata only", "typed proposal"):
@@ -189,6 +199,18 @@ class CopilotTests(unittest.TestCase):
         self.assertTrue(self.clients[0].options["base_directory"])
         self.assertNotEqual(self.clients[0].options["working_directory"], str(ROOT))
 
+    def test_sdk_cannot_authorize_injected_deletion(self):
+        with tempfile.TemporaryDirectory(prefix="bd-injection-") as directory:
+            root = Path(directory)
+            shutil.copytree(ROOT / "examples", root / "examples")
+            self.bridge.workspace = Workspace(root, "examples/counter_compare.json")
+            self.bridge.connect()
+            events = self.drain(self.send("injected deletion", share_context=True, allow_design_changes=True,
+                                          design=self.design, base_dir="examples", allow_removals=True))
+            self.assertFalse(any(item["type"] == "proposal" for item in events))
+            self.assertIn("AI_OPERATION_FORBIDDEN", next(item["content"] for item in events if item["type"] == "message"))
+            self.assertEqual(self.bridge.workspace.proposals.pending, {})
+
     def test_streaming_and_multiturn_use_restricted_session(self):
         self.bridge.connect()
         first = self.send()
@@ -260,7 +282,7 @@ class CopilotTests(unittest.TestCase):
         turn = self.send("tools", share_context=True, design=self.design, base_dir="examples")
         self.design["name"] = "changed_after_send"
         events = self.drain(turn)
-        result = json.loads(next(item["content"] for item in events if item["type"] == "message"))
+        result = tool_data(next(item["content"] for item in events if item["type"] == "message"))
         self.assertTrue(result["valid"])
         self.assertIn("counter_0", result["interfaces"]["instances"])
         self.assertIsNone(turn.conversation.context)
@@ -272,7 +294,7 @@ class CopilotTests(unittest.TestCase):
             self.bridge.workspace = Workspace(root, "examples/counter_compare.json")
             self.bridge.connect()
             events = self.drain(self.send("metadata only", share_context=True, allow_design_changes=True, design=self.design, base_dir="examples"))
-            metadata = json.loads(next(item["content"] for item in events if item["type"] == "message"))
+            metadata = tool_data(next(item["content"] for item in events if item["type"] == "message"))
             self.assertFalse(metadata["rtl_access"])
             self.assertNotIn("source", metadata["metadata"][0])
             self.assertNotIn("module counter", json.dumps(metadata))
@@ -294,7 +316,7 @@ class CopilotTests(unittest.TestCase):
             self.bridge.workspace = Workspace(root, "examples/counter_compare.json")
             self.bridge.connect()
             events = self.drain(self.send("catalog query", share_context=True, allow_design_changes=True, design=self.design, base_dir="examples"))
-            result = json.loads(next(item["content"] for item in events if item["type"] == "message"))
+            result = tool_data(next(item["content"] for item in events if item["type"] == "message"))
             self.assertLessEqual(len(result["ips"]), 8)
             self.assertEqual(result["ips"][0]["id"], "bd_uart_rx")
             self.assertTrue(all(set(item) == {"id", "version", "ports", "parameters"} for item in result["ips"]))

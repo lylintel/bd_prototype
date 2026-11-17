@@ -72,6 +72,21 @@ class ProposalStore:
         self.workspace = workspace
         self.pending = {}
         self.lock = RLock()
+        self.requests = []
+
+    def check_request(self, payload):
+        try:
+            size = len(json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+        except (ValueError, TypeError, RecursionError):
+            fail("AI_REQUEST", field="payload")
+        if size > 256 * 1024:
+            fail("AI_LLM_LIMIT", limit=256 * 1024)
+        with self.lock:
+            now = monotonic()
+            self.requests = [created for created in self.requests if now - created < 60]
+            if len(self.requests) >= 10:
+                fail("AI_RATE_LIMIT", limit=10, seconds=60)
+            self.requests.append(now)
 
     def _prune(self):
         expired = [identifier for identifier, item in self.pending.items() if monotonic() - item["created"] > 600]
@@ -85,6 +100,11 @@ class ProposalStore:
         if expected is not None and hashes != expected:
             fail("AI_STALE_PROPOSAL")
         operations = deepcopy(validate_operations(payload.get("ops")))
+        permission = payload.get("allow_removals", False)
+        if type(permission) is not bool:
+            fail("AI_REQUEST", field="allow_removals")
+        if not permission and any(item["op"] == "remove_instance" for item in operations):
+            fail("AI_OPERATION_FORBIDDEN", op="remove_instance")
         candidate, errors = apply_ops(document, library, operations)
         result = _view(candidate, library, errors)
         summary = payload.get("summary", "")
