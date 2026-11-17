@@ -11,7 +11,7 @@
 | 上下文预算 | a14e72d | 可配置保守 token 估算，选中一跳子图/统计/范围提示及明确拒绝 |
 | IP 描述 | df115d2 | 可选 200 字清洗描述，导入默认关闭，显式发送恶意描述回归 |
 | 保密与同意 | a56ddeb | 私有权限、脱敏、敏感响应阻断、常驻披露、端点绑定首次同意 |
-| 真实评测准备 | 本报告对应的评测协议提交 | 12 个独立 held-out、每例三次、物理调用/费用双预算、分组和部分报告 |
+| 真实评测准备 | cebf139 | 12 个独立 held-out、每例三次、物理调用/费用双预算、分组和部分报告 |
 
 设计/IP schema 未放宽；私有 AI 配置独立迁移至 v4，兼容读取旧 v1-v3，与硬件设计版本无关。决策细节见 D030-D034。
 
@@ -90,7 +90,10 @@ held_long_buffered_serial 三次均因 bd_sync_fifo 未进入 top-8 而失败。
 完整门禁按四个不重叠组执行全部 Python 测试，仍保持原 300 秒进程限制及 HDL 30 秒限制。原 Icarus 编译和导入浏览器流程曾分别超时，原样隔离重跑通过，原因未确认，没有更改 RTL、golden 或断言来消除失败。
 最终完整 scripts/check.py 通过：583 项 Python（170+55+276+82）、68 子测试、42 前端单测、18 条浏览器流程，以及 32 例 x3 的完整 mock 协议。Ruff、ESLint、TypeScript 和 Vite 均通过。
 记录位于 build/phase35-evaluation-check.log；独立性能 11 样本中位数 350.041ms、最大 459.595ms，按已批准政策为非阻塞警告，未放宽预算。
-相对 20d8c81，core、bdtool、bdip、ip_import、内置 IP、历史设计/schema/golden、原 dev 数据与依赖文件均无改动。CI 结果在发布后补充。
+相对 20d8c81，core、bdtool、bdip、ip_import、内置 IP、历史设计/schema/golden、原 dev 数据与依赖文件均无改动。
+最终代码 cebf139 的 [CI 44044182430](https://github.com/lylintel/bd_prototype/actions/runs/44044182430) 六项任务全部成功：Python 3.10/3.14 完整门禁，以及 Linux/Windows x Python 3.10/3.14 解析器检查。两版本 mock 评测报告和性能 artifact 均上传。
+CI 成功证明代码与协议回归通过，不表示 held-out 100% 通过，更不表示真实模型已经评测。真实指标仍未测量。
+最新普通预览已核对：原示例五个显示节点、校验通过、常驻披露和“未配置端点”，未通过预览发送模型请求。
 
 ## 下一步
 
