@@ -263,7 +263,8 @@ export default function App() {
   async function generateProposal(prompt, allowRemovals) {
     const current = editorState.current;
     const original = current.history.current.document ?? current.history.current.design;
-    const result = await api("/api/ai/propose", { design: original, base_dir: current.baseDir, prompt, allow_removals: allowRemovals });
+    const selectedInstances = selection?.type === "node" && !selection.id.startsWith("@") ? [selection.id] : [];
+    const result = await api("/api/ai/propose", { design: original, base_dir: current.baseDir, prompt, allow_removals: allowRemovals, selected_instances: selectedInstances });
     const latest = editorState.current;
     if ((latest.history.current.document ?? latest.history.current.design) !== original || latest.baseDir !== current.baseDir) {
       await api("/api/ops/discard", { proposal_id: result.id });

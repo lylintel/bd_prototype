@@ -68,6 +68,8 @@ export default function Settings({ open, onClose, api }) {
             onChange={(event) => update("temperature", event.target.value === "" ? "" : event.target.valueAsNumber)} /></label>
           <label className="field-label">{t("ai.timeout")}<input type="number" min="1" max="120" step="1" aria-label={t("ai.timeout")} value={draft.timeout}
             onChange={(event) => update("timeout", event.target.value === "" ? "" : event.target.valueAsNumber)} /></label>
+          <label className="field-label ai-wide">{t("ai.contextBudget")}<input type="number" min="512" max="2000000" step="1" aria-label={t("ai.contextBudget")} value={draft.context_token_budget}
+            onChange={(event) => update("context_token_budget", event.target.value === "" ? "" : event.target.valueAsNumber)} /></label>
           <label className="field-label ai-wide">{t("ai.structuredMode")}<select aria-label={t("ai.structuredMode")} value={draft.structured_mode} onChange={(event) => update("structured_mode", event.target.value)}>
             <option value="json_schema">{t("ai.modeJsonSchema")}</option><option value="tool">{t("ai.modeTool")}</option></select></label>
           <label className="ai-wide check-field"><input type="checkbox" checked={draft.log_enabled} onChange={(event) => update("log_enabled", event.target.checked)} />{t("ai.logEnabled")}</label>

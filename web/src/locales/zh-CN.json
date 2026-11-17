@@ -1,4 +1,10 @@
 {
+  "ai.contextBudget": "网表上下文 token 估算上限",
+  "ai.subgraphOnly": "仅基于子图：包含 {count}/{total} 个实例及其边界摘要",
+  "diagnostic.AI_CONTEXT_SELECTION_REQUIRED": "网表估算 {estimated} tokens，超过上限 {limit}；请先选中要修改的实例",
+  "diagnostic.AI_CONTEXT_BUDGET": "选中实例及一跳邻居仍需约 {estimated} tokens，超过上限 {limit}；未发送请求",
+  "diagnostic.AI_CONTEXT_SCOPE": "拒绝对子图外实例执行操作：{op}",
+  "diagnostic.AI_REQUEST_TOO_LARGE": "AI 请求超过 {limit} 字节限制，未发送到模型；请缩小输入或使用本地评测的子图模式",
   "diagnostic.AI_RATE_LIMIT": "AI 请求过于频繁：每 {seconds} 秒最多 {limit} 次",
   "ai.assistant": "AI 提案",
   "ai.closeAssistant": "关闭 AI 提案",

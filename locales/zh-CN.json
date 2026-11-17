@@ -1,4 +1,8 @@
 {
+  "AI_CONTEXT_SELECTION_REQUIRED": "网表估算 {estimated} tokens，超过上限 {limit}；请先选中要修改的实例",
+  "AI_CONTEXT_BUDGET": "选中实例及一跳邻居估算 {estimated} tokens，超过上限 {limit}；未发送请求",
+  "AI_CONTEXT_SCOPE": "拒绝对子图外实例执行操作：{op}",
+  "AI_REQUEST_TOO_LARGE": "AI 请求超过 {limit} 字节限制；未发送到模型",
   "AI_EVAL_TITLE": "AI 提案评测",
   "AI_EVAL_SCOPE": "客户端：{client}；案例：{count}。Mock 分数不是实际模型质量。",
   "AI_EVAL_DESCRIPTION": "评测类型化 AI 提案；real 模式会发送元数据到配置的服务",

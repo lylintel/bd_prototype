@@ -192,7 +192,8 @@ class CopilotBridge:
                 raise CopilotError("Design snapshot is too large to share.")
             advanced = any(any(key in endpoint for key in ("slice", "const", "concat")) for net in document["nets"] for endpoint in net["endpoints"])
             context = {"design": data, "document": document, "advanced": advanced, "base_dir": base_dir,
-                       "allow_design_changes": payload.get("allow_design_changes") is True}
+                       "allow_design_changes": payload.get("allow_design_changes") is True,
+                       "selected_instances": payload.get("selected_instances", [])}
         elif "design" in payload:
             raise CopilotError("Design context cannot be sent without explicit sharing consent.")
         model = payload.get("model") or None
@@ -247,7 +248,8 @@ class CopilotBridge:
             turn.task.cancel()
 
     def _tools(self, conversation):
-        from bdai import compact_design, metadata_card, prepare_context, translate_legacy
+        from bdai import metadata_card, prepare_context, translate_legacy
+        from ai.context import budget_context, scope_violations
         from core.ops import SCHEMA as OPS_SCHEMA, OperationError
 
         tools = []
@@ -287,7 +289,9 @@ class CopilotBridge:
                         raise CopilotError("The user did not share a design for this turn. Do not infer the current canvas from earlier turns.")
                     if tool_name == "bd_design":
                         document, library = prepare_context(self.workspace, context["document"], context["base_dir"])
-                        result = compact_design(document, library)
+                        netlist, details = budget_context(document, library, token_budget=self.workspace._settings_store().configuration().context_token_budget,
+                                                         selected_instances=context["selected_instances"])
+                        result = {"netlist": netlist, "context_scope": details}
                     elif tool_name in ("bd_validate", "bd_preview"):
                         inspected = self.workspace.semantic_inspect(context["document"], context["base_dir"])
                         result = {"valid": inspected["valid"], "diagnostics": [{key: item[key] for key in ("code", "params", "location")} for item in inspected["diagnostics"]],
@@ -338,7 +342,13 @@ class CopilotBridge:
                                 else:
                                     operations = arguments["ops"]
                                     summary = arguments.get("summary", "")
+                                document, library = prepare_context(self.workspace, context["document"], context["base_dir"])
+                                _, details = budget_context(document, library, token_budget=self.workspace._settings_store().configuration().context_token_budget,
+                                                            selected_instances=context["selected_instances"])
+                                if scope_violations(operations, details):
+                                    raise OperationError("AI_CONTEXT_SCOPE", op="proposal")
                                 proposal = self.workspace.propose_ops({"design": context["document"], "base_dir": context["base_dir"], "ops": operations, "summary": summary})
+                                proposal["context"] = details
                                 if tool_name == "bd_generate":
                                     turn.legacy_proposal = proposal
                                 self._emit(turn, {"type": "proposal", "proposal": proposal})

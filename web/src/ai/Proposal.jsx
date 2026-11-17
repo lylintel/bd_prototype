@@ -29,6 +29,7 @@ export default function Proposal({ proposal, busy = false, onAccept, onDiscard, 
   return <section className="ai-proposal" aria-label={t("ai.proposalTitle")}>
     <header><strong>{t("ai.proposalTitle")}</strong><span>{t(proposal.valid && view.valid ? "ai.pending" : "ai.invalid")}</span></header>
     {proposal.summary && <p className="ai-summary">{proposal.summary}</p>}
+    {proposal.context?.scope === "subgraph" && <p className="ai-warning" role="status">{t("ai.subgraphOnly", { count: proposal.context.included_instances.length, total: proposal.context.totals.instances })}</p>}
     {proposal.attempts > 0 && <p className="ai-operation-count">{t("ai.attempts", { count: proposal.attempts })}</p>}
     {["assumptions", "questions", "missing_ip"].map((field) => proposal[field]?.length > 0 && <div className="ai-notes" key={field}><strong>{t(`ai.${field}`)}</strong><ul>{proposal[field].map((value, index) => <li key={index}>{value}</li>)}</ul></div>)}
     <div className="ai-operation-count">{t("ai.operationCount", { count: selected.length })}</div>

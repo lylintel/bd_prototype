@@ -56,8 +56,11 @@ class ClientConfig:
     structured_mode: str = "json_schema"
     timeout: float = 30
     log_enabled: bool = False
+    context_token_budget: int = 32_000
 
     def __post_init__(self):
+        if type(self.context_token_budget) is not int or not 512 <= self.context_token_budget <= 2_000_000:
+            raise LLMError("AI_LLM_CONFIG", field="context_token_budget")
         try:
             if not isinstance(self.base_url, str) or len(self.base_url) > 2048:
                 raise ValueError("base_url")

@@ -224,7 +224,9 @@ class Workspace:
             document, library = prepare_context(self, payload.get("design"), base_dir)
             expected = (fingerprint(document), fingerprint([item.to_dict() for item in library]))
             outcome = run_pipeline(document, library, payload.get("prompt"), self.create_llm_client(),
-                                   allow_removals=payload.get("allow_removals", False))
+                                   allow_removals=payload.get("allow_removals", False),
+                                   context_token_budget=self._settings_store().configuration().context_token_budget,
+                                   selected_instances=payload.get("selected_instances", []))
             return self.proposals.preview({"design": payload.get("design"), "base_dir": base_dir, "ops": outcome["ops"], "summary": outcome["summary"],
                                            "allow_removals": payload.get("allow_removals", False)},
                                           outcome=outcome, expected=expected)

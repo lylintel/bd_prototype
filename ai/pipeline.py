@@ -4,7 +4,7 @@ import json
 from jsonschema import Draft202012Validator
 
 from ai.client import LLMError
-from ai.context import compact_design
+from ai.context import budget_context, scope_violations
 from ai.retrieval import SearchIndex
 from core.design import check_document
 from core.diagnostics import Diagnostic
@@ -54,16 +54,16 @@ def affected_ports(candidate, library, operations, diagnostics):
             if name in resolved.instances else {} for name in sorted(value for value in names if isinstance(value, str))}
 
 
-def _result(response, candidate, diagnostics, attempt, trace, cards):
+def _result(response, candidate, diagnostics, attempt, trace, cards, context):
     values = deepcopy(response)
-    if any(item.code == "AI_OPERATION_FORBIDDEN" for item in diagnostics):
+    if any(item.code in ("AI_OPERATION_FORBIDDEN", "AI_CONTEXT_SCOPE") for item in diagnostics):
         values["ops"] = []
-    return {**values, "document": deepcopy(candidate), "attempts": attempt, "trace": trace,
+    return {**values, "document": deepcopy(candidate), "attempts": attempt, "trace": trace, "context": context,
             "validation": {"valid": not any(item.severity == "error" for item in diagnostics), "diagnostics": [item.to_dict() for item in diagnostics]},
             "retrieved": [{"id": card["id"], "version": card["version"]} for card in cards]}
 
 
-def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_removals=False):
+def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_removals=False, context_token_budget=32_000, selected_instances=()):
     if (not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 8000
             or type(max_attempts) is not int or not 1 <= max_attempts <= 3 or type(allow_removals) is not bool):
         raise LLMError("AI_REQUEST", field="prompt_or_policy")
@@ -72,7 +72,8 @@ def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_rem
     library = tuple(library)
     cards = SearchIndex(library).search_ip(prompt, 8)
     references = {(card["id"], card["version"]) for card in cards}
-    data = {"netlist": compact_design(baseline, library), "ip_cards": cards, "permissions": {"allow_removals": allow_removals}}
+    netlist, context = budget_context(baseline, library, token_budget=context_token_budget, selected_instances=selected_instances)
+    data = {"netlist": netlist, "context_scope": context, "ip_cards": cards, "permissions": {"allow_removals": allow_removals}}
     encoded = json.dumps(data, ensure_ascii=False, allow_nan=False)
     if len(encoded.encode("utf-8")) > 128 * 1024:
         raise LLMError("AI_LLM_LIMIT", limit=128 * 1024)
@@ -85,7 +86,7 @@ def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_rem
         try:
             raw = client.generate(deepcopy(messages), deepcopy(RESPONSE_SCHEMA))
         except LLMError as error:
-            return _result(response, candidate, [error.diagnostic], attempt, trace, cards)
+            return _result(response, candidate, [error.diagnostic], attempt, trace, cards, context)
         try:
             if not isinstance(raw, dict) or len(json.dumps(raw, ensure_ascii=False, allow_nan=False).encode("utf-8")) > 128 * 1024:
                 raise LLMError("AI_MODEL_SCHEMA", reason="size_or_object")
@@ -96,7 +97,8 @@ def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_rem
             if response["missing_ip"] or response["questions"]:
                 response["ops"] = []
                 code = "AI_MISSING_IP" if response["missing_ip"] else "AI_CLARIFICATION"
-                return _result(response, baseline, [issue(code)], attempt, trace, cards)
+                return _result(response, baseline, [issue(code)], attempt, trace, cards, context)
+            diagnostics.extend(issue("AI_CONTEXT_SCOPE", op=operation) for operation in scope_violations(response["ops"], context))
             for operation in response["ops"]:
                 if operation["op"] == "add_instance" and (operation["ip"], operation["version"]) not in references:
                     diagnostics.append(issue("AI_IP_NOT_RETRIEVED", ip=operation["ip"], version=operation["version"]))
@@ -113,9 +115,12 @@ def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_rem
             diagnostics = [issue("AI_MODEL_SCHEMA", reason="json")]
         feedback = {"diagnostics": [{"code": item.code, "params": item.params, "location": item.location} for item in diagnostics if item.severity == "error"],
                     "affected_ports": affected_ports(candidate, library, response["ops"], diagnostics)}
+        if context["scope"] == "subgraph":
+            allowed = set(context["included_instances"]) | {item["name"] for item in response["ops"] if item["op"] == "add_instance"}
+            feedback["affected_ports"] = {name: ports for name, ports in feedback["affected_ports"].items() if name in allowed}
         trace.append({"attempt": attempt, **feedback})
         if not feedback["diagnostics"] or attempt == max_attempts:
-            return _result(response, candidate, diagnostics, attempt, trace, cards)
+            return _result(response, candidate, diagnostics, attempt, trace, cards, context)
         messages.append({"role": "assistant", "content": json.dumps({"ops": response["ops"]}, ensure_ascii=False)})
         messages.append({"role": "user", "content": json.dumps(feedback, ensure_ascii=False)})
     raise AssertionError("unreachable pipeline state")

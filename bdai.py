@@ -80,7 +80,7 @@ class ProposalStore:
         except (ValueError, TypeError, RecursionError):
             fail("AI_REQUEST", field="payload")
         if size > 256 * 1024:
-            fail("AI_LLM_LIMIT", limit=256 * 1024)
+            fail("AI_REQUEST_TOO_LARGE", limit=256 * 1024)
         with self.lock:
             now = monotonic()
             self.requests = [created for created in self.requests if now - created < 60]
@@ -114,6 +114,7 @@ class ProposalStore:
         result.update(id=identifier, ops=operations, summary=summary, assumptions=[], questions=[], missing_ip=[],
                       base_hash=fingerprint(document), requires_confirmation=True)
         if outcome is not None:
+            result["context"] = deepcopy(outcome.get("context", {}))
             for key in ("assumptions", "questions", "missing_ip", "attempts", "trace", "retrieved"):
                 result[key] = deepcopy(outcome[key])
             result["diagnostics"].extend(item for item in outcome["validation"]["diagnostics"] if item not in result["diagnostics"])
