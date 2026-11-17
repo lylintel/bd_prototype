@@ -14,7 +14,7 @@ function Action({ icon: Icon, label, ...props }) {
   return <button type="button" className="icon-button" title={label} aria-label={label} {...props}><Icon size={16} strokeWidth={1.7} /></button>;
 }
 
-export default function CopilotPanel({ open, onClose, api, token, design, baseDir, onAcceptProposal }) {
+export default function CopilotPanel({ open, onClose, api, token, design, baseDir, onAcceptProposal, onAuthorize }) {
   const [status, setStatus] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -79,6 +79,8 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
     event.preventDefault();
     const text = prompt.trim();
     if (!text || proposal || generating || connecting || !status?.authenticated) return;
+    try { await onAuthorize("copilot"); }
+    catch (failure) { setError(failure.message); return; }
     const activeController = new AbortController();
     controller.current = activeController;
     requestId.current = null;

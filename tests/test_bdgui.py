@@ -167,6 +167,8 @@ class EditorTests(unittest.TestCase):
     def test_ai_pipeline_returns_pending_proposal_and_blocks_questions(self):
         from ai.client import ReplayClient
 
+        settings = self.workspace.save_ai_settings({"base_url": "http://127.0.0.1:1234/v1", "model": "offline"})
+        self.workspace.confirm_ai_consent({"confirmed": True, "revision": settings["endpoint_revision"]})
         reply = {"schema_version": 1, "ops": [{"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19}],
                  "summary": "parameter change", "assumptions": [], "questions": [], "missing_ip": []}
         self.workspace.llm_client_factory = lambda *args, **kwargs: ReplayClient([reply])
@@ -183,6 +185,8 @@ class EditorTests(unittest.TestCase):
             self.workspace.accept_ops({"proposal_id": blocked["id"], "design": self.data, "base_dir": "examples", "selected": [0], "confirmed": True})
 
     def test_ai_pipeline_rejects_changed_sources_during_generation(self):
+        settings = self.workspace.save_ai_settings({"base_url": "http://127.0.0.1:1234/v1", "model": "offline"})
+        self.workspace.confirm_ai_consent({"confirmed": True, "revision": settings["endpoint_revision"]})
         class ChangingClient:
             def generate(client, messages, schema):
                 path = self.root / "examples/rtl/counter.v"

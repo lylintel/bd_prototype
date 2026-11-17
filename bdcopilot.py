@@ -179,6 +179,7 @@ class CopilotBridge:
             raise CopilotError("Prompt must contain 1 to 8000 characters.")
         if payload.get("confirm_usage") is not True:
             raise CopilotError("Explicit confirmation of Copilot usage is required.")
+        self.workspace._settings_store().require_consent("copilot")
         self.workspace.proposals.check_request(payload)
         context = None
         if payload.get("share_context") is True:

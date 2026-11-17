@@ -346,6 +346,7 @@ test("[mock-sdk] ops batch requires acceptance and one undo restores every chang
   await page.getByLabel("Copilot 模型", { exact: true }).selectOption("test-model");
   await page.getByLabel("Copilot 消息输入", { exact: true }).fill("workflow threshold to 19 and width");
   await page.getByRole("button", { name: "发送", exact: true }).click();
+  await page.getByRole("dialog", { name: t("ai.consentTitle"), exact: true }).getByRole("button", { name: t("ai.confirmConsent"), exact: true }).click();
   const proposal = page.getByRole("region", { name: t("ai.proposalTitle"), exact: true });
   await expect(proposal).toBeVisible();
   await expect(proposal.getByRole("button", { name: t("ai.accept"), exact: true })).toBeEnabled();
@@ -411,6 +412,7 @@ async function aiRequest(page, prompt, removals = false) {
   await page.getByLabel(t("ai.prompt"), { exact: true }).fill(prompt);
   if (removals) await page.getByLabel(t("ai.allowRemovals"), { exact: true }).check();
   await page.getByRole("button", { name: t("ai.generateProposal"), exact: true }).click();
+  await page.getByRole("dialog", { name: t("ai.consentTitle"), exact: true }).getByRole("button", { name: t("ai.confirmConsent"), exact: true }).click();
   const proposal = page.getByRole("region", { name: t("ai.proposalTitle"), exact: true });
   await expect(proposal).toBeVisible();
   return proposal;
@@ -489,4 +491,42 @@ test("[mock-sdk] four IP system is reviewed accepted validated and undone", asyn
   await page.screenshot({ path: testInfo.outputPath("four-ip-accepted.png") });
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   expect(await designJson(page)).toEqual(before);
+});
+
+test("[mock-sdk] consent blocks sends until accepted and is renewed for a new endpoint", async ({ page }, testInfo) => {
+  await openEditor(page);
+  await expect(page.getByRole("note")).toContainText(t("ai.requestDisclosure"));
+  const state = await (await page.request.get(`${server.url}/api/state`)).json();
+  const headers = { "X-BD-Token": state.token, Origin: server.url };
+  await page.request.post(`${server.url}/api/ai/settings`, { headers, data: { base_url: "http://127.0.0.1:8888/v1", model: "mock-model" } });
+  let sends = 0;
+  page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/ai/propose") sends += 1; });
+  await page.getByRole("button", { name: t("ai.assistant"), exact: true }).click();
+  await page.getByLabel(t("ai.prompt"), { exact: true }).fill("更新 compare_0 阈值并增加 aux 输入");
+  const generate = page.getByRole("button", { name: t("ai.generateProposal"), exact: true });
+  const consent = page.getByRole("dialog", { name: t("ai.consentTitle"), exact: true });
+  await generate.click();
+  await expect(consent).toBeVisible();
+  expect(sends).toBe(0);
+  await consent.getByRole("button", { name: t("common.cancel"), exact: true }).click();
+  await expect(generate).toBeEnabled();
+  expect(sends).toBe(0);
+  await generate.click();
+  await consent.getByRole("button", { name: t("ai.confirmConsent"), exact: true }).click();
+  const proposal = page.getByRole("region", { name: t("ai.proposalTitle"), exact: true });
+  await expect(proposal).toBeVisible();
+  expect(sends).toBe(1);
+  await proposal.getByRole("button", { name: t("ai.discard"), exact: true }).click();
+  await generate.click();
+  await expect(proposal).toBeVisible();
+  await expect(consent).not.toBeVisible();
+  expect(sends).toBe(2);
+  await proposal.getByRole("button", { name: t("ai.discard"), exact: true }).click();
+  await page.request.post(`${server.url}/api/ai/settings`, { headers, data: { base_url: "https://another.example.invalid/v1" } });
+  await generate.click();
+  await expect(consent).toContainText(t("ai.endpoint.remote"));
+  expect(sends).toBe(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: testInfo.outputPath("consent-mobile.png") });
+  await consent.getByRole("button", { name: t("common.cancel"), exact: true }).click();
 });

@@ -1,4 +1,7 @@
 {
+  "AI_ENDPOINT_REQUIRED": "请先通过私有设置或环境变量配置端点和模型",
+  "AI_CONSENT_REQUIRED": "需要明确同意向当前端点发送数据",
+  "AI_LLM_SENSITIVE_RESPONSE": "模型响应包含敏感配置，已拒绝且未应用",
   "AI_CONTEXT_SELECTION_REQUIRED": "网表估算 {estimated} tokens，超过上限 {limit}；请先选中要修改的实例",
   "AI_CONTEXT_BUDGET": "选中实例及一跳邻居估算 {estimated} tokens，超过上限 {limit}；未发送请求",
   "AI_CONTEXT_SCOPE": "拒绝对子图外实例执行操作：{op}",

@@ -49,8 +49,8 @@ def origin(url):
 
 @dataclass(frozen=True)
 class ClientConfig:
-    base_url: str = "https://api.openai.com/v1"
-    model: str = ""
+    base_url: str = field(default="https://api.openai.com/v1", repr=False)
+    model: str = field(default="", repr=False)
     api_key: str = field(default="", repr=False)
     temperature: float = 0
     structured_mode: str = "json_schema"
@@ -136,7 +136,9 @@ class OpenAIClient(LLMClient):
 
     def _audit(self, code, attempt, started):
         if self.config.log_enabled and self.audit:
-            model = self.config.model.replace(self.config.api_key, "[redacted]") if self.config.api_key else self.config.model
+            from ai.privacy import redact
+
+            model = redact(self.config.model, (self.config.api_key, self.config.base_url, urlsplit(self.config.base_url).hostname))
             self.audit({"event": "generate", "code": code, "attempt": attempt,
                         "duration_ms": round((perf_counter() - started) * 1000, 3), "model": model})
 
@@ -180,6 +182,11 @@ class OpenAIClient(LLMClient):
                         else:
                             text = message["content"]
                         result = json_object(text)
+                        from ai.privacy import contains_sensitive
+
+                        sensitive = (self.config.api_key, self.config.base_url, urlsplit(self.config.base_url).hostname)
+                        if contains_sensitive(result, sensitive):
+                            raise LLMError("AI_LLM_SENSITIVE_RESPONSE")
                         if next(validator.iter_errors(result), None) is not None:
                             raise ValueError("schema")
                     except LLMError:

@@ -76,7 +76,7 @@ def test_private_settings_v1_migrates_budget_without_touching_design(tmp_path, m
     settings = SettingsStore(tmp_path)
     assert settings.configuration().context_token_budget == 32_000
     settings.save({"context_token_budget": 12_000})
-    assert json.loads(path.read_text())["schema_version"] == 3
+    assert json.loads(path.read_text())["schema_version"] == 4
     assert SettingsStore(tmp_path).configuration().context_token_budget == 12_000
     assert settings.configuration().send_ip_descriptions is False
     settings.save({"send_ip_descriptions": True})

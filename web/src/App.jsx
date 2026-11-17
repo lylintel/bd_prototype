@@ -7,6 +7,7 @@ import OutputWindow from "./OutputWindow.jsx";
 import CircuitEdge from "./CircuitEdge.jsx";
 import CopilotPanel from "./CopilotPanel.jsx";
 import AISettings from "./ai/Settings.jsx";
+import { useAIPrivacy } from "./ai/Privacy.jsx";
 import AIAssistant from "./ai/Assistant.jsx";
 import { candidateGraph, designChanges, mergePreview } from "./ai/model.js";
 import { Sparkles } from "lucide-react";
@@ -145,11 +146,17 @@ export default function App() {
 
   function notify(message, error = false) { setToast({ message, error }); }
 
-  async function api(path, payload, signal) {
+  async function rawApi(path, payload, signal) {
     const response = await fetch(path, payload === undefined ? { signal } : { method: "POST", headers: { "Content-Type": "application/json", "X-BD-Token": token }, body: JSON.stringify(payload), signal });
     const result = await response.json();
     if (!response.ok) throw new Error(normalizeInspection(result).diagnostics[0] || result.error || `HTTP ${response.status}`);
     return result;
+  }
+
+  const privacy = useAIPrivacy(rawApi, aiSettingsOpen);
+  async function api(path, payload, signal) {
+    if (path === "/api/ai/propose") await privacy.authorize();
+    return rawApi(path, payload, signal);
   }
 
   function acceptDocument(result) {
@@ -475,7 +482,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event) => {
-      if (!design || busy || preview || modal || ipImportOpen || connectionOpen || aiSettingsOpen || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+      if (!design || busy || preview || modal || ipImportOpen || connectionOpen || aiSettingsOpen || privacy.confirming || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveDialog(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
@@ -713,9 +720,10 @@ export default function App() {
         <div className="inspector-footer"><ShieldCheck size={14} />{inspection.valid && !checking ? "Design validated" : "Draft design"}<span>v0.1</span></div>
       </aside>
     </main>
+    {privacy.view}
     <footer className="status-bar"><span><span className="session-dot" />{busy || "本地连接"}</span><span className="status-path">{documentPath || "Untitled"}</span><span>JSON <span className="status-divider">|</span> Verilog-2005</span></footer>
 
-    <CopilotPanel open={copilotOpen} onClose={() => setCopilotOpen(false)} api={api} token={token} design={document} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} />
+    <CopilotPanel open={copilotOpen} onClose={() => setCopilotOpen(false)} api={api} token={token} design={document} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} onAuthorize={privacy.authorize} />
     <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} api={api} />
     <AIAssistant open={assistantOpen} onClose={() => setAssistantOpen(false)} onSettings={() => setAiSettingsOpen(true)} api={api}
       onGenerate={generateProposal} onAccept={applyCopilotProposal} onSelect={selectProposal} onPreview={setPreview} />

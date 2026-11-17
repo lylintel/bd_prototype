@@ -173,7 +173,11 @@ class CopilotTests(unittest.TestCase):
         sdk = SimpleNamespace(Client=create_client, Connection=SimpleNamespace(for_stdio=lambda **kwargs: kwargs),
             Tool=lambda **kwargs: SimpleNamespace(**kwargs), Result=FakeResult,
             Reject=lambda **kwargs: SimpleNamespace(kind="reject", **kwargs))
-        self.bridge = CopilotBridge(Workspace(ROOT, "examples/counter_compare.json"), sdk_loader=lambda: sdk)
+        directory = tempfile.TemporaryDirectory(prefix="bd-copilot-tests-")
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        shutil.copytree(ROOT / "examples", root / "examples")
+        self.bridge = CopilotBridge(Workspace(root, "examples/counter_compare.json"), sdk_loader=lambda: sdk)
         self.addCleanup(self.bridge.close)
         self.design = json.loads((ROOT / "examples/counter_compare.json").read_text(encoding="utf-8"))
 
@@ -186,6 +190,8 @@ class CopilotTests(unittest.TestCase):
                 return events
 
     def send(self, prompt="hello", **extra):
+        store = self.bridge.workspace._settings_store()
+        store.confirm({"confirmed": True, "provider": "copilot", "revision": store.public()["copilot_revision"]})
         return self.bridge.start_turn({"prompt": prompt, "confirm_usage": True, "model": "test-model", **extra})
 
     def test_status_is_passive_and_connect_does_not_send_a_prompt(self):
@@ -371,6 +377,8 @@ class CopilotTests(unittest.TestCase):
             self.send(conversation_id=turn.conversation.id)
 
     def test_http_stream_authentication_cancel_and_disconnect(self):
+        store = self.bridge.workspace._settings_store()
+        store.confirm({"confirmed": True, "provider": "copilot", "revision": store.public()["copilot_revision"]})
         server = EditorServer(("127.0.0.1", 0), self.bridge.workspace)
         server.copilot = self.bridge
         thread = Thread(target=server.serve_forever, daemon=True)

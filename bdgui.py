@@ -202,6 +202,9 @@ class Workspace:
     def save_ai_settings(self, payload):
         return self._settings_store().save(payload)
 
+    def confirm_ai_consent(self, payload):
+        return self._settings_store().confirm(payload)
+
     def create_llm_client(self, payload=None):
         settings = self._settings_store()
         from ai.client import OpenAIClient
@@ -216,6 +219,7 @@ class Workspace:
         from ai.pipeline import run_pipeline
         from bdai import fail, fingerprint, prepare_context
 
+        self._settings_store().require_consent()
         if not self._ai_generation_lock.acquire(blocking=False):
             fail("AI_BUSY")
         try:
@@ -469,6 +473,8 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(workspace.select_ops(payload))
             elif self.path == "/api/ai/settings":
                 self.json_response(workspace.save_ai_settings(payload))
+            elif self.path == "/api/ai/consent":
+                self.json_response(workspace.confirm_ai_consent(payload))
             elif self.path == "/api/ai/test":
                 self.json_response(workspace.test_ai_connection(payload))
             elif self.path == "/api/ai/propose":

@@ -42,3 +42,8 @@
 .ai-preview-added .block-node, .ai-preview-added .external-node, .ai-preview-added .expression-node { border-color: #168767 !important; box-shadow: 0 0 0 2px #16876733; }
 .ai-preview-modified .block-node, .ai-preview-modified .external-node, .ai-preview-modified .expression-node { border-color: #ad7719 !important; box-shadow: 0 0 0 2px #ad771933; }
 .ai-preview-deleted .block-node, .ai-preview-deleted .external-node, .ai-preview-deleted .expression-node { border: 2px dashed #b7464c !important; opacity: 0.6; }
+.ai-disclosure { display: flex; flex-shrink: 0; gap: 8px; align-items: center; padding: 6px 12px; border-top: 1px solid #dce5e0; background: #f2f8f5; font-size: 11px; line-height: 1.4; color: #34594c; }
+.ai-disclosure > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }.ai-disclosure strong { white-space: nowrap; font-size: 10px; }
+.ai-consent { width: min(440px, calc(100vw - 32px)); box-sizing: border-box; border: 1px solid #ccddd5; border-radius: 6px; padding: 20px; }
+.ai-consent h2 { font-size: 16px; margin-top: 0; }.ai-consent p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.ai-consent footer { display: flex; justify-content: end; gap: 10px; margin-top: 20px; }
