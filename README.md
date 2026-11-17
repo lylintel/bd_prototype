@@ -184,6 +184,7 @@ npm.cmd --prefix web run build
 离线评测运行 `python -m bdstudio.ai_eval --client mock --report build/ai-eval`，可用 `--compare` 对照上次 JSON 报告。
 20 条固定回放已进入本地/CI 门禁；真实模型必须手动选择 `--client real --allow-network`，mock 分数不代表真实模型质量。
 Phase 3 的提交、验收数据、兼容性及暂缓范围见 [docs/reports/phase-3.md](docs/reports/phase-3.md)。
+Phase 3.5 新增显式子图预算、描述开关、端点同意及 20 dev + 12 held-out 的三次评测协议；真实模式须提供费用上限，缺少配置时不发送请求。结果与限制见 [docs/reports/phase-3.5.md](docs/reports/phase-3.5.md)。
 
 现有对话采用“网页 -> 本地 Python 服务 -> 官方 Copilot SDK -> Copilot 运行时”。编辑已收敛到 typed ops、语义校验和用户确认；SDK 连接与对话入口保留。契约与迁移边界见 [docs/ai-editing.md](docs/ai-editing.md)。
 

@@ -73,6 +73,7 @@ def test_sensitive_model_response_cannot_become_design_or_error_text(escaped):
 def test_redaction_covers_nested_transcripts():
     result = redact({"messages": [{"content": "Bearer token-value https://private.invalid/v1 secret-value"}]}, ("secret-value",))
     assert all(value not in json.dumps(result) for value in ("token-value", "private.invalid", "secret-value"))
+    assert "secret-value" not in redact(r"\u0073ecret-value", ("secret-value",))
 
 
 def test_service_refuses_generation_before_consent(tmp_path):
@@ -86,3 +87,14 @@ def test_service_refuses_generation_before_consent(tmp_path):
     with pytest.raises(LLMError) as raised:
         workspace.propose_ai({"prompt": "test"})
     assert raised.value.code == "AI_CONSENT_REQUIRED"
+
+
+def test_failed_save_cannot_enable_an_unconfigured_endpoint(tmp_path):
+    store = SettingsStore(tmp_path)
+    with pytest.raises(LLMError):
+        store.save({"base_url": "https://private.example.invalid/v1", "model": "unit-test-private-key", "api_key": "unit-test-private-key"})
+    assert not store.public()["endpoint_configured"]
+    assert not (tmp_path / ".bdstudio/ai.json").exists()
+    with pytest.raises(LLMError) as raised:
+        store.require_consent()
+    assert raised.value.code == "AI_ENDPOINT_REQUIRED"

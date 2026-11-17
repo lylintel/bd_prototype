@@ -1,0 +1,1999 @@
+{
+  "held_long_button_events": [
+    {
+      "schema_version": 1,
+      "ops": [
+        {
+          "op": "add_instance",
+          "name": "bd_debounce",
+          "ip": "bd_debounce",
+          "version": "1.0.0",
+          "params": {
+            "STABLE_CYCLES": 16
+          }
+        },
+        {
+          "op": "add_instance",
+          "name": "bd_edge_detect",
+          "ip": "bd_edge_detect",
+          "version": "1.0.0",
+          "params": {}
+        },
+        {
+          "op": "add_instance",
+          "name": "bd_counter",
+          "ip": "bd_counter",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 12
+          }
+        },
+        {
+          "op": "add_instance",
+          "name": "bd_compare",
+          "ip": "bd_compare",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 12
+          }
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_debounce_clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_debounce_rst",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_debounce_raw_in",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_debounce_changed",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_edge_detect_clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_edge_detect_rst",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_counter_clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_counter_rst",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_counter_overflow",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_compare_right_data",
+          "dir": "in",
+          "width": "12",
+          "signed": false,
+          "range": [
+            11,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_compare_equal",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_compare_less",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_compare_greater",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_debounce",
+            "port": "level"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_edge_detect",
+            "port": "signal_in"
+          },
+          "net": "net_0"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_edge_detect",
+            "port": "rising"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_counter",
+            "port": "enable"
+          },
+          "net": "net_1"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_edge_detect",
+            "port": "falling"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_counter",
+            "port": "clear"
+          },
+          "net": "net_2"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_counter",
+            "port": "count"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_compare",
+            "port": "left_data"
+          },
+          "net": "net_3"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_debounce_clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_debounce",
+            "port": "clk"
+          },
+          "net": "net_4"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_debounce_rst"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_debounce",
+            "port": "rst"
+          },
+          "net": "net_5"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_debounce_raw_in"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_debounce",
+            "port": "raw_in"
+          },
+          "net": "net_6"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_debounce",
+            "port": "changed"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_debounce_changed"
+          },
+          "net": "net_7"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_edge_detect_clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_edge_detect",
+            "port": "clk"
+          },
+          "net": "net_8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_edge_detect_rst"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_edge_detect",
+            "port": "rst"
+          },
+          "net": "net_9"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_counter_clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_counter",
+            "port": "clk"
+          },
+          "net": "net_10"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_counter_rst"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_counter",
+            "port": "rst"
+          },
+          "net": "net_11"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_counter",
+            "port": "overflow"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_counter_overflow"
+          },
+          "net": "net_12"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_compare_right_data"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_compare",
+            "port": "right_data"
+          },
+          "net": "net_13"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_compare",
+            "port": "equal"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_compare_equal"
+          },
+          "net": "net_14"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_compare",
+            "port": "less"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_compare_less"
+          },
+          "net": "net_15"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_compare",
+            "port": "greater"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_compare_greater"
+          },
+          "net": "net_16"
+        }
+      ],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [],
+      "missing_ip": []
+    }
+  ],
+  "held_long_buffered_serial": [
+    {
+      "schema_version": 1,
+      "ops": [
+        {
+          "op": "add_instance",
+          "name": "bd_sync_fifo",
+          "ip": "bd_sync_fifo",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 8,
+            "DEPTH": 32
+          }
+        },
+        {
+          "op": "add_instance",
+          "name": "bd_stream_slice",
+          "ip": "bd_stream_slice",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 8
+          }
+        },
+        {
+          "op": "add_instance",
+          "name": "bd_uart_tx",
+          "ip": "bd_uart_tx",
+          "version": "1.0.0",
+          "params": {
+            "CLKS_PER_BIT": 16
+          }
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_sync_fifo_clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_sync_fifo_rst",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_sync_fifo_s_data",
+          "dir": "in",
+          "width": "8",
+          "signed": false,
+          "range": [
+            7,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_sync_fifo_s_valid",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_sync_fifo_s_ready",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_sync_fifo_level",
+          "dir": "out",
+          "width": "6",
+          "signed": false,
+          "range": [
+            5,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_stream_slice_clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_stream_slice_rst",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_uart_tx_clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_uart_tx_rst",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_uart_tx_tx",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_uart_tx_busy",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_sync_fifo",
+            "port": "m_data"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "s_data"
+          },
+          "net": "net_0"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_sync_fifo",
+            "port": "m_valid"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "s_valid"
+          },
+          "net": "net_1"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "s_ready"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_sync_fifo",
+            "port": "m_ready"
+          },
+          "net": "net_2"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "m_data"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_uart_tx",
+            "port": "s_data"
+          },
+          "net": "net_3"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "m_valid"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_uart_tx",
+            "port": "s_valid"
+          },
+          "net": "net_4"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_uart_tx",
+            "port": "s_ready"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "m_ready"
+          },
+          "net": "net_5"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_sync_fifo_clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_sync_fifo",
+            "port": "clk"
+          },
+          "net": "net_6"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_sync_fifo_rst"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_sync_fifo",
+            "port": "rst"
+          },
+          "net": "net_7"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_sync_fifo_s_data"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_sync_fifo",
+            "port": "s_data"
+          },
+          "net": "net_8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_sync_fifo_s_valid"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_sync_fifo",
+            "port": "s_valid"
+          },
+          "net": "net_9"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_sync_fifo",
+            "port": "s_ready"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_sync_fifo_s_ready"
+          },
+          "net": "net_10"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_sync_fifo",
+            "port": "level"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_sync_fifo_level"
+          },
+          "net": "net_11"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_stream_slice_clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "clk"
+          },
+          "net": "net_12"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_stream_slice_rst"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "rst"
+          },
+          "net": "net_13"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_uart_tx_clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_uart_tx",
+            "port": "clk"
+          },
+          "net": "net_14"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_uart_tx_rst"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_uart_tx",
+            "port": "rst"
+          },
+          "net": "net_15"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_uart_tx",
+            "port": "tx"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_uart_tx_tx"
+          },
+          "net": "net_16"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_uart_tx",
+            "port": "busy"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_uart_tx_busy"
+          },
+          "net": "net_17"
+        }
+      ],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [],
+      "missing_ip": []
+    }
+  ],
+  "held_long_selection_tree": [
+    {
+      "schema_version": 1,
+      "ops": [
+        {
+          "op": "add_instance",
+          "name": "bd_shift_register",
+          "ip": "bd_shift_register",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 16
+          }
+        },
+        {
+          "op": "add_instance",
+          "name": "bd_mux2",
+          "ip": "bd_mux2",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 16
+          }
+        },
+        {
+          "op": "add_instance",
+          "name": "bd_mux4",
+          "ip": "bd_mux4",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 16
+          }
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_shift_register_clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_shift_register_rst",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_shift_register_enable",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_shift_register_serial_in",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_shift_register_serial_out",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_mux2_input0",
+          "dir": "in",
+          "width": "16",
+          "signed": false,
+          "range": [
+            15,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_mux2_input1",
+          "dir": "in",
+          "width": "16",
+          "signed": false,
+          "range": [
+            15,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_mux2_select",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_mux4_input0",
+          "dir": "in",
+          "width": "16",
+          "signed": false,
+          "range": [
+            15,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_mux4_input1",
+          "dir": "in",
+          "width": "16",
+          "signed": false,
+          "range": [
+            15,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_mux4_select",
+          "dir": "in",
+          "width": "2",
+          "signed": false,
+          "range": [
+            1,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_mux4_result",
+          "dir": "out",
+          "width": "16",
+          "signed": false,
+          "range": [
+            15,
+            0
+          ]
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_shift_register",
+            "port": "parallel_out"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_mux4",
+            "port": "input2"
+          },
+          "net": "net_0"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_mux2",
+            "port": "result"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_mux4",
+            "port": "input3"
+          },
+          "net": "net_1"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_shift_register_clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_shift_register",
+            "port": "clk"
+          },
+          "net": "net_2"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_shift_register_rst"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_shift_register",
+            "port": "rst"
+          },
+          "net": "net_3"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_shift_register_enable"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_shift_register",
+            "port": "enable"
+          },
+          "net": "net_4"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_shift_register_serial_in"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_shift_register",
+            "port": "serial_in"
+          },
+          "net": "net_5"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_shift_register",
+            "port": "serial_out"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_shift_register_serial_out"
+          },
+          "net": "net_6"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_mux2_input0"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_mux2",
+            "port": "input0"
+          },
+          "net": "net_7"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_mux2_input1"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_mux2",
+            "port": "input1"
+          },
+          "net": "net_8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_mux2_select"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_mux2",
+            "port": "select"
+          },
+          "net": "net_9"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_mux4_input0"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_mux4",
+            "port": "input0"
+          },
+          "net": "net_10"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_mux4_input1"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_mux4",
+            "port": "input1"
+          },
+          "net": "net_11"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_mux4_select"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_mux4",
+            "port": "select"
+          },
+          "net": "net_12"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_mux4",
+            "port": "result"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_mux4_result"
+          },
+          "net": "net_13"
+        }
+      ],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [],
+      "missing_ip": []
+    }
+  ],
+  "held_long_memory_compare": [
+    {
+      "schema_version": 1,
+      "ops": [
+        {
+          "op": "add_instance",
+          "name": "bd_simple_dual_port_ram",
+          "ip": "bd_simple_dual_port_ram",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 16,
+            "ADDR_WIDTH": 5
+          }
+        },
+        {
+          "op": "add_instance",
+          "name": "bd_stream_slice",
+          "ip": "bd_stream_slice",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 16
+          }
+        },
+        {
+          "op": "add_instance",
+          "name": "bd_compare",
+          "ip": "bd_compare",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 16
+          }
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_simple_dual_port_ram_wr_clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_simple_dual_port_ram_wr_enable",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_simple_dual_port_ram_wr_address",
+          "dir": "in",
+          "width": "5",
+          "signed": false,
+          "range": [
+            4,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_simple_dual_port_ram_wr_data",
+          "dir": "in",
+          "width": "16",
+          "signed": false,
+          "range": [
+            15,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_simple_dual_port_ram_rd_clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_simple_dual_port_ram_rd_rst",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_simple_dual_port_ram_rd_enable",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_simple_dual_port_ram_rd_address",
+          "dir": "in",
+          "width": "5",
+          "signed": false,
+          "range": [
+            4,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_stream_slice_clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_stream_slice_rst",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_stream_slice_s_ready",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_stream_slice_m_valid",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_stream_slice_m_ready",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_compare_right_data",
+          "dir": "in",
+          "width": "16",
+          "signed": false,
+          "range": [
+            15,
+            0
+          ]
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_compare_equal",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_compare_less",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "add_external_port",
+          "name": "bd_compare_greater",
+          "dir": "out",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_simple_dual_port_ram",
+            "port": "rd_data"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "s_data"
+          },
+          "net": "net_0"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_simple_dual_port_ram",
+            "port": "rd_valid"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "s_valid"
+          },
+          "net": "net_1"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "m_data"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_compare",
+            "port": "left_data"
+          },
+          "net": "net_2"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_simple_dual_port_ram_wr_clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_simple_dual_port_ram",
+            "port": "wr_clk"
+          },
+          "net": "net_3"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_simple_dual_port_ram_wr_enable"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_simple_dual_port_ram",
+            "port": "wr_enable"
+          },
+          "net": "net_4"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_simple_dual_port_ram_wr_address"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_simple_dual_port_ram",
+            "port": "wr_address"
+          },
+          "net": "net_5"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_simple_dual_port_ram_wr_data"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_simple_dual_port_ram",
+            "port": "wr_data"
+          },
+          "net": "net_6"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_simple_dual_port_ram_rd_clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_simple_dual_port_ram",
+            "port": "rd_clk"
+          },
+          "net": "net_7"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_simple_dual_port_ram_rd_rst"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_simple_dual_port_ram",
+            "port": "rd_rst"
+          },
+          "net": "net_8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_simple_dual_port_ram_rd_enable"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_simple_dual_port_ram",
+            "port": "rd_enable"
+          },
+          "net": "net_9"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_simple_dual_port_ram_rd_address"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_simple_dual_port_ram",
+            "port": "rd_address"
+          },
+          "net": "net_10"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_stream_slice_clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "clk"
+          },
+          "net": "net_11"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_stream_slice_rst"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "rst"
+          },
+          "net": "net_12"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "s_ready"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_stream_slice_s_ready"
+          },
+          "net": "net_13"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "m_valid"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_stream_slice_m_valid"
+          },
+          "net": "net_14"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_stream_slice_m_ready"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_stream_slice",
+            "port": "m_ready"
+          },
+          "net": "net_15"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "bd_compare_right_data"
+          },
+          "to": {
+            "type": "port",
+            "inst": "bd_compare",
+            "port": "right_data"
+          },
+          "net": "net_16"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_compare",
+            "port": "equal"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_compare_equal"
+          },
+          "net": "net_17"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_compare",
+            "port": "less"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_compare_less"
+          },
+          "net": "net_18"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "bd_compare",
+            "port": "greater"
+          },
+          "to": {
+            "type": "port",
+            "ext": "bd_compare_greater"
+          },
+          "net": "net_19"
+        }
+      ],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [],
+      "missing_ip": []
+    }
+  ],
+  "held_increment_parameters": [
+    {
+      "schema_version": 1,
+      "ops": [
+        {
+          "op": "set_param",
+          "inst": "counter_0",
+          "name": "WIDTH",
+          "value": 12
+        },
+        {
+          "op": "set_param",
+          "inst": "compare_0",
+          "name": "WIDTH",
+          "value": 12
+        },
+        {
+          "op": "set_param",
+          "inst": "compare_0",
+          "name": "THRESHOLD",
+          "value": 511
+        }
+      ],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [],
+      "missing_ip": []
+    }
+  ],
+  "held_increment_insert": [
+    {
+      "schema_version": 1,
+      "ops": [
+        {
+          "op": "disconnect",
+          "from": {
+            "type": "port",
+            "inst": "counter_0",
+            "port": "count"
+          },
+          "to": {
+            "type": "port",
+            "inst": "compare_0",
+            "port": "value"
+          },
+          "net": "count_bus"
+        },
+        {
+          "op": "add_instance",
+          "name": "pipe_0",
+          "ip": "bd_stream_slice",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 8
+          }
+        },
+        {
+          "op": "add_external_port",
+          "name": "pipe_ready",
+          "dir": "out",
+          "width": "1"
+        },
+        {
+          "op": "add_external_port",
+          "name": "pipe_valid",
+          "dir": "out",
+          "width": "1"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "clk"
+          },
+          "to": {
+            "type": "port",
+            "inst": "pipe_0",
+            "port": "clk"
+          },
+          "net": "clk_net"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "ext": "rst"
+          },
+          "to": {
+            "type": "port",
+            "inst": "pipe_0",
+            "port": "rst"
+          },
+          "net": "rst_net"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "counter_0",
+            "port": "count"
+          },
+          "to": {
+            "type": "port",
+            "inst": "pipe_0",
+            "port": "s_data"
+          },
+          "net": "count_bus"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "pipe_0",
+            "port": "m_data"
+          },
+          "to": {
+            "type": "port",
+            "inst": "compare_0",
+            "port": "value"
+          },
+          "net": "piped_count"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "const",
+            "const": "1'b1"
+          },
+          "to": {
+            "type": "port",
+            "inst": "pipe_0",
+            "port": "s_valid"
+          },
+          "net": "valid_one"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "const",
+            "const": "1'b1"
+          },
+          "to": {
+            "type": "port",
+            "inst": "pipe_0",
+            "port": "m_ready"
+          },
+          "net": "ready_one"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "pipe_0",
+            "port": "s_ready"
+          },
+          "to": {
+            "type": "port",
+            "ext": "pipe_ready"
+          },
+          "net": "ready_out"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "pipe_0",
+            "port": "m_valid"
+          },
+          "to": {
+            "type": "port",
+            "ext": "pipe_valid"
+          },
+          "net": "valid_out"
+        }
+      ],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [],
+      "missing_ip": []
+    }
+  ],
+  "held_increment_replace": [
+    {
+      "schema_version": 1,
+      "ops": [
+        {
+          "op": "remove_instance",
+          "name": "compare_0"
+        },
+        {
+          "op": "add_instance",
+          "name": "cmp_0",
+          "ip": "bd_compare",
+          "version": "1.0.0",
+          "params": {
+            "WIDTH": 8
+          }
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "counter_0",
+            "port": "count"
+          },
+          "to": {
+            "type": "port",
+            "inst": "cmp_0",
+            "port": "left_data"
+          },
+          "net": "count_bus"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "const",
+            "const": "8'd9"
+          },
+          "to": {
+            "type": "port",
+            "inst": "cmp_0",
+            "port": "right_data"
+          },
+          "net": "threshold"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "cmp_0",
+            "port": "equal"
+          },
+          "to": {
+            "type": "port",
+            "ext": "match"
+          },
+          "net": "match_net"
+        }
+      ],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [],
+      "missing_ip": []
+    }
+  ],
+  "held_increment_delete": [
+    {
+      "schema_version": 1,
+      "ops": [
+        {
+          "op": "remove_instance",
+          "name": "compare_0"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "const",
+            "const": "1'b0"
+          },
+          "to": {
+            "type": "port",
+            "ext": "match"
+          },
+          "net": "match_net"
+        }
+      ],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [],
+      "missing_ip": []
+    }
+  ],
+  "held_large_parameters": [
+    {
+      "schema_version": 1,
+      "ops": [
+        {
+          "op": "set_param",
+          "inst": "shift_00",
+          "name": "WIDTH",
+          "value": 16
+        },
+        {
+          "op": "set_param",
+          "inst": "shift_01",
+          "name": "WIDTH",
+          "value": 16
+        },
+        {
+          "op": "set_param",
+          "inst": "shift_02",
+          "name": "WIDTH",
+          "value": 16
+        },
+        {
+          "op": "set_param",
+          "inst": "shift_03",
+          "name": "WIDTH",
+          "value": 16
+        }
+      ],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [],
+      "missing_ip": []
+    }
+  ],
+  "held_large_taps": [
+    {
+      "schema_version": 1,
+      "ops": [
+        {
+          "op": "add_external_port",
+          "name": "tap_00",
+          "dir": "out",
+          "width": "8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "shift_00",
+            "port": "parallel_out"
+          },
+          "to": {
+            "type": "port",
+            "ext": "tap_00"
+          },
+          "net": "tap_net_0"
+        },
+        {
+          "op": "add_external_port",
+          "name": "tap_05",
+          "dir": "out",
+          "width": "8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "shift_05",
+            "port": "parallel_out"
+          },
+          "to": {
+            "type": "port",
+            "ext": "tap_05"
+          },
+          "net": "tap_net_5"
+        },
+        {
+          "op": "add_external_port",
+          "name": "tap_10",
+          "dir": "out",
+          "width": "8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "shift_10",
+            "port": "parallel_out"
+          },
+          "to": {
+            "type": "port",
+            "ext": "tap_10"
+          },
+          "net": "tap_net_10"
+        },
+        {
+          "op": "add_external_port",
+          "name": "tap_15",
+          "dir": "out",
+          "width": "8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "shift_15",
+            "port": "parallel_out"
+          },
+          "to": {
+            "type": "port",
+            "ext": "tap_15"
+          },
+          "net": "tap_net_15"
+        },
+        {
+          "op": "add_external_port",
+          "name": "tap_20",
+          "dir": "out",
+          "width": "8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "shift_20",
+            "port": "parallel_out"
+          },
+          "to": {
+            "type": "port",
+            "ext": "tap_20"
+          },
+          "net": "tap_net_20"
+        },
+        {
+          "op": "add_external_port",
+          "name": "tap_25",
+          "dir": "out",
+          "width": "8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "shift_25",
+            "port": "parallel_out"
+          },
+          "to": {
+            "type": "port",
+            "ext": "tap_25"
+          },
+          "net": "tap_net_25"
+        },
+        {
+          "op": "add_external_port",
+          "name": "tap_30",
+          "dir": "out",
+          "width": "8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "shift_30",
+            "port": "parallel_out"
+          },
+          "to": {
+            "type": "port",
+            "ext": "tap_30"
+          },
+          "net": "tap_net_30"
+        },
+        {
+          "op": "add_external_port",
+          "name": "tap_35",
+          "dir": "out",
+          "width": "8"
+        },
+        {
+          "op": "connect",
+          "from": {
+            "type": "port",
+            "inst": "shift_35",
+            "port": "parallel_out"
+          },
+          "to": {
+            "type": "port",
+            "ext": "tap_35"
+          },
+          "net": "tap_net_35"
+        }
+      ],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [],
+      "missing_ip": []
+    }
+  ],
+  "held_contradictory_width": [
+    {
+      "schema_version": 1,
+      "ops": [],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [
+        "The fixed widths conflict; clarify which constraint can change"
+      ],
+      "missing_ip": []
+    }
+  ],
+  "held_nonexistent_port": [
+    {
+      "schema_version": 1,
+      "ops": [],
+      "summary": "Offline regression proposal",
+      "assumptions": [],
+      "questions": [
+        "The requested count_done port does not exist; clarify the required output"
+      ],
+      "missing_ip": []
+    }
+  ]
+}

@@ -98,8 +98,12 @@ class LLMClient(ABC):
 
 
 class OpenAIClient(LLMClient):
-    def __init__(self, config, *, transport=None, audit=None):
+    def __init__(self, config, *, transport=None, audit=None, recorder=None, max_output_tokens=None):
         self.config, self.transport, self.audit = config, transport, audit
+        self.recorder, self.max_output_tokens = recorder, max_output_tokens
+        if ((max_output_tokens is not None and (type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 32768))
+                or recorder is not None and max_output_tokens is None):
+            raise LLMError("AI_LLM_CONFIG", field="max_output_tokens")
 
     def _http(self):
         host = urlsplit(self.config.base_url).hostname
@@ -158,7 +162,10 @@ class OpenAIClient(LLMClient):
         with self._http() as client:
             for attempt in range(2):
                 started = perf_counter()
+                ticket, response, result = None, None, None
                 payload = {"model": self.config.model, "messages": history, "temperature": self.config.temperature, "stream": False}
+                if self.max_output_tokens is not None:
+                    payload["max_tokens"] = self.max_output_tokens
                 if self.config.structured_mode == "tool":
                     payload.update(tools=[{"type": "function", "function": {"name": "submit_proposal", "parameters": schema}}],
                                    tool_choice={"type": "function", "function": {"name": "submit_proposal"}}, parallel_tool_calls=False)
@@ -167,6 +174,8 @@ class OpenAIClient(LLMClient):
                 try:
                     if len(json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")) > MAX_REQUEST_BYTES:
                         raise LLMError("AI_LLM_LIMIT", limit=MAX_REQUEST_BYTES)
+                    if self.recorder is not None:
+                        ticket = self.recorder.before(payload, self.max_output_tokens)
                     response = self._request(client, "POST", "chat/completions", payload)
                     try:
                         message = response["choices"][0]["message"]
@@ -194,8 +203,12 @@ class OpenAIClient(LLMClient):
                     except (ValueError, TypeError, KeyError, IndexError, RecursionError):
                         raise LLMError("AI_LLM_RESPONSE", retryable=True, reason="invalid_json_or_schema") from None
                     self._audit("ok", attempt + 1, started)
+                    if ticket is not None:
+                        self.recorder.after(ticket, payload, response, result)
                     return result
                 except LLMError as error:
+                    if ticket is not None and not ticket["settled"]:
+                        self.recorder.after(ticket, payload, response, result, error)
                     self._audit(error.code, attempt + 1, started)
                     if not error.retryable or attempt:
                         raise

@@ -157,3 +157,31 @@ scripts/ai_eval_fixtures.py --write 只用于维护回放；改完仍需对照�
 P3.7 最终本机完整门禁：543 项 Python、68 子测试、42 前端单测、17 条浏览器流程，加 20 条独立回路评测；lint/typecheck/build 全部通过。
 日志 build/phase3-p37-check.log；11 样本独立性能中位数 299.800ms、最大 446.511ms。四 IP 计数/比较/边沿/同步链已验证预览、接受、校验及单次撤销。
 与 Phase 3 前的 5cc18aa 比较，examples 与历史 golden 没有改动。报告比较命令已实际运行，同一输入无回归。
+
+## Phase 3.5 三次评测协议
+
+本节替代上节单次 CLI 协议；旧 20 例仍为 dev，新增 12 例 held-out，默认全部执行三次。原评分函数和历史数据保留。
+
+```powershell
+.\.venv\Scripts\python.exe -m bdstudio.ai_eval --client mock --report build/ai-eval-mock --max-calls 400 --max-cost 0
+.\.venv\Scripts\python.exe -m bdstudio.ai_eval --client real --allow-network --dry-run --report build/ai-eval-real --mock-report build/ai-eval-mock/report.json --max-calls 400 --max-cost 0
+```
+
+真实运行必须先由用户配置私有端点/模型或 BD_AI_BASE_URL、BD_AI_MODEL；密钥使用 BD_AI_API_KEY。CLI 不读取 GUI 进程内会话密钥，也不猜测缺失端点。
+用户另行提供 BD_AI_INPUT_PRICE、BD_AI_OUTPUT_PRICE（美元/百万 token 的价格上界），并自行设置 BD_AI_MAX_COST。也可通过 --input-price/--output-price 指定非敏感价格。
+
+```powershell
+.\.venv\Scripts\python.exe -m bdstudio.ai_eval --client real --allow-network --report build/ai-eval-real --mock-report build/ai-eval-mock/report.json --max-calls 400 --max-cost $env:BD_AI_MAX_COST
+```
+
+没有配置时只生成 waiting_configuration 报告，不发送请求；本轮已验证此路径。不要把密钥放进命令行、设计文件或版本控制。
+--suite dev/held-out/all 可选择数据集；--compare 上次 report.json 仅对同数据集、同三次协议和完整结果做差值。
+退出码：0 为完整合格的 mock/真实结果或 dry-run；1 为完成但验收不合格；2 为等待/配置错误；3 为预算中断且已保存部分报告。
+
+--max-calls 包含每次实际 POST 和 JSON 修复，最多三轮语义尝试，每轮 JSON 最多再试一次。--max-cost 默认 0，不能为跑完用例自动增加。
+--max-output-tokens 默认 8192，--input-overhead 默认 1024；预留成本使用字节上界，缺少 usage 不释放预留。提供商必须支持并遵守输出限制；若不支持会明确失败，不会移除限制继续调用。
+预算依赖用户给出的保守价格/开销上界，不是账单签核；供应商侧费用限额仍是最终保障。
+
+报告分别列出首次通过、首个语义候选通过、最终通过、修复收益、三次一致率、实际/估算 token、延迟、尝试次数、失败分类及最多五份脱敏完整对话。
+初始 mock 只有三个出现首次或最终失败的案例，所以只生成三份对话，不虚构另外两份。真实未运行时没有真实失败对话或指标。
+基线报告先提交；只能依据 dev 的真实失败分类提出调整，held-out 不用于逐条修补提示。真实 dev 简单/中等首次低于 70% 时必须先提交分析和方案，不自动调参。

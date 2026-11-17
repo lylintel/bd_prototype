@@ -4,7 +4,9 @@ import json
 import pytest
 
 from ai.client import ReplayClient
-from bdstudio.ai_eval import REPLAYS, catalog, evaluate_cases, load_cases, main, score_case, write_report
+from bdstudio.ai_eval import ROOT, REPLAYS, baseline, catalog, evaluate_cases, expected_document, load_cases, load_held_out, main, normalized, score_case, write_report
+from core.ops import apply_ops
+from core.semantic import validate
 
 
 def test_scoring_distinguishes_validity_topology_parameters_and_missing_ip():
@@ -65,3 +67,33 @@ def test_real_mode_requires_explicit_network_permission(tmp_path):
     with pytest.raises(SystemExit) as raised:
         main(["--client", "real", "--report", str(tmp_path)])
     assert raised.value.code == 2
+
+
+def test_held_out_expectations_are_independent_complete_and_valid():
+    cases = load_held_out()
+    assert len(cases) == 12
+    assert len({case["id"] for case in cases}) == 12
+    assert not {case["id"] for case in cases} & {case["id"] for case in load_cases()}
+    assert {category: sum(case["category"] == category for case in cases) for category in ("incremental", "long-zh", "large", "trap")} == {"incremental": 4, "long-zh": 4, "large": 2, "trap": 2}
+    library = catalog()
+    for case in cases:
+        if case["category"] == "long-zh":
+            assert len(case["prompt"]) >= 200
+        if case["category"] == "large":
+            assert len(baseline(case, library)["instances"]) >= 30
+        assert not [item for item in validate(expected_document(case, library), library) if item.severity == "error"], case["id"]
+
+
+def test_independent_held_out_replays_match_handwritten_expectations():
+    cases = load_held_out()
+    recordings = json.loads((ROOT / "tests/ai_eval/held_out_replays.json").read_text(encoding="utf-8"))
+    assert set(recordings) == {case["id"] for case in cases}
+    library = catalog()
+    for case in cases:
+        reply = recordings[case["id"]][-1]
+        if case["expect"].get("questions"):
+            assert reply["questions"] and not reply["ops"]
+        else:
+            candidate, errors = apply_ops(baseline(case, library), library, reply["ops"])
+            assert not [item for item in errors if item.severity == "error"], case["id"]
+            assert normalized(candidate, library) == normalized(expected_document(case, library), library), case["id"]

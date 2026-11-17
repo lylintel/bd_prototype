@@ -82,8 +82,13 @@ class SettingsStore:
                 raise LLMError("AI_CONSENT_REQUIRED")
             if provider == "configured" and not self.endpoint_configured:
                 raise LLMError("AI_ENDPOINT_REQUIRED")
+            previous = self.consents.copy()
             self.consents[provider] = self._revision(provider)
-            self._write_record(self._config)
+            try:
+                self._write_record(self._config)
+            except Exception:
+                self.consents = previous
+                raise
             return self.public()
 
     def _private_directory(self):
@@ -123,9 +128,14 @@ class SettingsStore:
     def save(self, payload):
         with self.lock:
             config = self.configuration(payload)
+            previous = self.endpoint_configured
             if "base_url" in payload:
                 self.endpoint_configured = True
-            self._write_record(config)
+            try:
+                self._write_record(config)
+            except Exception:
+                self.endpoint_configured = previous
+                raise
             old_key = self._config.api_key
             self._config = config
             self.key_source = "none" if not config.api_key else "session" if config.api_key != old_key else self.key_source

@@ -41,6 +41,8 @@ def redact(value, secrets=(), depth=0):
     if isinstance(value, (list, tuple)):
         return [redact(item, secrets, depth + 1) for item in value]
     if isinstance(value, str):
+        value = re.sub(r"\\u([0-9a-fA-F]{4})", lambda match: chr(int(match.group(1), 16)), value)
+        value = "".join("\ufffd" if 0xD800 <= ord(character) <= 0xDFFF else character for character in value)
         for secret in sorted((item for item in secrets if item), key=len, reverse=True):
             value = value.replace(secret, "[redacted]")
         value = re.sub(r"(?i)\bBearer\s+[^\s\"<>]+", "Bearer [redacted]", value)

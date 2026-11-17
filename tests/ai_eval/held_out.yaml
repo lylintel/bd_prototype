@@ -1,0 +1,150 @@
+schema_version: 1
+provenance: independently_authored_design_expectations
+cases:
+  - id: held_increment_parameters
+    split: held-out
+    tier: medium
+    category: incremental
+    baseline: counter_compare
+    prompt: "保留当前拓扑，把 counter_0 与 compare_0 的 WIDTH 都改为 12，compare_0.THRESHOLD 改为 511，其他参数和端口不要变化。"
+    expect: {ips: [counter, compare_eq], preserve_baseline: true, params: {counter_0.WIDTH: 12, compare_0.WIDTH: 12, compare_0.THRESHOLD: 511}}
+  - id: held_increment_insert
+    split: held-out
+    tier: medium
+    category: incremental
+    baseline: counter_compare
+    prompt: "在 counter_0.count 与 compare_0.value 之间插入名为 pipe_0 的 bd_stream_slice，WIDTH=8。clk/rst 接现有外部 clk/rst；s_valid 与 m_ready 接显式一位常量 1'b1。原 count_bus 断开后输入段命名 count_bus，输出段命名 piped_count。s_ready/m_valid 分别引出为 pipe_ready/pipe_valid。保留原 match 输出和参数。"
+    expect:
+      ips: [counter, compare_eq, bd_stream_slice]
+      document:
+        schema_version: 3
+        name: example_bd
+        ports: {clk: {direction: input}, rst: {direction: input}, match: {direction: output}, pipe_ready: {direction: output}, pipe_valid: {direction: output}}
+        instances:
+          - {name: counter_0, ip: {id: counter, version: 1.0.0}, params: {WIDTH: 8}}
+          - {name: compare_0, ip: {id: compare_eq, version: 1.0.0}, params: {WIDTH: 8, THRESHOLD: 9}}
+          - {name: pipe_0, ip: {id: bd_stream_slice, version: 1.0.0}, params: {WIDTH: 8}}
+        nets:
+          - {name: clk_net, endpoints: [{ext: clk}, {inst: counter_0, port: clk}, {inst: pipe_0, port: clk}]}
+          - {name: rst_net, endpoints: [{ext: rst}, {inst: counter_0, port: rst}, {inst: pipe_0, port: rst}]}
+          - {name: count_bus, endpoints: [{inst: counter_0, port: count}, {inst: pipe_0, port: s_data}]}
+          - {name: piped_count, endpoints: [{inst: pipe_0, port: m_data}, {inst: compare_0, port: value}]}
+          - {name: match_net, endpoints: [{inst: compare_0, port: match}, {ext: match}]}
+          - {name: valid_one, endpoints: [{const: "1'b1"}, {inst: pipe_0, port: s_valid}]}
+          - {name: ready_one, endpoints: [{const: "1'b1"}, {inst: pipe_0, port: m_ready}]}
+          - {name: ready_out, endpoints: [{inst: pipe_0, port: s_ready}, {ext: pipe_ready}]}
+          - {name: valid_out, endpoints: [{inst: pipe_0, port: m_valid}, {ext: pipe_valid}]}
+  - id: held_increment_replace
+    split: held-out
+    tier: medium
+    category: incremental
+    baseline: counter_compare
+    allow_removals: true
+    prompt: "授权删除 compare_0，以名为 cmp_0 的 bd_compare 替换它。WIDTH=8；left_data 接 counter_0.count，right_data 接 8'd9，equal 接原 match 输出。less/greater 暂不引出。保留 counter_0、clk/rst 和所有剩余原有内容。"
+    expect:
+      ips: [counter, bd_compare]
+      document:
+        schema_version: 3
+        name: example_bd
+        ports: {clk: {direction: input}, rst: {direction: input}, match: {direction: output}}
+        instances:
+          - {name: counter_0, ip: {id: counter, version: 1.0.0}, params: {WIDTH: 8}}
+          - {name: cmp_0, ip: {id: bd_compare, version: 1.0.0}, params: {WIDTH: 8}}
+        nets:
+          - {name: clk_net, endpoints: [{ext: clk}, {inst: counter_0, port: clk}]}
+          - {name: rst_net, endpoints: [{ext: rst}, {inst: counter_0, port: rst}]}
+          - {name: count_bus, endpoints: [{inst: counter_0, port: count}, {inst: cmp_0, port: left_data}]}
+          - {name: threshold, endpoints: [{const: "8'd9"}, {inst: cmp_0, port: right_data}]}
+          - {name: match_net, endpoints: [{inst: cmp_0, port: equal}, {ext: match}]}
+  - id: held_increment_delete
+    split: held-out
+    tier: medium
+    category: incremental
+    baseline: counter_compare
+    allow_removals: true
+    prompt: "授权删除 compare_0。保留 counter_0 及其 clk/rst，保留现有 match 外部输出但将其连接到显式一位常量 1'b0。计数输出允许暂时不连接，不要新增外部端口。"
+    expect:
+      ips: [counter]
+      document:
+        schema_version: 3
+        name: example_bd
+        ports: {clk: {direction: input}, rst: {direction: input}, match: {direction: output}}
+        instances: [{name: counter_0, ip: {id: counter, version: 1.0.0}, params: {WIDTH: 8}}]
+        nets:
+          - {name: clk_net, endpoints: [{ext: clk}, {inst: counter_0, port: clk}]}
+          - {name: rst_net, endpoints: [{ext: rst}, {inst: counter_0, port: rst}]}
+          - {name: match_net, endpoints: [{const: "1'b0"}, {ext: match}]}
+  - id: held_long_button_events
+    split: held-out
+    tier: medium
+    category: long-zh
+    prompt: "请建立一个按键事件统计数据通路。原始按键先经过输入去抖模块，连续十六个稳定采样后才更新稳定电平；稳定电平进入边沿检测模块，上升沿脉冲接计数器使能，下降沿脉冲接计数器清零。计数器为十二位，其计数值接无符号比较器的左侧数据，比较器右侧十二位阈值从外部提供。每个模块的时钟和复位都分别从外部引出，不要自动合并，也不要假设跨时钟域已经通过验证。其余未参与内部连接的端口全部独立引出；保留上升沿使能和下降沿清零的区别，不要交换它们，不要增加额外模块或常量阈值。实例名采用各自的库标识，外部端口名采用实例名加下划线加端口名。"
+    expect:
+      ips: [bd_debounce, bd_edge_detect, bd_counter, bd_compare]
+      instances: {bd_debounce: {STABLE_CYCLES: 16}, bd_edge_detect: {}, bd_counter: {WIDTH: 12}, bd_compare: {WIDTH: 12}}
+      connections: [[bd_debounce.level, bd_edge_detect.signal_in], [bd_edge_detect.rising, bd_counter.enable], [bd_edge_detect.falling, bd_counter.clear], [bd_counter.count, bd_compare.left_data]]
+  - id: held_long_buffered_serial
+    split: held-out
+    tier: medium
+    category: long-zh
+    prompt: "请搭建一个带弹性缓冲的异步串口发送链。入口为八位同步先进先出缓存，深度三十二；缓存输出进入一级八位弹性流寄存器，再进入串口发送器，串口每位使用十六个时钟周期。缓存与寄存器之间以及寄存器与发送器之间都必须逐信号连接数据、有效和反向就绪，不能只连数据，不能把就绪方向接反。不要添加接收器，也不要把串口发送输出回接到输入。各模块时钟复位分别从外部引出，其余未连接端口也独立引出。实例名采用各自库标识，外部名称采用实例名和端口名组合。本需求只要求结构连接，外部负责提供兼容时钟和复位，不允许工具声称已经完成硬件时序验证。"
+    expect:
+      ips: [bd_sync_fifo, bd_stream_slice, bd_uart_tx]
+      instances: {bd_sync_fifo: {WIDTH: 8, DEPTH: 32}, bd_stream_slice: {WIDTH: 8}, bd_uart_tx: {CLKS_PER_BIT: 16}}
+      connections: [[bd_sync_fifo.m_data, bd_stream_slice.s_data], [bd_sync_fifo.m_valid, bd_stream_slice.s_valid], [bd_stream_slice.s_ready, bd_sync_fifo.m_ready], [bd_stream_slice.m_data, bd_uart_tx.s_data], [bd_stream_slice.m_valid, bd_uart_tx.s_valid], [bd_uart_tx.s_ready, bd_stream_slice.m_ready]]
+  - id: held_long_selection_tree
+    split: held-out
+    tier: medium
+    category: long-zh
+    prompt: "请建立十六位数据选择通路，包含一个带使能的串行移位寄存器、一个二选一选择器和一个四选一选择器。移位寄存器的完整并行输出接到四选一选择器的第三个数据输入，二选一选择器的结果接到四选一的第四个数据输入。四选一的前两个数据输入由外部提供，二选一的两个数据输入也由外部提供；两个选择信号独立引出，不能共用或截断。移位寄存器的时钟、复位、使能和串行输入均从外部引出，其他剩余端口全部单独引出。所有数据宽度为十六位，不增加比较器，不使用拼接或常量替代数据。实例名采用库标识，外部名称采用实例名和端口名，不要将第三个输入误接成第一个输入。"
+    expect:
+      ips: [bd_shift_register, bd_mux2, bd_mux4]
+      instances: {bd_shift_register: {WIDTH: 16}, bd_mux2: {WIDTH: 16}, bd_mux4: {WIDTH: 16}}
+      connections: [[bd_shift_register.parallel_out, bd_mux4.input2], [bd_mux2.result, bd_mux4.input3]]
+  - id: held_long_memory_compare
+    split: held-out
+    tier: medium
+    category: long-zh
+    prompt: "请建立存储器读出比较通路，使用简单双口随机存取存储器，数据宽度十六位，地址宽度五位。存储器读数据接一级十六位弹性流寄存器的数据输入，读有效接寄存器有效输入；寄存器的数据输出接十六位无符号比较器左侧数据，右侧比较数据从外部提供。寄存器的输出就绪仍由外部控制，存储器读使能由上层在可接收时驱动，不允许虚构存储器就绪端口。写地址、写数据、读地址、全部使能、时钟和复位均分别引出，其余未连接端口也独立引出。不要推断这种连接已经具备无丢包或跨域保证，不增加额外缓存，也不要把读有效接到比较器数据口。实例和外部端口采用统一库标识命名约定。"
+    expect:
+      ips: [bd_simple_dual_port_ram, bd_stream_slice, bd_compare]
+      instances: {bd_simple_dual_port_ram: {WIDTH: 16, ADDR_WIDTH: 5}, bd_stream_slice: {WIDTH: 16}, bd_compare: {WIDTH: 16}}
+      connections: [[bd_simple_dual_port_ram.rd_data, bd_stream_slice.s_data], [bd_simple_dual_port_ram.rd_valid, bd_stream_slice.s_valid], [bd_stream_slice.m_data, bd_compare.left_data]]
+  - id: held_large_parameters
+    split: held-out
+    tier: hard
+    category: large
+    baseline: {kind: shift_chain, count: 32, width: 8}
+    prompt: "当前有 32 个 bd_shift_register 串行级联，名为 shift_00 至 shift_31。仅将 shift_00、shift_01、shift_02、shift_03 的 WIDTH 改成 16，其余仍为 8。串行连接、时钟、复位、使能、外部端口全部保持不变，不要扩展并行输出。"
+    expect: {ips: [bd_shift_register], preserve_baseline: true, params: {shift_00.WIDTH: 16, shift_01.WIDTH: 16, shift_02.WIDTH: 16, shift_03.WIDTH: 16}}
+  - id: held_large_taps
+    split: held-out
+    tier: hard
+    category: large
+    baseline: {kind: shift_chain, count: 40, width: 8}
+    prompt: "当前 40 个 bd_shift_register 的级联和参数保持不变。仅将 shift_00、shift_05、shift_10、shift_15、shift_20、shift_25、shift_30、shift_35 的 parallel_out 各自引出为八位外部输出 tap_00、tap_05、tap_10、tap_15、tap_20、tap_25、tap_30、tap_35。不能打断串行链，不新增实例，不合并这些输出。"
+    expect:
+      ips: [bd_shift_register]
+      preserve_baseline: true
+      additional_ports:
+        tap_00: {direction: output, range: [7, 0]}
+        tap_05: {direction: output, range: [7, 0]}
+        tap_10: {direction: output, range: [7, 0]}
+        tap_15: {direction: output, range: [7, 0]}
+        tap_20: {direction: output, range: [7, 0]}
+        tap_25: {direction: output, range: [7, 0]}
+        tap_30: {direction: output, range: [7, 0]}
+        tap_35: {direction: output, range: [7, 0]}
+      additional_connections: [[shift_00.parallel_out, '@tap_00'], [shift_05.parallel_out, '@tap_05'], [shift_10.parallel_out, '@tap_10'], [shift_15.parallel_out, '@tap_15'], [shift_20.parallel_out, '@tap_20'], [shift_25.parallel_out, '@tap_25'], [shift_30.parallel_out, '@tap_30'], [shift_35.parallel_out, '@tap_35']]
+  - id: held_contradictory_width
+    split: held-out
+    tier: trap
+    category: trap
+    prompt: "请把十二位外部输入直接接到固定八位比较器的数据输入，要求完整保留十二位且两端宽度相等。禁止切片、拼接、适配器及任何参数修改。这些要求都必须同时满足，不允许自行选择优先级。"
+    expect: {ips: [bd_compare], instances: {}, connections: [], questions: true}
+  - id: held_nonexistent_port
+    split: held-out
+    tier: trap
+    category: trap
+    prompt: "要求使用现有 bd_counter 的 count_done 输出端口，且不能改用 count 或 overflow，不能添加自定义 IP 或更改库端口定义。若该端口不存在请指出问题并等待澄清，不要编造连接。"
+    expect: {ips: [bd_counter], instances: {}, connections: [], questions: true}
