@@ -7,6 +7,9 @@ import OutputWindow from "./OutputWindow.jsx";
 import CircuitEdge from "./CircuitEdge.jsx";
 import CopilotPanel from "./CopilotPanel.jsx";
 import AISettings from "./ai/Settings.jsx";
+import AIAssistant from "./ai/Assistant.jsx";
+import { candidateGraph, designChanges, mergePreview } from "./ai/model.js";
+import { Sparkles } from "lucide-react";
 import { ImportButton, LibraryList, OriginBadge } from "./ip/Library.jsx";
 import { IP_DRAG_TYPE, addImported, findImportedDrop, originForDefinition } from "./ip/model.js";
 import { t } from "./i18n.js";
@@ -116,6 +119,8 @@ export default function App() {
   const [mobilePanel, setMobilePanel] = useState(null);
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [preview, setPreview] = useState(null);
   const [modal, setModal] = useState(null);
   const [ipImportOpen, setIpImportOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
@@ -134,7 +139,7 @@ export default function App() {
   const design = history?.current.design;
   const document = history?.current.document ?? design;
   const layout = history?.current.layout;
-  const connectionReady = !checking && !busy && inspectedDesign.current === design;
+  const connectionReady = !preview && !checking && !busy && inspectedDesign.current === design;
   const interfaces = connectionReady ? inspection.interfaces : emptyInspection.interfaces;
   const expressionGraph = projectConnections(inspection.connections ?? [], layout?.nodes ?? {});
 
@@ -206,7 +211,8 @@ export default function App() {
     return () => dialog?.close();
   }, [modal?.kind]);
 
-  function mutate(update, message, upgrade = false, replacement = null) {
+  function mutate(update, message, upgrade = false, replacement = null, allowPreview = false) {
+    if (preview && !allowPreview) { notify(t("ai.previewReadOnly"), true); return false; }
     const current = editorState.current;
     if (!current.history || current.busy) return false;
     try {
@@ -245,12 +251,35 @@ export default function App() {
       Object.assign(next, result.canvas);
       const nodes = new Set([...Object.keys(next.instances), ...Object.keys(next.ports).map(externalId)]);
       for (const id of Object.keys(nextLayout.nodes)) if (!nodes.has(id)) delete nextLayout.nodes[id];
-    }, t("ai.accepted"), false, result.document);
+    }, t("ai.accepted"), false, result.document, true);
     if (!applied) throw new Error(t("ai.acceptFailed"));
     setSelection(null);
     setPendingPin(null);
     notify(t("ai.accepted"));
+    setPreview(null);
     return true;
+  }
+
+  async function generateProposal(prompt, allowRemovals) {
+    const current = editorState.current;
+    const original = current.history.current.document ?? current.history.current.design;
+    const result = await api("/api/ai/propose", { design: original, base_dir: current.baseDir, prompt, allow_removals: allowRemovals });
+    const latest = editorState.current;
+    if ((latest.history.current.document ?? latest.history.current.design) !== original || latest.baseDir !== current.baseDir) {
+      await api("/api/ops/discard", { proposal_id: result.id });
+      throw new Error(t("semantic.notReady"));
+    }
+    setPreview(result);
+    setViewportRequest({ fit: true });
+    return result;
+  }
+
+  async function selectProposal(proposal, selected) {
+    const current = editorState.current;
+    const result = await api("/api/ops/select", { proposal_id: proposal.id, selected,
+      design: current.history.current.document ?? current.history.current.design, base_dir: current.baseDir });
+    setPreview(result);
+    return result;
   }
 
   function undo() {
@@ -315,6 +344,9 @@ export default function App() {
     labelStyle: { fill: "#66747e", fontSize: 11, fontFamily: "IBM Plex Mono, monospace" },
     labelBgStyle: { fill: "#f8fafb", fillOpacity: 0.95 }, labelBgPadding: [7, 3], labelBgBorderRadius: 3,
   }))) : [];
+
+  const candidate = preview ? candidateGraph(preview, layout.nodes, defaultPosition) : null;
+  const graph = candidate ? mergePreview(nodes, edges, candidate.nodes, candidate.edges, designChanges(design, preview.canvas)) : { nodes, edges };
 
   function insertModule(module, position) {
     let id;
@@ -442,7 +474,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event) => {
-      if (!design || busy || modal || ipImportOpen || connectionOpen || aiSettingsOpen || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+      if (!design || busy || preview || modal || ipImportOpen || connectionOpen || aiSettingsOpen || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveDialog(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
@@ -547,12 +579,13 @@ export default function App() {
       <div className="brand"><span className="brand-symbol"><CircuitBoard size={22} strokeWidth={1.6} /></span><span>BD <strong>Studio</strong></span><span className="local-badge">LOCAL</span></div>
       <div className="header-center"><span className="session-dot" />RTL WORKSPACE</div>
       <div className="header-actions">
-        <IconButton icon={Bot} label="Copilot 助手" aria-pressed={copilotOpen} onClick={() => setCopilotOpen(!copilotOpen)} />
+        <IconButton icon={Bot} label="Copilot 助手" aria-pressed={copilotOpen} disabled={Boolean(preview)} onClick={() => setCopilotOpen(!copilotOpen)} />
+        <IconButton icon={Sparkles} label={t("ai.assistant")} onClick={() => { setCopilotOpen(false); setAssistantOpen(true); }} />
         <IconButton icon={Settings2} label={t("ai.settings")} onClick={() => setAiSettingsOpen(true)} disabled={Boolean(busy)} />
-        <IconButton icon={FilePlus2} label="新建设计" onClick={newDocument} disabled={Boolean(busy)} />
-        <IconButton icon={FolderOpen} label="打开设计" onClick={openDialog} disabled={Boolean(busy)} />
+        <IconButton icon={FilePlus2} label="新建设计" onClick={newDocument} disabled={Boolean(busy || preview)} />
+        <IconButton icon={FolderOpen} label="打开设计" onClick={openDialog} disabled={Boolean(busy || preview)} />
         <span className="toolbar-divider" />
-        <button className="button secondary" onClick={saveDialog} disabled={Boolean(busy)} title="保存设计" aria-label="保存设计"><Save size={15} /><span>保存</span></button>
+        <button className="button secondary" onClick={saveDialog} disabled={Boolean(busy || preview)} title="保存设计" aria-label="保存设计"><Save size={15} /><span>保存</span></button>
         <button className="button primary" onClick={generate} disabled={!connectionReady || !inspection.valid} title="生成 HDL"><Code2 size={16} /><span>生成 HDL</span></button>
       </div>
     </header>
@@ -561,8 +594,8 @@ export default function App() {
       <div className="document-title"><Workflow size={17} /><h1>{design.name}</h1><span className={`save-state ${saved ? "" : "dirty"}`}>{saved ? "已保存" : "未保存"}</span></div>
       <div className="design-tools">
         <IconButton icon={PanelLeft} label="模块面板" className={mobilePanel === "library" ? "active" : ""} onClick={() => setMobilePanel(mobilePanel === "library" ? null : "library")} />
-        <IconButton icon={Undo2} label="撤销" onClick={undo} disabled={!history.past.length || Boolean(busy)} />
-        <IconButton icon={Redo2} label="重做" onClick={redo} disabled={!history.future.length || Boolean(busy)} />
+        <IconButton icon={Undo2} label="撤销" onClick={undo} disabled={!history.past.length || Boolean(busy || preview)} />
+        <IconButton icon={Redo2} label="重做" onClick={redo} disabled={!history.future.length || Boolean(busy || preview)} />
         <span className="toolbar-divider compact-hide" />
         <button className={`validation-badge ${inspection.valid && !checking ? "valid" : ""}`} onClick={validateNow} disabled={checking || Boolean(busy)} title="校验设计" aria-label="校验设计">
           {checking ? <LoaderCircle size={14} className="spin" /> : inspection.valid ? <ShieldCheck size={15} /> : <CircleAlert size={15} />}<span>{checking ? "校验中" : inspection.valid ? "校验通过" : "待修复"}</span>
@@ -590,15 +623,15 @@ export default function App() {
       <section className="center-panel">
         <div className="canvas-heading"><div><span className="canvas-tab"><Workflow size={14} />Block Design</span><span className="canvas-meta">{Object.keys(design.instances).length} instances <span>/</span> {Object.keys(design.nets).length} nets</span></div><div><IconButton icon={LayoutGrid} label="整理布局" onClick={autoLayout} /><IconButton icon={Maximize2} label="适应画布" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div></div>
         <div className="canvas" aria-label="设计画布" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={dropModule}>
-          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={0.25} maxZoom={2} deleteKeyCode={null} connectOnClick={false} snapToGrid snapGrid={[10, 10]}
+          <ReactFlow nodes={graph.nodes} edges={graph.edges} nodesDraggable={!preview} nodesConnectable={!preview} elementsSelectable={!preview} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={0.25} maxZoom={2} deleteKeyCode={null} connectOnClick={false} snapToGrid snapGrid={[10, 10]}
             connectionMode={ConnectionMode.Loose} connectionLineType={ConnectionLineType.Step}
             isValidConnection={(connection) => connectionReady && connectionError(design, connection.sourceHandle, connection.targetHandle, interfaces) === null}
             fitView={!Object.keys(layout.nodes).length} fitViewOptions={{ padding: 0.16, maxZoom: 1 }} defaultViewport={layout.viewport}
-            onNodesChange={(changes) => setNodes((current) => applyNodeChanges(changes.filter((change) => change.type !== "remove"), current))}
+            onNodesChange={(changes) => { if (!preview) setNodes((current) => applyNodeChanges(changes.filter((change) => change.type !== "remove"), current)); }}
             onNodeDragStop={(_, node) => mutate((next, nextLayout) => { nextLayout.nodes[node.id] = node.position; }, "画布位置已更新")}
-            onNodeClick={(_, node) => { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setPendingPin(null); }}
-            onNodeDoubleClick={(_, node) => { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setMobilePanel("inspector"); }}
-            onEdgeClick={(_, edge) => { setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setPendingPin(null); }}
+            onNodeClick={(_, node) => { if (!preview) { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setPendingPin(null); } }}
+            onNodeDoubleClick={(_, node) => { if (!preview) { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setMobilePanel("inspector"); } }}
+            onEdgeClick={(_, edge) => { if (!preview) { setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setPendingPin(null); } }}
             onPaneClick={() => { setSelection(null); setPendingPin(null); setMobilePanel(null); }}
             onConnect={(connection) => connect(connection.sourceHandle, connection.targetHandle)}
             onConnectEnd={(event, state) => {
@@ -614,6 +647,7 @@ export default function App() {
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd4dc" />
           </ReactFlow>
           <div className="canvas-stamp"><CircuitBoard size={13} />STRUCTURAL RTL</div>
+          {preview && <div className="ai-preview-legend"><strong>{t("ai.preview")}</strong><span className="added">{t("ai.added")}</span><span className="deleted">{t("ai.deleted")}</span><span className="modified">{t("ai.modified")}</span></div>}
           {pendingPin && <div className="connection-indicator"><span className="session-dot" /><code>{pendingPin}</code><IconButton icon={X} label="取消连线" onClick={() => setPendingPin(null)} /></div>}
           {!nodes.length && <div className="empty-canvas"><Blocks size={38} strokeWidth={1} /><span>空白设计</span><button className="button secondary" onClick={() => setMobilePanel("library")}><Plus size={15} />添加模块</button></div>}
           <div className="canvas-controls"><IconButton icon={ZoomOut} label="缩小" onClick={() => flow.zoomOut({ duration: 150 })} /><span>{zoom}%</span><IconButton icon={ZoomIn} label="放大" onClick={() => flow.zoomIn({ duration: 150 })} /><span className="toolbar-divider" /><IconButton icon={Maximize2} label="适应所有节点" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div>
@@ -682,6 +716,8 @@ export default function App() {
 
     <CopilotPanel open={copilotOpen} onClose={() => setCopilotOpen(false)} api={api} token={token} design={document} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} />
     <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} api={api} />
+    <AIAssistant open={assistantOpen} onClose={() => setAssistantOpen(false)} onSettings={() => setAiSettingsOpen(true)} api={api}
+      onGenerate={generateProposal} onAccept={applyCopilotProposal} onSelect={selectProposal} onPreview={setPreview} />
 
     {toast && <div className={`toast ${toast.error ? "error" : ""}`} role={toast.error ? "alert" : "status"}>{toast.error ? <CircleAlert size={17} /> : <CircleCheck size={17} />}<span>{toast.message}</span><IconButton icon={X} label="关闭通知" onClick={() => setToast(null)} /></div>}
 

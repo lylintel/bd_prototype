@@ -194,6 +194,19 @@ class EditorTests(unittest.TestCase):
             self.workspace.propose_ai({"design": self.data, "base_dir": "examples", "prompt": "counter"})
         self.assertEqual(raised.exception.diagnostic.code, "AI_STALE_PROPOSAL")
 
+    def test_selected_ops_preview_is_readonly_and_preserves_original_proposal(self):
+        proposal = self.workspace.propose_ops({"design": self.data, "base_dir": "examples", "ops": [
+            {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19},
+            {"op": "add_external_port", "name": "aux", "dir": "in", "width": "1"}]})
+        payload = {"proposal_id": proposal["id"], "design": self.data, "base_dir": "examples", "selected": [0]}
+        preview = self.workspace.select_ops(payload)
+        self.assertTrue(preview["valid"])
+        self.assertNotIn("aux", preview["document"]["ports"])
+        self.assertIn("aux", proposal["document"]["ports"])
+        self.assertEqual(self.data["instances"]["compare_0"]["parameters"]["THRESHOLD"], 9)
+        accepted = self.workspace.accept_ops({**payload, "confirmed": True})
+        self.assertNotIn("aux", accepted["document"]["ports"])
+
     def test_all_historical_design_fixtures_roundtrip_without_information_loss(self):
         from bdsemantic import prepare
         from core.design import migrate

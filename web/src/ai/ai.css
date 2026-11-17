@@ -28,3 +28,17 @@
 .ai-settings footer { border-top: 1px solid #dfe7e4; flex-wrap: wrap; }
 .ai-settings footer > div { display: flex; gap: 8px; }
 .ai-settings-status { font-size: 12px; color: #187d68; }
+.ai-assistant { position: fixed; z-index: 25; right: 12px; top: 66px; width: min(410px, calc(100vw - 24px)); max-height: calc(100vh - 84px); display: flex; flex-direction: column; border: 1px solid #ccddd5; border-radius: 6px; background: #fff; box-shadow: 0 8px 28px #17392b18; }
+.ai-assistant > header { display: flex; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid #dce5e0; }
+.ai-assistant > header strong { flex: 1; font-size: 14px; }
+.ai-assistant > .ai-error { padding: 0 12px; }
+.ai-assistant .ai-proposal { max-height: calc(100vh - 150px); }
+.ai-request { display: grid; gap: 14px; padding: 16px; }
+.ai-request textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 120px; }
+.ai-request .button { justify-self: end; }
+.ai-notes { font-size: 12px; overflow-wrap: anywhere; }
+.ai-preview-legend { position: absolute; top: 36px; left: 16px; z-index: 5; display: flex; gap: 12px; padding: 5px 8px; background: #ffffffed; font-size: 11px; pointer-events: none; }
+.ai-preview-legend .added { color: #168767; }.ai-preview-legend .deleted { color: #b7464c; }.ai-preview-legend .modified { color: #ad7719; }
+.ai-preview-added .block-node, .ai-preview-added .external-node, .ai-preview-added .expression-node { border-color: #168767 !important; box-shadow: 0 0 0 2px #16876733; }
+.ai-preview-modified .block-node, .ai-preview-modified .external-node, .ai-preview-modified .expression-node { border-color: #ad7719 !important; box-shadow: 0 0 0 2px #ad771933; }
+.ai-preview-deleted .block-node, .ai-preview-deleted .external-node, .ai-preview-deleted .expression-node { border: 2px dashed #b7464c !important; opacity: 0.6; }

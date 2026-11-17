@@ -1,0 +1,14 @@
+{
+  "更新 compare_0 阈值并增加 aux 输入": {"schema_version": 1, "summary": "调整阈值并添加输入", "assumptions": [], "questions": [], "missing_ip": [], "ops": [
+    {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19},
+    {"op": "add_external_port", "name": "aux", "dir": "in", "width": "1"}
+  ]},
+  "删除 counter_0 并给 compare_0 设置常量": {"schema_version": 1, "summary": "替换计数输入", "assumptions": [], "questions": [], "missing_ip": [], "ops": [
+    {"op": "remove_instance", "name": "counter_0"},
+    {"op": "connect", "from": {"type": "const", "const": "8'd5"}, "to": {"type": "port", "inst": "compare_0", "port": "value"}, "net": "constant_value"},
+    {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 5}
+  ]},
+  "只把 counter_0 WIDTH 改为 12": {"schema_version": 1, "summary": "故意保留位宽失配的测试提案", "assumptions": [], "questions": [], "missing_ip": [], "ops": [
+    {"op": "set_param", "inst": "counter_0", "name": "WIDTH", "value": 12}
+  ]}
+}

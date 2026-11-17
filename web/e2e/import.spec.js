@@ -399,3 +399,70 @@ test("[mock-sdk] AI settings test connection and keep keys out of persisted conf
   expect(settings.has_api_key).toBe(false);
   expect(await designJson(page)).toEqual(before);
 });
+
+async function aiRequest(page, prompt, removals = false) {
+  const state = await (await page.request.get(`${server.url}/api/state`)).json();
+  await page.request.post(`${server.url}/api/ai/settings`, { headers: { "X-BD-Token": state.token, Origin: server.url },
+    data: { base_url: "http://127.0.0.1:8888/v1", model: "mock-model" } });
+  await page.getByRole("button", { name: t("ai.assistant"), exact: true }).click();
+  await page.getByLabel(t("ai.prompt"), { exact: true }).fill(prompt);
+  if (removals) await page.getByLabel(t("ai.allowRemovals"), { exact: true }).check();
+  await page.getByRole("button", { name: t("ai.generateProposal"), exact: true }).click();
+  const proposal = page.getByRole("region", { name: t("ai.proposalTitle"), exact: true });
+  await expect(proposal).toBeVisible();
+  return proposal;
+}
+
+test("[mock-sdk] pipeline selection acceptance and single undo use the real backend", async ({ page }, testInfo) => {
+  await openEditor(page);
+  await page.locator('.react-flow__node[data-id="compare_0"]').dblclick();
+  const threshold = page.getByLabel(t("semantic.parameterLabel", { instance: "compare_0", name: "THRESHOLD" }), { exact: true });
+  await expect(threshold).toBeEnabled();
+  await threshold.fill("10");
+  await threshold.press("Tab");
+  await expect(page.getByRole("button", { name: "撤销", exact: true })).toBeEnabled();
+  const before = await designJson(page);
+  const proposal = await aiRequest(page, "更新 compare_0 阈值并增加 aux 输入");
+  await expect(page.getByRole("button", { name: "撤销", exact: true })).toBeDisabled();
+  await expect(page.locator('.react-flow__node.ai-preview-added[data-id="@aux"]')).toBeVisible();
+  await expect(page.locator('.react-flow__node.ai-preview-modified[data-id="compare_0"]')).toBeVisible();
+  expect(await designJson(page)).toEqual(before);
+  await proposal.getByLabel(t("ai.selectOperation", { index: 2 }), { exact: true }).uncheck();
+  await expect(page.locator('.react-flow__node[data-id="@aux"]')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("proposal-selected.png") });
+  await proposal.getByRole("button", { name: t("ai.accept"), exact: true }).click();
+  await expect(proposal).not.toBeVisible();
+  await page.getByRole("button", { name: t("ai.closeAssistant"), exact: true }).click();
+  const changed = await designJson(page);
+  expect(changed.instances[1].params.THRESHOLD).toBe(19);
+  expect(changed.ports.aux).toBeUndefined();
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  expect(await designJson(page)).toEqual(before);
+});
+
+test("[mock-sdk] deletion preview can be discarded without changing the design", async ({ page }, testInfo) => {
+  await openEditor(page);
+  const before = await designJson(page);
+  const proposal = await aiRequest(page, "删除 counter_0 并给 compare_0 设置常量", true);
+  await expect(page.locator('.react-flow__node.ai-preview-deleted[data-id="counter_0"]')).toBeVisible();
+  await expect(page.locator('.react-flow__node.ai-preview-added').first()).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("proposal-diff-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: testInfo.outputPath("proposal-diff-mobile.png") });
+  await proposal.getByRole("button", { name: t("ai.discard"), exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: t("ai.closeAssistant"), exact: true }).click();
+  expect(await designJson(page)).toEqual(before);
+  await expect(page.locator('[class*="ai-preview-deleted"]')).toHaveCount(0);
+});
+
+test("[mock-sdk] invalid pipeline proposal cannot be accepted", async ({ page }) => {
+  await openEditor(page);
+  const before = await designJson(page);
+  const proposal = await aiRequest(page, "只把 counter_0 WIDTH 改为 12");
+  await expect(proposal).toContainText(t("ai.attempts", { count: 3 }));
+  await expect(proposal.getByRole("button", { name: t("ai.accept"), exact: true })).toBeDisabled();
+  await proposal.getByRole("button", { name: t("ai.discard"), exact: true }).click();
+  await page.getByRole("button", { name: t("ai.closeAssistant"), exact: true }).click();
+  expect(await designJson(page)).toEqual(before);
+});

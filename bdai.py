@@ -147,6 +147,26 @@ class ProposalStore:
             self.pending.pop(identifier, None)
         return {"discarded": True}
 
+    def select(self, payload):
+        with self.lock:
+            self._prune()
+            identifier = payload.get("proposal_id")
+            stored = self.pending.get(identifier) if isinstance(identifier, str) else None
+            if stored is None:
+                fail("AI_STALE_PROPOSAL")
+            selected = payload.get("selected")
+            if (not isinstance(selected, list) or any(type(index) is not int or not 0 <= index < len(stored["ops"]) for index in selected)
+                    or len(selected) != len(set(selected))):
+                fail("AI_SELECTION")
+            base_dir = payload.get("base_dir", ".")
+            document, library = prepare_context(self.workspace, payload.get("design"), base_dir)
+            if (fingerprint(document) != stored["base_hash"] or fingerprint([item.to_dict() for item in library]) != stored["library_hash"]
+                    or (self.workspace.relative(self.workspace.path(base_dir)) or ".") != stored["base_dir"]):
+                fail("AI_STALE_PROPOSAL")
+            indexes = set(selected)
+            candidate, errors = apply_ops(document, library, [item for index, item in enumerate(stored["ops"]) if index in indexes])
+            return {**_view(candidate, library, errors), "id": identifier, "selected": selected}
+
 
 def _legacy_endpoint(text):
     if not isinstance(text, str):

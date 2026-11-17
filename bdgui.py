@@ -181,6 +181,9 @@ class Workspace:
     def discard_ops(self, payload: dict) -> dict:
         return self.proposals.discard(payload)
 
+    def select_ops(self, payload: dict) -> dict:
+        return self.proposals.select(payload)
+
     def _settings_store(self):
         with self._ai_settings_lock:
             if self._ai_settings is None:
@@ -457,6 +460,8 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(workspace.accept_ops(payload))
             elif self.path == "/api/ops/discard":
                 self.json_response(workspace.discard_ops(payload))
+            elif self.path == "/api/ops/select":
+                self.json_response(workspace.select_ops(payload))
             elif self.path == "/api/ai/settings":
                 self.json_response(workspace.save_ai_settings(payload))
             elif self.path == "/api/ai/test":

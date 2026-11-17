@@ -1,4 +1,5 @@
 import argparse
+import json
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -25,6 +26,12 @@ def main(argv=None):
     def provider(request):
         if request.method == "GET" and request.url.path.endswith("/models"):
             return httpx.Response(200, json={"data": [{"id": "mock-model"}]})
+        if request.method == "POST" and request.url.path.endswith("/chat/completions"):
+            payload = json.loads(request.content)
+            prompt = payload["messages"][1]["content"]
+            replies = json.loads((Path(__file__).resolve().parents[1] / "tests/fixtures/ai-ui.json").read_text(encoding="utf-8"))
+            if prompt in replies:
+                return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(replies[prompt], ensure_ascii=False)}}]})
         return httpx.Response(405, json={"error": "inference is not enabled in this fixture"})
 
     workspace.llm_client_factory = lambda config, **kwargs: OpenAIClient(config, transport=httpx.MockTransport(provider), **kwargs)
