@@ -164,6 +164,36 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(requests, [("GET", "/v1/models")])
         self.assertNotIn("test-only-key", (self.root / ".bdstudio/ai.json").read_text())
 
+    def test_ai_pipeline_returns_pending_proposal_and_blocks_questions(self):
+        from ai.client import ReplayClient
+
+        reply = {"schema_version": 1, "ops": [{"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19}],
+                 "summary": "parameter change", "assumptions": [], "questions": [], "missing_ip": []}
+        self.workspace.llm_client_factory = lambda *args, **kwargs: ReplayClient([reply])
+        proposal = self.workspace.propose_ai({"design": self.data, "base_dir": "examples", "prompt": "compare_eq threshold 19"})
+        self.assertTrue(proposal["valid"] and proposal["requires_confirmation"])
+        self.assertEqual(proposal["attempts"], 1)
+        self.assertEqual(self.data["instances"]["compare_0"]["parameters"]["THRESHOLD"], 9)
+        self.assertFalse((self.root / "build").exists())
+        reply["questions"] = ["clock unspecified"]
+        blocked = self.workspace.propose_ai({"design": self.data, "base_dir": "examples", "prompt": "counter timing"})
+        self.assertFalse(blocked["valid"])
+        self.assertEqual(blocked["questions"], ["clock unspecified"])
+        with self.assertRaises(ValueError):
+            self.workspace.accept_ops({"proposal_id": blocked["id"], "design": self.data, "base_dir": "examples", "selected": [0], "confirmed": True})
+
+    def test_ai_pipeline_rejects_changed_sources_during_generation(self):
+        class ChangingClient:
+            def generate(client, messages, schema):
+                path = self.root / "examples/rtl/counter.v"
+                path.write_bytes(path.read_bytes() + b"\n")
+                return {"schema_version": 1, "ops": [], "summary": "", "assumptions": [], "questions": [], "missing_ip": []}
+
+        self.workspace.llm_client_factory = lambda *args, **kwargs: ChangingClient()
+        with self.assertRaises(ValueError) as raised:
+            self.workspace.propose_ai({"design": self.data, "base_dir": "examples", "prompt": "counter"})
+        self.assertEqual(raised.exception.diagnostic.code, "AI_STALE_PROPOSAL")
+
     def test_all_historical_design_fixtures_roundtrip_without_information_loss(self):
         from bdsemantic import prepare
         from core.design import migrate

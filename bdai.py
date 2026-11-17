@@ -78,9 +78,12 @@ class ProposalStore:
         for identifier in expired:
             self.pending.pop(identifier, None)
 
-    def preview(self, payload):
+    def preview(self, payload, *, outcome=None, expected=None):
         base_dir = payload.get("base_dir", ".")
         document, library = prepare_context(self.workspace, payload.get("design"), base_dir)
+        hashes = (fingerprint(document), fingerprint([item.to_dict() for item in library]))
+        if expected is not None and hashes != expected:
+            fail("AI_STALE_PROPOSAL")
         operations = deepcopy(validate_operations(payload.get("ops")))
         candidate, errors = apply_ops(document, library, operations)
         result = _view(candidate, library, errors)
@@ -90,6 +93,14 @@ class ProposalStore:
         identifier = str(uuid4())
         result.update(id=identifier, ops=operations, summary=summary, assumptions=[], questions=[], missing_ip=[],
                       base_hash=fingerprint(document), requires_confirmation=True)
+        if outcome is not None:
+            for key in ("assumptions", "questions", "missing_ip", "attempts", "trace", "retrieved"):
+                result[key] = deepcopy(outcome[key])
+            result["diagnostics"].extend(item for item in outcome["validation"]["diagnostics"] if item not in result["diagnostics"])
+            result["valid"] = result["valid"] and outcome["validation"]["valid"] and not result["questions"] and not result["missing_ip"]
+            if not result["valid"]:
+                result["files"] = {}
+        result["validation"] = {"valid": result["valid"], "diagnostics": result["diagnostics"]}
         stored = {"base_hash": result["base_hash"], "library_hash": fingerprint([item.to_dict() for item in library]),
                   "base_dir": self.workspace.relative(self.workspace.path(base_dir)) or ".", "ops": deepcopy(operations),
                   "created": monotonic(), "valid": result["valid"]}

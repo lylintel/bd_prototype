@@ -99,3 +99,18 @@ OpenAI 兼容客户端支持 base_url/model/api_key/temperature、JSON schema �
 
 P3.3 完整门禁：520 项 Python、68 子测试、40 项前端单测、13 条浏览器流程，lint/typecheck/build 全通过。
 日志 build/phase3-p33-check.log；本机独立性能中位数 268.716ms、最大 301.270ms。配置页桌面和手机截图已检查。
+
+## P3.4 生成与修复回路
+
+POST /api/ai/propose 接受 design/base_dir/prompt 和可选 allow_removals，使用已配置的客户端。
+回路最多三轮，每轮替换完整 ops 批次、始终从原始快照重算；不会累积失败修改。
+响应包括 ops、summary、assumptions、missing_ip、questions、validation、attempts 及机器反馈 trace。
+只有提供卡片中的 IP 可以新增，端点仍须通过实际元数据与 P2.2/P2.3 校验。
+
+模型上下文不含 RTL/坐标；反馈仅 code+params/location 和受影响端口的解析摘要，不回传后端 message。
+缺失 IP、待澄清问题、达到失败上限或传输失败都返回不可接受提案。成功仍需用户选择并确认，生成不等于应用。
+调用期间源码或库变化会拒绝过期结果；同一服务一次只有一个活动 AI 生成请求。
+回路与提案服务已有离线回放/真实服务契约测试；自然语言界面和颜色 diff 在 P3.5 接入。
+
+P3.4 完整门禁：530 项 Python、68 子测试、40 前端单测、13 浏览器流程，lint/typecheck/build 全通过。
+日志 build/phase3-p34-check.log；本机独立性能中位数 290.169ms、最大 419.883ms。

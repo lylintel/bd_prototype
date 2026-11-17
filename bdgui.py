@@ -58,11 +58,12 @@ class Workspace:
         self.root = root.resolve()
         self.design_path = design_path
         from bdai import ProposalStore
-        from threading import RLock
+        from threading import Lock, RLock
 
         self.proposals = ProposalStore(self)
         self._ai_settings = None
         self._ai_settings_lock = RLock()
+        self._ai_generation_lock = Lock()
         self.llm_client_factory = None
 
     def ip_library(self):
@@ -207,6 +208,23 @@ class Workspace:
 
     def test_ai_connection(self, payload):
         return self.create_llm_client(payload).test_connection()
+
+    def propose_ai(self, payload):
+        from ai.pipeline import run_pipeline
+        from bdai import fail, fingerprint, prepare_context
+
+        if not self._ai_generation_lock.acquire(blocking=False):
+            fail("AI_BUSY")
+        try:
+            base_dir = payload.get("base_dir", ".")
+            document, library = prepare_context(self, payload.get("design"), base_dir)
+            expected = (fingerprint(document), fingerprint([item.to_dict() for item in library]))
+            outcome = run_pipeline(document, library, payload.get("prompt"), self.create_llm_client(),
+                                   allow_removals=payload.get("allow_removals", False))
+            return self.proposals.preview({"design": payload.get("design"), "base_dir": base_dir, "ops": outcome["ops"], "summary": outcome["summary"]},
+                                          outcome=outcome, expected=expected)
+        finally:
+            self._ai_generation_lock.release()
 
     def load(self, filename: str) -> dict:
         path = self.path(filename)
@@ -443,6 +461,8 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(workspace.save_ai_settings(payload))
             elif self.path == "/api/ai/test":
                 self.json_response(workspace.test_ai_connection(payload))
+            elif self.path == "/api/ai/propose":
+                self.json_response(workspace.propose_ai(payload))
             elif self.path == "/api/save":
                 self.json_response(workspace.save(payload))
             elif self.path == "/api/generate":
