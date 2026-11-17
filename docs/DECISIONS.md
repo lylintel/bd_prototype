@@ -251,6 +251,26 @@ GUI 的 /state、/load 和保存后返回值现统一来自 semantic_inspect，�
 本机副本位于 build/perf-ci/43813514485/python-{3.10,3.14}.json。首次匿名归档列表请求遇到代理 504，
 通过同一代理使用现有授权重试成功，没有绕过访问策略，也未记录令牌或签名 URL。
 
+#### Phase 3.5 核对：f9599e2 的原始 CI 样本
+
+2026-11-17 读取运行 [44013039312](https://github.com/lylintel/bd_prototype/actions/runs/44013039312) 的归档，
+不是重新运行后替代原数据。artifact ID：Python 3.10 为 14298190016，Python 3.14 为 14296549558。
+每批独立 CLI 进程、11 个样本，2000 实例/8000 网络，沿用样本前 GC 收集及计时中 GC 开启的协议。
+
+| 批次 | Python 3.10.22 中位数 ms | 最大 ms | Python 3.14.10 中位数 ms | 最大 ms |
+| --- | --- | --- | --- | --- |
+| 1 | 107.066 | 116.207 | 106.347 | 155.579 |
+| 2 | 106.107 | 107.770 | 104.955 | 110.317 |
+| 3 | 106.906 | 109.112 | 101.795 | 106.278 |
+| 4 | 106.722 | 108.783 | 110.494 | 113.969 |
+| 5 | 106.761 | 108.795 | 102.116 | 104.869 |
+
+两版本各五批全部 budget_passed=true、non_blocking=false，10/10 批次严格满足中位数 <300ms、最大 <600ms。
+因此本次 CI 重复测量稳定满足预算，无非阻塞降级。最差中位数 110.494ms、最差最大值 155.579ms；
+结论仅限此运行，不推断未来托管机器或本机环境必然稳定。两个 job 的平台分别为 Linux 7.0.0-1014-aws 和
+Linux 7.0.0-1017-azure，均 glibc2.39；不能将跨 job 性能差异单独归因于 Python 版本。
+保留原始全部样本于 build/perf-ci/44013039312/python-{3.10,3.14}.json。没有修改预算或校验器。
+
 ## D023：Phase 3 迁移边界（2026-11-16）
 
 - 已先阅读 ARCHITECTURE_NOTES 第 6 节，并以 main 5cc18aa 的实际 bdcopilot._tools、DesignRun.generate、CopilotPanel.send 核实。旧 SDK 九个 bd_* 工具读取完整共享设计；bd_read_source 可向模型返回登记 RTL；旧计划通过旧 apply_operations/bdtool 校验，bd_generate 先写 build/copilot 下设计和 HDL，再发 design_update，前端基线匹配即自动应用。它不是用户确认式 proposal 流程。
