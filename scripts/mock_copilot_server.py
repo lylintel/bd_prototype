@@ -19,6 +19,15 @@ def main(argv=None):
                           Tool=lambda **kwargs: SimpleNamespace(**kwargs), Result=FakeResult,
                           Reject=lambda **kwargs: SimpleNamespace(kind="reject", **kwargs))
     workspace = Workspace(args.workspace, "examples/counter_compare.json")
+    import httpx
+    from ai.client import OpenAIClient
+
+    def provider(request):
+        if request.method == "GET" and request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "mock-model"}]})
+        return httpx.Response(405, json={"error": "inference is not enabled in this fixture"})
+
+    workspace.llm_client_factory = lambda config, **kwargs: OpenAIClient(config, transport=httpx.MockTransport(provider), **kwargs)
     server = EditorServer(("127.0.0.1", args.port), workspace)
     server.copilot.close()
     server.copilot = CopilotBridge(workspace, sdk_loader=lambda: sdk)

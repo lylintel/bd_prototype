@@ -274,3 +274,13 @@ P2.6 的 main 合并提交 5cc18aa 已通过本地完整门禁与 [CI 4381558451
 - SearchIndex 提供 search_ip(query,k=8)，默认最多 8、上限 32；目录上限 10000，重复 id/version 拒绝。backend 参数预留后端选择，当前仅 bm25，不实现 embedding。
 - requirements-ai 按 Python 版本固定 NumPy：3.10/3.11 使用 2.2.6，3.12+ 使用当前实测 2.5.5（其 Requires-Python 为 >=3.12）。开发及 Copilot 依赖包含 AI 依赖，CI 缓存跟踪该文件；纯 metadata/context 模块不提前导入 BM25。
 - tests/ai_eval/cases.yaml 先建立 20 条共用查询种子（10 简单、7 中等、3 陷阱），明确 3 个表达式场景、注入及缺失 IP；没有接口级端点用例。其完整拓扑期望、回放和评分在 P3.7 完成，目前不把检索测试称为完整模型评测。
+
+## D025：P3.3 客户端、配置与密钥边界
+
+- ai/client.py 定义 LLMClient.generate(messages,schema)，OpenAIClient 通过已安装并固定的 httpx 0.28.1 调用兼容 /chat/completions；ReplayClient 为离线有界回放，耗尽明确报错，不伪造成功。SDK 旧入口继续保留，后续统一编排回路由 P3.4 接入。
+- 默认 temperature=0，可配置 0–2；支持 JSON schema 或指定 submit_proposal 工具输出。为兼容本地模型，传输请求的 json_schema strict=false，但返回结果必须经过本地完整 JSON/schema 检查；这不是降低 ops 规则。提供商仍须支持所选结构化模式，不自动更换模型/模式或修改温度。
+- 非法 JSON/结构只重试一次，反馈为 code+params；不把原始错误响应再次发给模型。限流、认证、超时、重定向、体积超限和拒绝不自动重试。请求最多 256 KiB、32 条消息，响应最多 1 MiB，超时 1–120 秒；拒绝重复键/非有限数字。不会跟随重定向发送密钥。
+- 日志默认关闭；启用时只记录事件、代码、尝试次数、耗时和已脱敏模型名，不记录提示词、响应正文、headers 或密钥。异常返回稳定 AI_LLM_*，不暴露上游错误正文或传输细节。
+- 配置保存至被 Git 忽略的 .bdstudio/ai.json，schema_version=1；只含公开连接参数。API 密钥仅存进程内存，或启动时读取 BD_AI_API_KEY，不写配置、不回显；切换 origin 时除非用户提供新密钥，否则清除旧密钥，防止跨服务误发。
+- AI 设置界面支持地址、模型、温度、超时、结构化模式、密钥状态和脱敏日志开关；测试连接仅 GET /models，不执行推理，也不保存未提交设置。新文案走 i18n；设置弹窗打开时禁止画布快捷键。
+- 测试全部使用 httpx.MockTransport、ReplayClient 和真实本地后端，不调用真实模型。浏览器检查保存/重开、端点切换清除旧密钥、手机布局，以及配置文件不含密钥。协议测试捕获并修正了 message 非对象导致未处理 AttributeError 的问题。

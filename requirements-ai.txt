@@ -1,3 +1,4 @@
 rank-bm25==0.2.2
+httpx==0.28.1
 numpy==2.2.6; python_version < "3.12"
 numpy==2.5.5; python_version >= "3.12"

@@ -367,3 +367,35 @@ test("[mock-sdk] ops batch requires acceptance and one undo restores every chang
   expect(await designJson(page)).toEqual(before);
   expect(readFileSync(path.join(server.directory, "examples/counter_compare.json"))).toEqual(readFileSync(path.join(root, "examples/counter_compare.json")));
 });
+
+test("[mock-sdk] AI settings test connection and keep keys out of persisted configuration", async ({ page }, testInfo) => {
+  await openEditor(page);
+  const before = await designJson(page);
+  await page.getByRole("button", { name: t("ai.settings"), exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: t("ai.settings"), exact: true });
+  await dialog.getByLabel(t("ai.baseUrl"), { exact: true }).fill("http://127.0.0.1:8888/v1");
+  await dialog.getByLabel(t("ai.model"), { exact: true }).fill("mock-model");
+  await dialog.getByLabel(t("ai.apiKey"), { exact: true }).fill("test-only-key");
+  await dialog.getByRole("button", { name: t("ai.testConnection"), exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText(t("ai.connectionOk", { count: 1 }));
+  await page.screenshot({ path: testInfo.outputPath("ai-settings-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bounds = await dialog.boundingBox();
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("ai-settings-mobile.png") });
+  await dialog.getByRole("button", { name: t("ai.saveSettings"), exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const saved = readFileSync(path.join(server.directory, ".bdstudio/ai.json"), "utf8");
+  expect(saved).not.toContain("test-only-key");
+  expect(saved).not.toContain("api_key");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: t("ai.settings"), exact: true }).click();
+  await expect(dialog.getByLabel(t("ai.baseUrl"), { exact: true })).toHaveValue("http://127.0.0.1:8888/v1");
+  await expect(dialog.getByLabel(t("ai.apiKey"), { exact: true })).toHaveValue("");
+  await dialog.getByLabel(t("ai.baseUrl"), { exact: true }).fill("http://127.0.0.1:8889/v1");
+  await dialog.getByRole("button", { name: t("ai.saveSettings"), exact: true }).click();
+  const settings = await (await page.request.get(`${server.url}/api/ai/settings`)).json();
+  expect(settings.has_api_key).toBe(false);
+  expect(await designJson(page)).toEqual(before);
+});

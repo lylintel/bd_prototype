@@ -6,6 +6,7 @@ import { addInstance, checkName, clone, connectionError, connectPorts, deleteNod
 import OutputWindow from "./OutputWindow.jsx";
 import CircuitEdge from "./CircuitEdge.jsx";
 import CopilotPanel from "./CopilotPanel.jsx";
+import AISettings from "./ai/Settings.jsx";
 import { ImportButton, LibraryList, OriginBadge } from "./ip/Library.jsx";
 import { IP_DRAG_TYPE, addImported, findImportedDrop, originForDefinition } from "./ip/model.js";
 import { t } from "./i18n.js";
@@ -114,6 +115,7 @@ export default function App() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [mobilePanel, setMobilePanel] = useState(null);
   const [copilotOpen, setCopilotOpen] = useState(false);
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [ipImportOpen, setIpImportOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
@@ -440,7 +442,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event) => {
-      if (!design || busy || modal || ipImportOpen || connectionOpen || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+      if (!design || busy || modal || ipImportOpen || connectionOpen || aiSettingsOpen || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveDialog(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
@@ -546,6 +548,7 @@ export default function App() {
       <div className="header-center"><span className="session-dot" />RTL WORKSPACE</div>
       <div className="header-actions">
         <IconButton icon={Bot} label="Copilot 助手" aria-pressed={copilotOpen} onClick={() => setCopilotOpen(!copilotOpen)} />
+        <IconButton icon={Settings2} label={t("ai.settings")} onClick={() => setAiSettingsOpen(true)} disabled={Boolean(busy)} />
         <IconButton icon={FilePlus2} label="新建设计" onClick={newDocument} disabled={Boolean(busy)} />
         <IconButton icon={FolderOpen} label="打开设计" onClick={openDialog} disabled={Boolean(busy)} />
         <span className="toolbar-divider" />
@@ -678,6 +681,7 @@ export default function App() {
     <footer className="status-bar"><span><span className="session-dot" />{busy || "本地连接"}</span><span className="status-path">{documentPath || "Untitled"}</span><span>JSON <span className="status-divider">|</span> Verilog-2005</span></footer>
 
     <CopilotPanel open={copilotOpen} onClose={() => setCopilotOpen(false)} api={api} token={token} design={document} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} />
+    <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} api={api} />
 
     {toast && <div className={`toast ${toast.error ? "error" : ""}`} role={toast.error ? "alert" : "status"}>{toast.error ? <CircleAlert size={17} /> : <CircleCheck size={17} />}<span>{toast.message}</span><IconButton icon={X} label="关闭通知" onClick={() => setToast(null)} /></div>}
 

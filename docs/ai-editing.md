@@ -81,3 +81,21 @@ P3.1 完整门禁：493 项 Python、68 子测试、40 项前端单测、12 条�
 
 P3.2 完整门禁：498 项 Python、68 子测试、40 项前端单测、12 条浏览器流程，lint/typecheck/build 全通过。
 日志 build/phase3-p32-check.log；本机独立校验性能中位数 265.503ms、最大 383.646ms。
+
+## P3.3 LLM 客户端与设置
+
+[ai/client.py](../ai/client.py) 提供可替换 LLMClient、OpenAIClient 和离线 ReplayClient。
+OpenAI 兼容客户端支持 base_url/model/api_key/temperature、JSON schema 或工具输出；结果仍经本地 JSON/schema 检查。
+非法结构重试一次；限流、超时、认证、拒绝、重定向或超限直接返回稳定错误，不自动重试。
+单请求最多 32 条消息/256 KiB，响应最多 1 MiB。连接测试只访问 /models，不执行推理。
+
+顶栏 AI 设置可编辑服务、模型及结构化模式，也可测试未保存的配置。配置保存在 .bdstudio/ai.json，Git 已忽略该目录。
+密钥只保留本次服务进程，重启后可重新输入或通过 BD_AI_API_KEY 提供；不会回显或写入配置。
+更换服务 origin 会清除旧密钥，除非同时明确输入新密钥。输入框为空表示保留同服务现有密钥，清除选项明确删除它。
+
+请求日志默认关闭；开启后 .bdstudio/ai-requests.jsonl 只含脱敏的结果元数据，不含提示词、响应或 headers。
+配置 API 为 GET/POST /api/ai/settings，连接测试为 POST /api/ai/test，继续使用现有本地访问保护。
+底层客户端已可供 P3.4 调用；完整自然语言生成回路与画布 diff 在后续任务完成，不能把连接成功当成模型生成或硬件验证通过。
+
+P3.3 完整门禁：520 项 Python、68 子测试、40 项前端单测、13 条浏览器流程，lint/typecheck/build 全通过。
+日志 build/phase3-p33-check.log；本机独立性能中位数 268.716ms、最大 301.270ms。配置页桌面和手机截图已检查。

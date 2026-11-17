@@ -145,6 +145,25 @@ class EditorTests(unittest.TestCase):
             "base_dir": "examples", "selected": [0], "confirmed": True})
         self.assertEqual(accepted["document"]["instances"][1]["params"]["THRESHOLD"], 19)
 
+    def test_ai_settings_and_connection_test_do_not_expose_secrets_or_generate(self):
+        import httpx
+        from ai.client import OpenAIClient
+
+        requests = []
+
+        def respond(request):
+            requests.append((request.method, request.url.path))
+            return httpx.Response(200, json={"data": [{"id": "test-model"}]})
+
+        self.workspace.llm_client_factory = lambda config, **kwargs: OpenAIClient(config, transport=httpx.MockTransport(respond), **kwargs)
+        public = self.workspace.save_ai_settings({"base_url": "http://127.0.0.1:1234/v1", "model": "test-model", "api_key": "test-only-key"})
+        self.assertTrue(public["has_api_key"])
+        self.assertNotIn("test-only-key", json.dumps(self.workspace.get_ai_settings()))
+        result = self.workspace.test_ai_connection({})
+        self.assertEqual(result, {"ok": True, "models": ["test-model"]})
+        self.assertEqual(requests, [("GET", "/v1/models")])
+        self.assertNotIn("test-only-key", (self.root / ".bdstudio/ai.json").read_text())
+
     def test_all_historical_design_fixtures_roundtrip_without_information_loss(self):
         from bdsemantic import prepare
         from core.design import migrate

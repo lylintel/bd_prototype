@@ -58,8 +58,12 @@ class Workspace:
         self.root = root.resolve()
         self.design_path = design_path
         from bdai import ProposalStore
+        from threading import RLock
 
         self.proposals = ProposalStore(self)
+        self._ai_settings = None
+        self._ai_settings_lock = RLock()
+        self.llm_client_factory = None
 
     def ip_library(self):
         try:
@@ -175,6 +179,34 @@ class Workspace:
 
     def discard_ops(self, payload: dict) -> dict:
         return self.proposals.discard(payload)
+
+    def _settings_store(self):
+        with self._ai_settings_lock:
+            if self._ai_settings is None:
+                try:
+                    from ai.settings import SettingsStore
+                except ImportError:
+                    from bdai import fail
+
+                    fail("AI_DEPENDENCY")
+                self._ai_settings = SettingsStore(self.root)
+            return self._ai_settings
+
+    def get_ai_settings(self):
+        return self._settings_store().public()
+
+    def save_ai_settings(self, payload):
+        return self._settings_store().save(payload)
+
+    def create_llm_client(self, payload=None):
+        settings = self._settings_store()
+        from ai.client import OpenAIClient
+
+        factory = self.llm_client_factory or OpenAIClient
+        return factory(settings.configuration(payload), audit=settings.audit)
+
+    def test_ai_connection(self, payload):
+        return self.create_llm_client(payload).test_connection()
 
     def load(self, filename: str) -> dict:
         path = self.path(filename)
@@ -303,6 +335,8 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response({**workspace.load(workspace.design_path), "token": self.server.token})
             elif request.path == "/api/copilot/status":
                 self.json_response(self.server.copilot.status())
+            elif request.path == "/api/ai/settings":
+                self.json_response(workspace.get_ai_settings())
             elif request.path == "/api/designs":
                 self.json_response({"paths": workspace.list_designs()})
             elif request.path == "/api/ip/library":
@@ -323,7 +357,10 @@ class EditorHandler(BaseHTTPRequestHandler):
         except PermissionError as exc:
             self.json_response({"error": str(exc)}, 403)
         except (bdtool.DesignError, OSError, ValueError) as exc:
-            self.json_response({"error": str(exc)}, 400)
+            result = {"error": str(exc)}
+            if hasattr(exc, "diagnostic"):
+                result["diagnostics"] = [exc.diagnostic.to_dict()]
+            self.json_response(result, 400)
 
     def stream_chat(self, payload):
         turn = self.server.copilot.start_turn(payload)
@@ -402,6 +439,10 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(workspace.accept_ops(payload))
             elif self.path == "/api/ops/discard":
                 self.json_response(workspace.discard_ops(payload))
+            elif self.path == "/api/ai/settings":
+                self.json_response(workspace.save_ai_settings(payload))
+            elif self.path == "/api/ai/test":
+                self.json_response(workspace.test_ai_connection(payload))
             elif self.path == "/api/save":
                 self.json_response(workspace.save(payload))
             elif self.path == "/api/generate":

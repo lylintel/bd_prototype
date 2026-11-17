@@ -176,6 +176,10 @@ npm.cmd --prefix web run build
 
 ## Copilot 助手
 
+顶栏“AI 设置”可配置 OpenAI 兼容服务或本地模型地址，并通过只读模型列表测试连接。
+安装 [requirements-ai.txt](requirements-ai.txt) 后可使用客户端；密钥只存会话内存或由 BD_AI_API_KEY 提供，不写入项目配置。
+配置与客户端的错误、重试和保密边界见 [docs/ai-editing.md](docs/ai-editing.md)。SDK 对话入口仍按下节安装。
+
 现有对话采用“网页 -> 本地 Python 服务 -> 官方 Copilot SDK -> Copilot 运行时”。编辑已收敛到 typed ops、语义校验和用户确认；SDK 连接与对话入口保留。契约与迁移边界见 [docs/ai-editing.md](docs/ai-editing.md)。
 
 ### 安装与登录

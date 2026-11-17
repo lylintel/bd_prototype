@@ -28,6 +28,7 @@ designs/*
 *.pfx
 *.p12
 .copilot/
+.bdstudio/
 .vscode/
 *.log
 .DS_Store
