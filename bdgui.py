@@ -226,7 +226,8 @@ class Workspace:
             outcome = run_pipeline(document, library, payload.get("prompt"), self.create_llm_client(),
                                    allow_removals=payload.get("allow_removals", False),
                                    context_token_budget=self._settings_store().configuration().context_token_budget,
-                                   selected_instances=payload.get("selected_instances", []))
+                                   selected_instances=payload.get("selected_instances", []),
+                                   send_ip_descriptions=self._settings_store().configuration().send_ip_descriptions)
             return self.proposals.preview({"design": payload.get("design"), "base_dir": base_dir, "ops": outcome["ops"], "summary": outcome["summary"],
                                            "allow_removals": payload.get("allow_removals", False)},
                                           outcome=outcome, expected=expected)

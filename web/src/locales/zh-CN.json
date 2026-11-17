@@ -1,4 +1,5 @@
 {
+  "ai.sendDescriptions": "向模型发送 IP 描述",
   "ai.contextBudget": "网表上下文 token 估算上限",
   "ai.subgraphOnly": "仅基于子图：包含 {count}/{total} 个实例及其边界摘要",
   "diagnostic.AI_CONTEXT_SELECTION_REQUIRED": "网表估算 {estimated} tokens，超过上限 {limit}；请先选中要修改的实例",

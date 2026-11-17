@@ -73,6 +73,7 @@ export default function Settings({ open, onClose, api }) {
           <label className="field-label ai-wide">{t("ai.structuredMode")}<select aria-label={t("ai.structuredMode")} value={draft.structured_mode} onChange={(event) => update("structured_mode", event.target.value)}>
             <option value="json_schema">{t("ai.modeJsonSchema")}</option><option value="tool">{t("ai.modeTool")}</option></select></label>
           <label className="ai-wide check-field"><input type="checkbox" checked={draft.log_enabled} onChange={(event) => update("log_enabled", event.target.checked)} />{t("ai.logEnabled")}</label>
+          <label className="ai-wide check-field"><input type="checkbox" aria-label={t("ai.sendDescriptions")} checked={draft.send_ip_descriptions} onChange={(event) => update("send_ip_descriptions", event.target.checked)} />{t("ai.sendDescriptions")}</label>
         </fieldset>}
       </div>
       <footer><button type="button" className="button" disabled={loading || busy || !draft} onClick={() => perform(false)}><Plug size={14} />{t("ai.testConnection")}</button>

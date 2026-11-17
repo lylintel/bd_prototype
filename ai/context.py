@@ -1,6 +1,10 @@
 from copy import deepcopy
+from functools import lru_cache
+from html.parser import HTMLParser
 import json
 import math
+from pathlib import Path
+import unicodedata
 
 from ai.client import LLMError
 from core.resolve import resolve
@@ -16,10 +20,54 @@ def compact_design(document, library):
             "nets": deepcopy(document["nets"])}
 
 
-def metadata_card(metadata):
-    return {"id": metadata.id, "version": metadata.version,
+def metadata_card(metadata, *, include_description=False):
+    card = {"id": metadata.id, "version": metadata.version,
             "parameters": [parameter.to_dict() for parameter in metadata.parameters],
             "ports": [port.to_dict() for port in metadata.ports]}
+    if include_description and metadata.description:
+        card["description"] = clean_description(metadata.description)
+    return card
+
+
+class _DescriptionText(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self.hidden = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style"):
+            self.hidden += 1
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style"):
+            self.hidden = max(0, self.hidden - 1)
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.parts.append(data)
+
+
+def clean_description(text):
+    parser = _DescriptionText()
+    parser.feed(text)
+    plain = " ".join(parser.parts).replace("BEGIN_BD_DATA", "").replace("END_BD_DATA", "")
+    plain = "".join(character if not unicodedata.category(character).startswith("C") else " " for character in plain)
+    return " ".join(plain.split())[:200]
+
+
+@lru_cache(maxsize=1)
+def _builtin_descriptions():
+    root = Path(__file__).resolve().parents[1] / "ip_library/builtin"
+    signatures = set()
+    for path in root.glob("*/1.0.0/ip.json"):
+        entry = json.loads(path.read_text(encoding="utf-8"))
+        signatures.add((entry["id"], entry["version"], entry["source"]["sha256"], entry["description"]))
+    return frozenset(signatures)
+
+
+def is_builtin_description(metadata):
+    return (metadata.id, metadata.version, metadata.source.sha256, metadata.description) in _builtin_descriptions()
 
 
 def estimate_tokens(value):

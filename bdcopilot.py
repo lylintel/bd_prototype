@@ -313,7 +313,8 @@ class CopilotBridge:
                             from ai.retrieval import SearchIndex
 
                             _, library = prepare_context(self.workspace, context["document"], context["base_dir"])
-                            cards = SearchIndex(library).search_ip(arguments.get("query") or conversation.evidence[-1]["text"])
+                            cards = SearchIndex(library).search_ip(arguments.get("query") or conversation.evidence[-1]["text"],
+                                send_descriptions=self.workspace._settings_store().configuration().send_ip_descriptions)
                             identifiers = {item["id"] for item in cards}
                             result = {"ips": cards,
                                       "legacy_definition_hashes": {name: item["definition_hash"] for name, item in workflow.catalog["modules"].items() if name in identifiers}}

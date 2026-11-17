@@ -1,9 +1,11 @@
 import json
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from ai.client import LLMError, ReplayClient
-from ai.context import budget_context, estimate_tokens
+from ai.context import budget_context, estimate_tokens, metadata_card
 from ai.pipeline import run_pipeline
 from bdai import ProposalStore
 from core.design import DesignFormatError
@@ -74,5 +76,41 @@ def test_private_settings_v1_migrates_budget_without_touching_design(tmp_path, m
     settings = SettingsStore(tmp_path)
     assert settings.configuration().context_token_budget == 32_000
     settings.save({"context_token_budget": 12_000})
-    assert json.loads(path.read_text())["schema_version"] == 2
+    assert json.loads(path.read_text())["schema_version"] == 3
     assert SettingsStore(tmp_path).configuration().context_token_budget == 12_000
+    assert settings.configuration().send_ip_descriptions is False
+    settings.save({"send_ip_descriptions": True})
+    assert SettingsStore(tmp_path).configuration().send_ip_descriptions is True
+
+
+def test_descriptions_are_opt_in_bounded_and_cleaned(bundle):
+    _, library = bundle
+    metadata = replace(library[0], description="<b>计数模块</b><script>hidden_secret()</script>\u202e\x00" + "长" * 250)
+    assert "description" not in metadata_card(metadata)
+    card = metadata_card(metadata, include_description=True)
+    assert len(card["description"]) == 200
+    assert card["description"].startswith("计数模块")
+    assert all(value not in card["description"] for value in ("<b>", "hidden_secret", "\u202e", "\x00"))
+
+
+def test_builtin_description_policy_cannot_be_forged_by_name():
+    from bdip import load_ip
+    from ai.retrieval import SearchIndex
+
+    root = Path(__file__).resolve().parents[2]
+    builtin = load_ip(root / "ip_library/builtin/bd_counter/1.0.0/ip.json")
+    assert "description" in SearchIndex([builtin]).search_ip("bd_counter", builtin_descriptions=True)[0]
+    forged = replace(builtin, description="private imported metadata")
+    assert "description" not in SearchIndex([forged]).search_ip("bd_counter", builtin_descriptions=True)[0]
+
+
+def test_malicious_description_is_data_even_when_explicitly_enabled(bundle):
+    document, library = bundle
+    fixture = json.loads((Path(__file__).parents[1] / "fixtures/ai-injection.json").read_text(encoding="utf-8"))
+    library = (replace(library[0], description=fixture["description"]), *library[1:])
+    response = {"schema_version": 1, "ops": fixture["operations"], "summary": "test", "assumptions": [], "questions": [], "missing_ip": []}
+    client = ReplayClient([response] * 3)
+    result = run_pipeline(document, library, "counter compare_eq", client, send_ip_descriptions=True)
+    data = client.requests[0]["messages"][2]["content"]
+    assert data.startswith("BEGIN_BD_DATA\n") and fixture["description"] in data
+    assert result["ops"] == [] and not result["validation"]["valid"] and result["document"] == document

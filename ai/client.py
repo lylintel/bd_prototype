@@ -57,8 +57,11 @@ class ClientConfig:
     timeout: float = 30
     log_enabled: bool = False
     context_token_budget: int = 32_000
+    send_ip_descriptions: bool = False
 
     def __post_init__(self):
+        if type(self.send_ip_descriptions) is not bool:
+            raise LLMError("AI_LLM_CONFIG", field="send_ip_descriptions")
         if type(self.context_token_budget) is not int or not 512 <= self.context_token_budget <= 2_000_000:
             raise LLMError("AI_LLM_CONFIG", field="context_token_budget")
         try:

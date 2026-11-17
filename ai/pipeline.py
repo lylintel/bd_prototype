@@ -63,14 +63,14 @@ def _result(response, candidate, diagnostics, attempt, trace, cards, context):
             "retrieved": [{"id": card["id"], "version": card["version"]} for card in cards]}
 
 
-def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_removals=False, context_token_budget=32_000, selected_instances=()):
+def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_removals=False, context_token_budget=32_000, selected_instances=(), send_ip_descriptions=False):
     if (not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 8000
-            or type(max_attempts) is not int or not 1 <= max_attempts <= 3 or type(allow_removals) is not bool):
+            or type(max_attempts) is not int or not 1 <= max_attempts <= 3 or type(allow_removals) is not bool or type(send_ip_descriptions) is not bool):
         raise LLMError("AI_REQUEST", field="prompt_or_policy")
     check_document(document)
     baseline = deepcopy(document)
     library = tuple(library)
-    cards = SearchIndex(library).search_ip(prompt, 8)
+    cards = SearchIndex(library).search_ip(prompt, 8, send_descriptions=send_ip_descriptions, builtin_descriptions=True)
     references = {(card["id"], card["version"]) for card in cards}
     netlist, context = budget_context(baseline, library, token_budget=context_token_budget, selected_instances=selected_instances)
     data = {"netlist": netlist, "context_scope": context, "ip_cards": cards, "permissions": {"allow_removals": allow_removals}}

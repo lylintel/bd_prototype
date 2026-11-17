@@ -2,7 +2,7 @@ import re
 
 from rank_bm25 import BM25Plus
 
-from ai.context import metadata_card
+from ai.context import is_builtin_description, metadata_card
 
 
 WORDS = re.compile(r"[a-zA-Z_$][a-zA-Z0-9_$]*|[0-9]+|[\u3400-\u9fff]+")
@@ -35,7 +35,7 @@ class SearchIndex:
                 self.postings.setdefault(token, set()).add(index)
         self.engine = BM25Plus(corpus) if corpus else None
 
-    def search_ip(self, query, k=8):
+    def search_ip(self, query, k=8, *, send_descriptions=False, builtin_descriptions=False):
         if not isinstance(query, str) or len(query) > 8000 or type(k) is not int or not 1 <= k <= 32:
             raise ValueError("invalid retrieval query or result count")
         tokens = tokenize(query)
@@ -47,7 +47,8 @@ class SearchIndex:
         scores = self.engine.get_scores(tokens)
         named = set(WORDS.findall(query.casefold()))
         order = sorted(matching, key=lambda index: (self.entries[index].id.casefold() not in named, -float(scores[index]), self.entries[index].id, self.entries[index].version))
-        return [metadata_card(self.entries[index]) for index in order[:k]]
+        return [metadata_card(self.entries[index], include_description=send_descriptions or builtin_descriptions and is_builtin_description(self.entries[index]))
+            for index in order[:k]]
 
 
 def search_ip(query, k=8, *, library):

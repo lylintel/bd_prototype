@@ -7,7 +7,7 @@ import bdtool
 from ai.client import ClientConfig, LLMError, json_object, origin
 
 
-FIELDS = ("base_url", "model", "temperature", "structured_mode", "timeout", "log_enabled", "context_token_budget")
+FIELDS = ("base_url", "model", "temperature", "structured_mode", "timeout", "log_enabled", "context_token_budget", "send_ip_descriptions")
 
 
 class SettingsStore:
@@ -21,7 +21,7 @@ class SettingsStore:
                 raise LLMError("AI_LLM_CONFIG", field="size")
             try:
                 values = json_object(path.read_text(encoding="utf-8"))
-                if values.pop("schema_version", None) not in (1, 2) or set(values) - set(FIELDS):
+                if values.pop("schema_version", None) not in (1, 2, 3) or set(values) - set(FIELDS):
                     raise ValueError("settings schema")
             except (ValueError, UnicodeError):
                 raise LLMError("AI_LLM_CONFIG", field="stored_settings") from None
@@ -37,7 +37,7 @@ class SettingsStore:
 
     def public(self):
         with self.lock:
-            return {"schema_version": 2, "config": {name: getattr(self._config, name) for name in FIELDS},
+            return {"schema_version": 3, "config": {name: getattr(self._config, name) for name in FIELDS},
                     "has_api_key": bool(self._config.api_key), "key_source": self.key_source}
 
     def configuration(self, payload=None):
@@ -62,7 +62,7 @@ class SettingsStore:
         with self.lock:
             config = self.configuration(payload)
             path = self._path("ai.json")
-            public = {"schema_version": 2, **{name: getattr(config, name) for name in FIELDS}}
+            public = {"schema_version": 3, **{name: getattr(config, name) for name in FIELDS}}
             bdtool._write_outputs({path.name: json.dumps(public, indent=2) + "\n"}, path.parent, set())
             old_key = self._config.api_key
             self._config = config

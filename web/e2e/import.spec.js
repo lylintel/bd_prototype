@@ -373,6 +373,8 @@ test("[mock-sdk] AI settings test connection and keep keys out of persisted conf
   const before = await designJson(page);
   await page.getByRole("button", { name: t("ai.settings"), exact: true }).click();
   const dialog = page.getByRole("dialog", { name: t("ai.settings"), exact: true });
+  await expect(dialog.getByLabel(t("ai.sendDescriptions"), { exact: true })).not.toBeChecked();
+  await dialog.getByLabel(t("ai.sendDescriptions"), { exact: true }).check();
   await dialog.getByLabel(t("ai.baseUrl"), { exact: true }).fill("http://127.0.0.1:8888/v1");
   await dialog.getByLabel(t("ai.model"), { exact: true }).fill("mock-model");
   await dialog.getByLabel(t("ai.apiKey"), { exact: true }).fill("test-only-key");
@@ -387,6 +389,7 @@ test("[mock-sdk] AI settings test connection and keep keys out of persisted conf
   await dialog.getByRole("button", { name: t("ai.saveSettings"), exact: true }).click();
   await expect(dialog).not.toBeVisible();
   const saved = readFileSync(path.join(server.directory, ".bdstudio/ai.json"), "utf8");
+  expect(JSON.parse(saved).send_ip_descriptions).toBe(true);
   expect(saved).not.toContain("test-only-key");
   expect(saved).not.toContain("api_key");
   await page.setViewportSize({ width: 1440, height: 900 });
