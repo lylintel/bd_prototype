@@ -1,6 +1,7 @@
 from dataclasses import replace
 import json
 from pathlib import Path
+import re
 from time import perf_counter
 
 import pytest
@@ -68,3 +69,24 @@ def test_five_hundred_ip_search_is_below_50ms(catalog):
         durations.append((perf_counter() - started) * 1000)
         assert result[0]["id"] == "fixture_317"
     assert max(durations) < 50, durations
+
+
+@pytest.mark.parametrize("size", [17, 500])
+def test_pure_chinese_and_english_queries_cover_builtins(catalog, size):
+    rows = json.loads((ROOT / "tests/ai_eval/retrieval_queries.json").read_text(encoding="utf-8"))
+    builtins = tuple(item for item in catalog if item.id.startswith("bd_"))
+    assert len(builtins) == len(rows) == 17
+    assert {row["ip"] for row in rows} == {item.id for item in builtins}
+    assert all(not re.search("[A-Za-z]", row["zh"]) for row in rows)
+    library = (*builtins, *(replace(builtins[0], id=f"synthetic_{index}", display_name="测试占位单元",
+                                    description="synthetic test fixture", tags=("fixture",)) for index in range(size - 17)))
+    index = SearchIndex(library)
+    for language in ("zh", "en"):
+        missed = [row["ip"] for row in rows if row["ip"] not in {card["id"] for card in index.search_ip(row[language], 8)}]
+        assert not missed, (size, language, missed)
+
+
+def test_original_dev_language_inventory():
+    cases = yaml.safe_load((ROOT / "tests/ai_eval/cases.yaml").read_text(encoding="utf-8"))["cases"]
+    assert sum(bool(re.search("[\u3400-\u9fff]", case["prompt"])) for case in cases) == 20
+    assert sum(not re.search("[A-Za-z]", case["prompt"]) for case in cases) == 4

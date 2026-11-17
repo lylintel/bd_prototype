@@ -1,0 +1,19 @@
+[
+  {"ip":"bd_async_fifo","zh":"跨两个时钟域传送数据的先进先出缓存","en":"asynchronous FIFO clock crossing"},
+  {"ip":"bd_sync_fifo","zh":"同一时钟下的先进先出缓存","en":"synchronous FIFO buffer"},
+  {"ip":"bd_axil_regs","zh":"轻量级存储器映射寄存器接口","en":"AXI Lite register bank"},
+  {"ip":"bd_clock_divider","zh":"定时产生节拍并将时钟分频","en":"clock divider periodic tick"},
+  {"ip":"bd_compare","zh":"比较两个无符号数的大小和相等关系","en":"unsigned data comparator equality less greater"},
+  {"ip":"bd_counter","zh":"可使能和清零的递增计数器","en":"counter enable clear overflow"},
+  {"ip":"bd_debounce","zh":"滤除机械按键抖动并给出稳定电平","en":"button debounce stable input level"},
+  {"ip":"bd_edge_detect","zh":"检测信号上升沿和下降沿并产生脉冲","en":"edge detect rising falling pulse"},
+  {"ip":"bd_mux2","zh":"由选择位控制从两路数据中选一路","en":"two input data mux"},
+  {"ip":"bd_mux4","zh":"由选择位控制从四路数据中选一路","en":"four input data mux"},
+  {"ip":"bd_shift_register","zh":"将串行输入逐位移入并行输出寄存器","en":"serial parallel shift register"},
+  {"ip":"bd_simple_dual_port_ram","zh":"独立读写端口的双口随机存取存储器","en":"simple dual port RAM independent read write"},
+  {"ip":"bd_spi_master","zh":"主机通过同步串行外设接口收发数据","en":"SPI master serial peripheral interface"},
+  {"ip":"bd_stream_slice","zh":"给带就绪有效握手的数据流加一级弹性流水寄存器","en":"elastic stream register slice ready valid"},
+  {"ip":"bd_sync_2ff","zh":"通过两级触发器同步跨时钟域单比特控制信号","en":"two flip flop synchronizer control clock domain"},
+  {"ip":"bd_uart_rx","zh":"接收异步串口数据并报告帧错误","en":"UART receiver framing error"},
+  {"ip":"bd_uart_tx","zh":"发送异步串口数据并给出忙标志","en":"UART transmitter busy"}
+]
