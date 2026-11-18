@@ -1,3 +1,60 @@
+import { makeLayoutGraph, layoutPositions } from "./layout/model.js";
+import { publishPositions, requestLayout } from "./layout/client.js";
+
+test("layout application yields bounded batches and stops on cancellation", async () => {
+  const positions = Object.fromEntries(Array.from({ length: 2000 }, (_, index) => [`unit_${index}`, { x: index, y: 0 }]));
+  const batches = [];
+  await publishPositions(positions, (batch) => batches.push(batch), { nextFrame: () => Promise.resolve() });
+  assert.ok(batches.every((batch) => Object.keys(batch).length <= 8));
+  assert.deepEqual(Object.assign({}, ...batches), positions);
+  const controller = new AbortController();
+  let applied = 0;
+  await assert.rejects(publishPositions(positions, () => { applied++; controller.abort(); },
+    { signal: controller.signal, nextFrame: () => Promise.resolve() }), { name: "AbortError" });
+  assert.equal(applied, 1);
+});
+import ELK from "elkjs/lib/elk.bundled.js";
+
+test("large cyclic graphs use the real ELK rectangle packer", async () => {
+  const nodes = Array.from({ length: 2000 }, (_, index) => ({ id: `unit_${index}`, initialWidth: 250, initialHeight: 246 }));
+  const edges = nodes.flatMap((node, index) => [1, 23, 127].map((offset) => ({ source: node.id, target: nodes[(index + offset) % nodes.length].id })));
+  const graph = makeLayoutGraph(nodes, edges);
+  assert.equal(graph.layoutOptions["elk.algorithm"], "rectpacking");
+  const result = layoutPositions(await new ELK().layout(graph));
+  assert.equal(Object.keys(result).length, 2000);
+  assert.equal(new Set(Object.values(result).map((point) => `${point.x}:${point.y}`)).size, 2000);
+});
+
+test("layout graph retains dimensions and excludes dangling display edges", () => {
+  const nodes = [{ id: "first", initialWidth: 250, initialHeight: 186 }, { id: "second", measured: { width: 156, height: 59 } }];
+  const graph = makeLayoutGraph(nodes, [{ id: "valid", source: "first", target: "second" }, { id: "missing", source: "first", target: "absent" }]);
+  assert.equal(graph.children[0].width, 250);
+  assert.equal(graph.children[1].height, 59);
+  assert.equal(graph.edges.length, 1);
+  assert.equal(nodes[0].position, undefined);
+  assert.throws(() => layoutPositions({ children: [{ id: "first", x: NaN, y: 0 }] }), /position/);
+});
+
+test("layout worker is cancelled and cannot publish a late result", async () => {
+  const controller = new AbortController();
+  const worker = { postMessage(value) { this.input = value; }, terminate() { this.terminated = true; } };
+  const pending = requestLayout([{ id: "first" }], [], { signal: controller.signal, workerFactory: () => worker });
+  const rejected = assert.rejects(pending, { name: "AbortError" });
+  controller.abort();
+  worker.onmessage?.({ data: { positions: { first: { x: 1, y: 2 } } } });
+  await rejected;
+  assert.equal(worker.terminated, true);
+});
+
+test("layout worker returns only complete finite coordinate maps", async () => {
+  const worker = { postMessage() {}, terminate() {} };
+  const pending = requestLayout([{ id: "first" }], [], { workerFactory: () => worker });
+  worker.onmessage({ data: { positions: { first: { x: 12, y: 24 } } } });
+  assert.deepEqual(await pending, { first: { x: 12, y: 24 } });
+  const failed = requestLayout([{ id: "first" }], [], { workerFactory: () => worker });
+  worker.onmessage({ data: { positions: { missing: { x: 12, y: 24 } } } });
+  await assert.rejects(failed);
+});
 test("compact hierarchy geometry uses display anchors without changing logical ports", () => {
   const ports = Array.from({ length: 200 }, (_, index) => ({ endpoint: `group.pin_${index}`, drives: index >= 100 }));
   const compact = { name: "group", compact: true, ports };
@@ -11,7 +68,21 @@ test("compact hierarchy geometry uses display anchors without changing logical p
 });
 import test from "node:test";
 import assert from "node:assert/strict";
-import { edgeLabelPosition, nodeGeometry, sameNodeData } from "./performance.js";
+import { edgeLabelPosition, nodeGeometry, sameNodeData, visibleLabelEdges } from "./performance.js";
+
+test("label visibility excludes empty fanout wrappers without deleting logical edges", () => {
+  const nodes = [{ id: "near", position: { x: 20, y: 20 }, initialWidth: 100, initialHeight: 100 },
+    { id: "far", position: { x: 10000, y: 10000 }, initialWidth: 100, initialHeight: 100 }];
+  const edges = [
+    { id: "hidden_source_label", source: "near", target: "far", data: { sourceLabel: false } },
+    { id: "visible_source", source: "near", target: "far", data: { sourceLabel: true } },
+    { id: "visible_target", source: "far", target: "near", data: { sourceLabel: false } },
+    { id: "selected", source: "far", target: "far", selected: true },
+  ];
+  const visible = visibleLabelEdges(edges, nodes, { x: 0, y: 0, zoom: 1 }, 800, 600);
+  assert.deepEqual(visible.map((edge) => edge.id), ["visible_source", "visible_target", "selected"]);
+  assert.equal(edges.length, 4);
+});
 
 test("node rendering reuse preserves width parameter and callback changes", () => {
   const handler = () => {};

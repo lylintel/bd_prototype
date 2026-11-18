@@ -88,6 +88,8 @@ async function measure(directory, size, sample) {
   await control.detach();
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
+  let workers = 0;
+  page.on("worker", () => workers++);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.setDefaultTimeout(ceiling);
@@ -169,6 +171,36 @@ async function measure(directory, size, sample) {
     result.selection_ms = performance.now() - selectedAt;
     result.max_long_task_ms = await deadline(page.evaluate(() => Math.max(0, ...window.__bdLongTasks)), ceiling, "long_tasks");
     await page.screenshot({ path: path.join(output, `${size}-${sample}.png`), timeout: ceiling });
+    if (process.argv.includes("--layout")) {
+      result.phase = "layout";
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await page.evaluate(() => {
+        const started = performance.now();
+        window.__bdLayoutStarted = started;
+        window.__bdLayoutLongTasks = [];
+        window.__bdLayoutObserver = new PerformanceObserver((entries) => {
+          window.__bdLayoutLongTasks.push(...entries.getEntries().filter((entry) => entry.startTime >= started).map((entry) => ({ start: entry.startTime, duration: entry.duration })));
+        });
+        window.__bdLayoutObserver.observe({ type: "longtask", buffered: true });
+      });
+      const layoutStarted = performance.now();
+      const workersBefore = workers;
+      await deadline((async () => {
+        await page.getByRole("button", { name: "整理布局", exact: true }).click();
+        await page.locator('[data-layout-state="running"]').waitFor();
+        await page.locator('[data-layout-state="idle"]').waitFor();
+        await page.getByText("布局已更新", { exact: true }).waitFor();
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      })(), ceiling, "layout");
+      result.layout = { elapsed_ms: performance.now() - layoutStarted, workers: workers - workersBefore,
+        ...await page.evaluate(() => {
+          window.__bdLayoutObserver.disconnect();
+          return { main_thread_long_tasks: window.__bdLayoutLongTasks, max_main_thread_long_task_ms: Math.max(0, ...window.__bdLayoutLongTasks.map((entry) => entry.duration)),
+            marks: performance.getEntriesByType("mark").filter((entry) => entry.name.startsWith("bd-layout:") && entry.startTime >= window.__bdLayoutStarted).map((entry) => ({ name: entry.name, start: entry.startTime })),
+            mounted_nodes: document.querySelectorAll(".react-flow__node").length };
+        }) };
+      await page.screenshot({ path: path.join(output, `${size}-${sample}-layout.png`), timeout: ceiling });
+    }
     result.status = "measured";
   } catch (error) {
     result.status = result.load_ms === null ? error.name === "TimeoutError" ? "load_timeout" : "load_failed" : "interaction_failed";
@@ -187,6 +219,7 @@ async function measure(directory, size, sample) {
   }
   const budget = size === 2000 ? { load: 4000, pan: 30, drag: 20 } : { load: 2000, pan: 45, drag: 30 };
   result.budget_passed = result.status === "measured" && result.load_ms < budget.load && Math.min(result.pan.fps, result.zoom.fps) >= budget.pan && result.drag.fps >= budget.drag && result.drag_rendered_nodes < 10;
+  if (process.argv.includes("--layout")) result.budget_passed &&= result.layout?.workers === 1 && result.layout?.max_main_thread_long_task_ms < 50 && result.layout?.mounted_nodes > 0;
   return result;
 }
 

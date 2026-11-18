@@ -54,9 +54,16 @@ export function scopeState(state, scope) {
 export function mergeScopeState(state, next, scope) {
   if (!scope) return next;
   const { subdesigns, project_ips, ...body } = next.document;
+  const scopedLayout = { nodes: next.layout.nodes, viewport: next.layout.viewport };
+  const layout = { ...state.layout, schema_version: 1, scopes: { ...state.layout.scopes, ...next.layout.scopes, [scope]: scopedLayout } };
+  const child = state.document.subdesigns[scope];
+  if (body.name === child.name && ["ports", "instances", "nets"].every((key) => body[key] === child[key]) &&
+    (project_ips === state.document.project_ips || !state.document.project_ips && !project_ips?.length) &&
+    Object.entries(subdesigns ?? {}).every(([name, definition]) => state.document.subdesigns[name] === definition)) {
+    return { ...state, layout };
+  }
   const document = { ...state.document, project_ips,
     subdesigns: { ...state.document.subdesigns, ...subdesigns, [scope]: { ...body, name: scope, schema_version: 3 } } };
-  const scopedLayout = { nodes: next.layout.nodes, viewport: next.layout.viewport };
   return { ...state, document, design: canvasDocument(document, { ...state.design.modules, ...next.design.modules }),
-    layout: { ...state.layout, schema_version: 1, scopes: { ...state.layout.scopes, ...next.layout.scopes, [scope]: scopedLayout } } };
+    layout };
 }

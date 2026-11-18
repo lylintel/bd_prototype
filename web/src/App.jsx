@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, BackgroundVariant, ConnectionLineType, ConnectionMode, Position, ReactFlow, applyNodeChanges, useNodesInitialized, useReactFlow } from "@xyflow/react";
+import { Background, BackgroundVariant, ConnectionLineType, ConnectionMode, Position, ReactFlow, applyNodeChanges, useNodesInitialized, useReactFlow, useStore, useViewport } from "@xyflow/react";
 import * as FlowComponents from "@xyflow/react";
 import { ArrowUpRight, Blocks, Bot, Check, CheckCheck, ChevronDown, CircleAlert, CircleCheck, CircuitBoard, Code2, Copy, Cpu, Download, FilePlus2, FolderOpen, GripVertical, LayoutGrid, ListTree, LoaderCircle, Maximize2, PanelLeft, PanelRight, Plus, Redo2, Save, Search, Settings2, ShieldCheck, Trash2, Undo2, Unplug, Workflow, X, ZoomIn, ZoomOut } from "lucide-react";
 import { addInstance, checkName, clone, connectionError, connectPorts, deleteNode, disconnectPort, endpointInfo, externalId, makeExternal, parseInteger, rangeLabel, renameNet, renameNode, uniqueName, validateDocumentShape } from "./model.js";
@@ -18,8 +18,9 @@ import Parameters from "./semantic/Parameters.jsx";
 import Diagnostics from "./semantic/Diagnostics.jsx";
 import Connections from "./semantic/Connections.jsx";
 import ExpressionNode from "./semantic/ExpressionNode.jsx";
-import { nodeGeometry, recordRender, sameNodeData } from "./performance.js";
+import { markLayout, nodeGeometry, recordRender, sameNodeData, visibleLabelEdges } from "./performance.js";
 import { bundleHierarchyEdges, hasSubdesign, mergeScopeState, scopeState } from "./semantic/hierarchy.js";
+import { publishPositions, requestLayout } from "./layout/client.js";
 import { expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, scheduleInspection, syncDocument } from "./semantic/model.js";
 import "./semantic/semantic.css";
 
@@ -108,6 +109,9 @@ function downloadFile(name, content) {
 
 export default function App() {
   const flow = useReactFlow();
+  const viewport = useViewport();
+  const canvasWidth = useStore((state) => state.width);
+  const canvasHeight = useStore((state) => state.height);
   const nodesReady = useNodesInitialized();
   const [history, setHistory] = useState(null);
   const [scopePath, setScopePath] = useState([]);
@@ -142,21 +146,34 @@ export default function App() {
   const [activity, setActivity] = useState("本地工作区已就绪");
   const [zoom, setZoom] = useState(100);
   const [viewportRequest, setViewportRequest] = useState(null);
+  const [layoutRunning, setLayoutRunning] = useState(false);
+  const layoutController = useRef(null);
+  const layoutPreview = useRef(null);
+  useEffect(() => () => { layoutController.current?.abort(); layoutController.current = null; }, []);
   const modalRef = useRef(null);
   const inspectedDesign = useRef(null);
   const inspectedSnapshot = useRef(null);
   const pinAction = useRef(pickPin);
   const layoutAction = useRef(moveNode);
+  const connectionAction = useRef(connect);
+  const connectionEndAction = useRef(endConnection);
+  const flowStaticProps = useRef(null);
+  flowStaticProps.current ??= { snapGrid: [10, 10], fitViewOptions: { padding: 0.16, maxZoom: 1 } };
   const navigationAction = useRef(null);
+  const projectionInputs = useRef(null);
   const stablePickPin = useCallback((endpoint) => pinAction.current(endpoint), []);
   const onNodeDragStop = useCallback((event, node) => layoutAction.current(node), []);
-  useEffect(() => { pinAction.current = pickPin; layoutAction.current = moveNode; });
+  const onConnect = useCallback((connection) => connectionAction.current(connection.sourceHandle, connection.targetHandle), []);
+  const onConnectEnd = useCallback((event, state) => connectionEndAction.current(event, state), []);
+  useEffect(() => { pinAction.current = pickPin; layoutAction.current = moveNode; connectionAction.current = connect; connectionEndAction.current = endConnection; });
   const editorState = useRef(null);
   const rootDocument = history?.current.document ?? history?.current.design;
   const scope = hasSubdesign(rootDocument, scopePath.at(-1)) ? scopePath.at(-1) : "";
   const toggleGroupPins = useCallback((name) => setExpandedGroups((current) => current.includes(`${scope}:${name}`) ? current.filter((item) => item !== `${scope}:${name}`) : [...current, `${scope}:${name}`]), [scope]);
-  const view = useMemo(() => scopeState(history?.current, scope), [history?.current, scope]);
-  editorState.current = { history, baseDir, busy, scope, view };
+  const logicalView = useMemo(() => scopeState(history?.current, scope), [history?.current.design, history?.current.document, scope]);
+  const view = useMemo(() => logicalView ? { ...logicalView, layout: scope ? history.current.layout.scopes?.[scope] ?? initialLayout : history.current.layout } : logicalView,
+    [logicalView, history?.current.layout, scope]);
+  editorState.current = { history, baseDir, busy, scope, view, preview };
   const design = view?.design;
   const document = view?.document ?? design;
   const layout = view?.layout;
@@ -245,10 +262,12 @@ export default function App() {
   useEffect(() => {
     if ((!nodesReady && nodes.length < 64) || !viewportRequest) return;
     if (viewportRequest.waitFor && !flow.getNode(viewportRequest.waitFor)) return;
+    if (viewportRequest.positions && nodes.some((node) => viewportRequest.positions[node.id] &&
+      (node.position.x !== viewportRequest.positions[node.id].x || node.position.y !== viewportRequest.positions[node.id].y))) return;
     if (viewportRequest.fit) flow.fitView({ padding: 0.16, maxZoom: 1 });
     else flow.setViewport(viewportRequest.viewport);
     setViewportRequest(null);
-  }, [nodesReady, nodes.length, viewportRequest, flow]);
+  }, [nodesReady, nodes, viewportRequest, flow]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 5000); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => {
     const handler = (event) => { if (!saved) { event.preventDefault(); event.returnValue = ""; } };
@@ -374,8 +393,40 @@ export default function App() {
     else { setPendingPin(pendingPin === endpoint ? null : endpoint); setSelection({ type: "port", id: endpoint }); }
   }
 
+  function endConnection(event, state) {
+    const first = state.fromHandle?.id;
+    const second = state.toHandle?.id ?? (event.target instanceof Element ? event.target.closest(".react-flow__handle")?.getAttribute("data-handleid") : undefined);
+    if (first && second && first !== second && !state.isValid) {
+      const error = connectionReady ? connectionError(design, first, second, interfaces) : "接口正在解析，请稍后连线";
+      if (error) notify(error, true);
+    }
+    setPendingPin(null);
+  }
+
   useEffect(() => {
     if (!design) return;
+    if (layoutPreview.current && (layoutPreview.current.snapshot !== history.current || layoutPreview.current.scope !== scope || preview || busy)) {
+      layoutPreview.current = null;
+      layoutController.current?.abort(t("layout.stale"));
+    }
+    const inputs = [design, inspection, selection, pendingPin, connectionReady, expandedGroups, scope];
+    if (projectionInputs.current?.every((value, index) => value === inputs[index])) {
+      const expressionPositions = new Map(expressionGraph.nodes.map((node) => [node.id, node.position]));
+      setNodes((previous) => {
+        markLayout("projection-start");
+        let changed = false;
+        const result = previous.map((node) => {
+          const position = layoutPreview.current?.positions[node.id] ?? layout.nodes[node.id] ?? (node.type === "expression" ? expressionPositions.get(node.id) : defaultPosition(node.id, design));
+          if (!position || node.position.x === position.x && node.position.y === position.y) return node;
+          changed = true;
+          return { ...node, position };
+        });
+        markLayout("projection-end");
+        return changed ? result : previous;
+      });
+      return;
+    }
+    projectionInputs.current = inputs;
     const errors = inspection.diagnostics.join(" ");
     const locations = (inspection.structuredDiagnostics ?? []).filter((item) => item.severity === "error").map((item) => item.location);
     const errorNodes = new Set(locations.flatMap((item) => item.instance ? [item.instance] : item.external ? [externalId(item.external)] : []));
@@ -384,17 +435,18 @@ export default function App() {
     for (const [name, instance] of Object.entries(design.instances)) {
       const definition = design.modules[instance.module];
       const parameters = inspection.parameters?.[name] ?? Object.fromEntries(Object.entries(definition?.parameters ?? {}).map(([key, spec]) => [key, instance.parameters?.[key] ?? spec.default]));
-      result.push({ id: name, type: "block", position: layout.nodes[name] ?? defaultPosition(name, design), selected: selection?.ids?.includes(name) || selection?.id === name,
+      result.push({ id: name, type: "block", position: layoutPreview.current?.positions[name] ?? layout.nodes[name] ?? defaultPosition(name, design), selected: selection?.ids?.includes(name) || selection?.id === name,
         data: { name, module: instance.module, parameters, foldable: hasSubdesign(rootDocument, instance.module) && Object.keys(definition?.ports ?? {}).length > 32,
           compact: hasSubdesign(rootDocument, instance.module) && Object.keys(definition?.ports ?? {}).length > 32 && !expandedGroups.includes(`${scope}:${name}`), onTogglePins: toggleGroupPins,
           ports: Object.keys(definition?.ports ?? {}).map((port) => endpointInfo(design, `${name}.${port}`, interfaces)).filter(Boolean), onPin: stablePickPin, active: pendingPin?.startsWith(`${name}.`) ? pendingPin : null, connectable: connectionReady, highlight: structured ? errorNodes.has(name) : errors.includes(`instances.${name}.`) || errors.includes(`${name}.`) } });
     }
     for (const name of Object.keys(design.ports)) {
       const id = externalId(name);
-      result.push({ id, type: "block", position: layout.nodes[id] ?? defaultPosition(id, design), selected: selection?.id === id,
+      result.push({ id, type: "block", position: layoutPreview.current?.positions[id] ?? layout.nodes[id] ?? defaultPosition(id, design), selected: selection?.id === id,
         data: { name, external: true, ports: [endpointInfo(design, id, interfaces)], onPin: stablePickPin, active: pendingPin === id ? pendingPin : null, connectable: connectionReady, highlight: structured ? errorNodes.has(id) : errors.includes(`ports.${name}:`) } });
     }
-      result.push(...expressionGraph.nodes.map((node) => ({ ...node, selected: selection?.type === "net" && selection.id === node.data.net })));
+      result.push(...expressionGraph.nodes.map((node) => ({ ...node, position: layoutPreview.current?.positions[node.id] ?? node.position,
+        selected: selection?.type === "net" && selection.id === node.data.net })));
     setNodes((previous) => {
       const byId = new Map(previous.map((node) => [node.id, node]));
       return result.map((node) => {
@@ -418,9 +470,9 @@ export default function App() {
     const driver = drivers[0] ?? pins.find((pin) => endpointInfo(design, pin));
     if (!driver) return [];
     const shape = endpointInfo(design, driver, interfaces);
-    return pins.filter((pin) => pin !== driver && endpointInfo(design, pin)).map((sink) => ({
+    return pins.filter((pin) => pin !== driver && endpointInfo(design, pin)).map((sink, index) => ({
       id: `${net}|${sink}`, source: nodeId(driver), target: nodeId(sink), sourceHandle: driver, targetHandle: sink,
-      type: "circuit", label: net, data: { net, sink, width: shape?.width ?? 1 }, selected: selectedNetId === net && (!selectedSink || selectedSink === sink),
+      type: "circuit", label: net, data: { net, sink, width: shape?.width ?? 1, sourceLabel: index === 0 }, selected: selectedNetId === net && (!selectedSink || selectedSink === sink),
       style: { stroke: selectedNetId === net && (!selectedSink || selectedSink === sink) ? "#0a8f7b" : invalidNets.has(net) ? "#ba4545" : (shape?.range ? "#477caa" : "#8c969f"), strokeWidth: shape?.range ? 2.4 : 1.5 },
       labelStyle: { fill: "#66747e", fontSize: 11, fontFamily: "IBM Plex Mono, monospace" }, labelBgStyle: { fill: "#f8fafb", fillOpacity: 0.95 }, labelBgPadding: [7, 3], labelBgBorderRadius: 3,
     }));
@@ -431,7 +483,10 @@ export default function App() {
   }))) : [], [design, interfaces, inspection.structuredDiagnostics, selectedNetId, selectedSink, expressionGraph]);
 
   const candidate = preview ? candidateGraph(preview, layout.nodes, defaultPosition) : null;
-  const displayedEdges = useMemo(() => bundleHierarchyEdges(edges, nodes), [edges, nodes]);
+  const bundledEdges = useMemo(() => bundleHierarchyEdges(edges, nodes), [edges, nodes]);
+  const labeledEdges = useMemo(() => bundledEdges.length > 256 ? bundledEdges.map((edge) => ({ ...edge, data: { ...edge.data, labelMode: true } })) : bundledEdges, [bundledEdges]);
+  const displayedEdges = useMemo(() => labeledEdges.length > 256 ? visibleLabelEdges(labeledEdges, nodes, viewport, canvasWidth, canvasHeight) : labeledEdges,
+    [labeledEdges, nodes, viewport, canvasWidth, canvasHeight]);
   const graph = candidate ? mergePreview(nodes, edges, candidate.nodes, candidate.edges, designChanges(design, preview.canvas)) : { nodes, edges: displayedEdges };
 
   function insertModule(module, position) {
@@ -479,9 +534,58 @@ export default function App() {
     if (mutate((next, nextLayout) => { id = makeExternal(next, endpoint, interfaces); nextLayout.nodes[id] = defaultPosition(id, next); }, "已创建外部端口")) setSelection({ type: "node", id });
   }
 
-  function autoLayout() {
-    mutate((next, nextLayout) => { nextLayout.nodes = Object.fromEntries([...Object.keys(next.instances), ...Object.keys(next.ports).map(externalId)].map((id) => [id, defaultPosition(id, next)])); }, "布局已整理");
-    requestAnimationFrame(() => flow.fitView({ padding: 0.16, duration: 250 }));
+  async function autoLayout() {
+    if (preview || busy || !nodes.length || layoutRunning) return;
+    markLayout("requested");
+    const initial = editorState.current;
+    const snapshot = initial.history.current;
+    const originalPositions = new Map(nodes.map((node) => [node.id, node.position]));
+    const controller = new AbortController();
+    layoutController.current = controller;
+    setLayoutRunning(true);
+    setActivity(t("layout.running"));
+    try {
+      const pending = requestLayout(nodes, edges, { signal: controller.signal });
+      markLayout("posted");
+      const positions = await pending;
+      markLayout("received");
+      let current = editorState.current;
+      if (current.history.current !== snapshot || current.scope !== initial.scope || current.baseDir !== initial.baseDir || current.preview || current.busy) {
+        notify(t("layout.stale"));
+        return;
+      }
+      layoutPreview.current = { snapshot, scope: current.scope, positions: Object.create(null) };
+      await publishPositions(positions, (batch) => {
+        Object.assign(layoutPreview.current.positions, batch);
+        setNodes((previous) => previous.map((node) => Object.hasOwn(batch, node.id) && !node.dragging ? { ...node, position: batch[node.id] } : node));
+      }, { signal: controller.signal });
+      current = editorState.current;
+      if (current.history.current !== snapshot || current.scope !== initial.scope || current.baseDir !== initial.baseDir || current.preview || current.busy) {
+        controller.abort(t("layout.stale"));
+        throw new DOMException("Aborted", "AbortError");
+      }
+      layoutPreview.current = null;
+      const next = mergeScopeState(snapshot, { ...current.view, layout: { ...current.view.layout, nodes: { ...current.view.layout.nodes, ...positions } } }, current.scope);
+      const nextHistory = { past: [...current.history.past, snapshot].slice(-80), current: next, future: [] };
+      editorState.current = { ...current, history: nextHistory };
+      setHistory(nextHistory);
+      setSaved(false);
+      setActivity(t("layout.applied"));
+      if (nodes.length <= 500) setViewportRequest({ fit: true, positions });
+      markLayout("queued");
+    } catch (error) {
+      layoutPreview.current = null;
+      const current = editorState.current;
+      setNodes((previous) => previous.map((node) => {
+        if (node.dragging) return node;
+        const position = current.history.current === snapshot && current.scope === initial.scope ? originalPositions.get(node.id) :
+          current.view.layout.nodes[node.id] ?? (node.type === "block" ? defaultPosition(node.id, current.view.design) : node.position);
+        return position ? { ...node, position } : node;
+      }));
+      if (layoutController.current === controller) notify(error.name === "AbortError" ? typeof controller.signal.reason === "string" ? controller.signal.reason : t("layout.cancelled") : error.message, error.name !== "AbortError");
+    } finally {
+      if (layoutController.current === controller) { layoutController.current = null; setLayoutRunning(false); }
+    }
   }
 
   function newDocument() {
@@ -668,6 +772,10 @@ export default function App() {
     return applied;
   }
 
+  const connectionPorts = useMemo(() => design ? [...Object.keys(design.ports).map(externalId), ...Object.entries(design.instances).flatMap(([name, item]) =>
+    Object.keys(design.modules[item.module]?.ports ?? {}).map((port) => `${name}.${port}`))].map((value) => ({ ...endpointInfo(design, value, interfaces), value })) : [], [design, interfaces]);
+  const connectedPins = useMemo(() => new Set(Object.values(design?.nets ?? {}).flat()), [design?.nets]);
+
   if (!design) return <div className="boot-screen"><CircuitBoard size={36} /><h1>BD Studio</h1>{fatal ? <><p role="alert">{fatal}</p><button onClick={() => location.reload()}>重新连接</button></> : <LoaderCircle className="spin" size={20} />}</div>;
 
   const moduleNames = Object.keys(design.modules).filter((name) => [name, ...Object.keys(design.modules[name].ports)].some((value) => value.toLowerCase().includes(search.toLowerCase())));
@@ -680,8 +788,6 @@ export default function App() {
   const selectedNet = selection?.type === "net" ? design.nets[selection.id] : null;
   const semanticDocument = view.document ?? inspection.document;
   const selectedNetRecord = selectedNet && semanticDocument?.nets.find((net) => net.name === selection.id);
-  const connectionPorts = [...Object.keys(design.ports).map(externalId), ...Object.entries(design.instances).flatMap(([name, item]) =>
-    Object.keys(design.modules[item.module]?.ports ?? {}).map((port) => `${name}.${port}`))].map((value) => ({ ...endpointInfo(design, value, interfaces), value }));
   const totalPins = Object.values(design.instances).reduce((count, item) => count + Object.keys(design.modules[item.module]?.ports ?? {}).length, 0);
 
   const renameSelected = (name) => {
@@ -739,28 +845,20 @@ export default function App() {
       </aside>
 
       <section className="center-panel">
-        <div className="canvas-heading"><div><span className="canvas-tab"><Workflow size={14} />Block Design</span><span className="canvas-meta">{Object.keys(design.instances).length} instances <span>/</span> {Object.keys(design.nets).length} nets</span></div><div><IconButton icon={Blocks} label={t("hierarchy.collapse")} disabled={!connectionReady || !inspection.valid || selection?.type !== "node" || !design.instances[selection.id]} onClick={() => setModal({ kind: "hierarchy", name: uniqueName(design, "group") })} /><IconButton icon={LayoutGrid} label="整理布局" onClick={autoLayout} /><IconButton icon={Maximize2} label="适应画布" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div></div>
-        <div className="canvas" aria-label="设计画布" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={dropModule}>
-          <ReactFlow onlyRenderVisibleElements nodes={graph.nodes} edges={graph.edges} nodesDraggable={!preview} nodesConnectable={!preview} elementsSelectable={!preview} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={0.25} maxZoom={2} deleteKeyCode={null} connectOnClick={false} snapToGrid snapGrid={[10, 10]}
+        <div className="canvas-heading"><div><span className="canvas-tab"><Workflow size={14} />Block Design</span><span className="canvas-meta">{Object.keys(design.instances).length} instances <span>/</span> {Object.keys(design.nets).length} nets</span></div><div><IconButton icon={Blocks} label={t("hierarchy.collapse")} disabled={!connectionReady || !inspection.valid || selection?.type !== "node" || !design.instances[selection.id]} onClick={() => setModal({ kind: "hierarchy", name: uniqueName(design, "group") })} /><IconButton icon={layoutRunning ? LoaderCircle : LayoutGrid} className={layoutRunning ? "spin" : ""} label={layoutRunning ? t("layout.running") : "整理布局"} disabled={layoutRunning || Boolean(preview) || !nodes.length} onClick={autoLayout} />{layoutRunning && <IconButton icon={X} label={t("layout.cancel")} onClick={() => layoutController.current?.abort()} />}<IconButton icon={Maximize2} label="适应画布" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div></div>
+        <div className="canvas" aria-label="设计画布" data-layout-state={layoutRunning ? "running" : "idle"} data-layout-stage={layoutPreview.current ? "applying" : layoutRunning ? "computing" : "idle"} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={dropModule}>
+          <ReactFlow {...flowStaticProps.current} onlyRenderVisibleElements nodes={graph.nodes} edges={graph.edges} nodesDraggable={!preview} nodesConnectable={!preview} elementsSelectable={!preview} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={0.25} maxZoom={2} deleteKeyCode={null} connectOnClick={false} snapToGrid
             connectionMode={ConnectionMode.Loose} connectionLineType={ConnectionLineType.Step}
             isValidConnection={isValidConnection}
-            fitView={!Object.keys(layout.nodes).length} fitViewOptions={{ padding: 0.16, maxZoom: 1 }} defaultViewport={layout.viewport}
+            fitView={!Object.keys(layout.nodes).length} defaultViewport={layout.viewport}
             onNodesChange={onNodesChange}
             onNodeDragStop={onNodeDragStop}
             onNodeClick={onNodeClick}
             onNodeDoubleClick={onNodeDoubleClick}
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
-            onConnect={(connection) => connect(connection.sourceHandle, connection.targetHandle)}
-            onConnectEnd={(event, state) => {
-              const first = state.fromHandle?.id;
-              const second = state.toHandle?.id ?? (event.target instanceof Element ? event.target.closest(".react-flow__handle")?.getAttribute("data-handleid") : undefined);
-              if (first && second && first !== second && !state.isValid) {
-                const error = connectionReady ? connectionError(design, first, second, interfaces) : "接口正在解析，请稍后连线";
-                if (error) notify(error, true);
-              }
-              setPendingPin(null);
-            }}
+            onConnect={onConnect}
+            onConnectEnd={onConnectEnd}
             onMoveEnd={onMoveEnd}>
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd4dc" />
           </ReactFlow>
@@ -801,7 +899,7 @@ export default function App() {
               const endpoint = `${selectionNode}.${name}`;
               const port = endpointInfo(design, endpoint, inspection.interfaces);
               if (!port) return null;
-              const connected = Object.values(design.nets).some((pins) => pins.includes(endpoint));
+              const connected = connectedPins.has(endpoint);
               return <div className={`inspector-port ${selection?.id === endpoint ? "active" : ""}`} key={name}><button onClick={() => { setSelection({ type: "port", id: endpoint }); setPendingPin(null); }}><span className={`port-status ${connected ? "connected" : ""}`} /><span><code>{name}</code><small>{port.direction} · {rangeLabel(port)}</small></span></button><IconButton icon={ArrowUpRight} label={`设为外部端口 ${endpoint}`} onClick={() => exposePort(endpoint)} /><IconButton icon={Unplug} label={`断开 ${endpoint}`} disabled={!connected} onClick={() => mutate((next) => disconnectPort(next, endpoint), `${endpoint} 已断开`)} /></div>;
             })}</section>
           </> : external ? <>

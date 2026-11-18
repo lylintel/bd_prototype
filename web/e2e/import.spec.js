@@ -98,8 +98,10 @@ test.beforeEach(async ({ page }, testInfo) => {
   if (existsSync(path.join(root, "ip_library/builtin"))) cpSync(path.join(root, "ip_library/builtin"), path.join(directory, "ip_library/builtin"), { recursive: true });
   const serverModule = testInfo.title.includes("[mock-sdk]") ? "scripts.mock_copilot_server" : "bdgui";
   const hierarchical = testInfo.title.includes("[hierarchy]");
-  if (hierarchical) execFileSync(python, ["-m", "scripts.gui_benchmark", "--output", directory, "--instances", "100", "--groups", "2"], { cwd: root, timeout: 60000 });
-  const child = spawn(python, ["-u", "-m", serverModule, "--workspace", directory, "--port", "0", ...(hierarchical ? ["--design", "design.json"] : [])], {
+  const dense = testInfo.title.includes("[dense]");
+  const stagedLayout = testInfo.title.includes("[layout-apply]");
+  if (hierarchical || dense || stagedLayout) execFileSync(python, ["-m", "scripts.gui_benchmark", "--output", directory, "--instances", stagedLayout ? "2000" : "100", "--groups", hierarchical ? "2" : "0"], { cwd: root, timeout: 60000 });
+  const child = spawn(python, ["-u", "-m", serverModule, "--workspace", directory, "--port", "0", ...(hierarchical || dense || stagedLayout ? ["--design", "design.json"] : [])], {
     cwd: root, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32",
   });
   const exited = new Promise((resolve) => child.once("close", resolve));
@@ -127,6 +129,81 @@ async function openEditor(page) {
   await page.goto(server.url);
   await expect(page.getByRole("heading", { name: "example_bd", level: 1, exact: true })).toBeVisible();
 }
+
+test("ELK worker layout changes only coordinates and is undoable", async ({ page }) => {
+  await openEditor(page);
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  const counter = page.locator('.react-flow__node[data-id="counter_0"]');
+  const beforePosition = await counter.getAttribute("style");
+  await page.getByRole("tab", { name: "设计 JSON", exact: true }).click();
+  const beforeDocument = await page.getByLabel(t("semantic.designJson"), { exact: true }).inputValue();
+  let inspections = 0, workers = 0;
+  page.on("request", (request) => { if (request.url().endsWith("/api/semantic/inspect")) inspections++; });
+  page.on("worker", () => workers++);
+  await page.getByRole("button", { name: "整理布局", exact: true }).click();
+  await expect(page.getByRole("button", { name: t("layout.running"), exact: true })).toBeVisible();
+  await expect(page.getByLabel("设计画布", { exact: true })).toHaveAttribute("data-layout-state", "idle");
+  await expect.poll(() => counter.getAttribute("style")).not.toBe(beforePosition);
+  expect(await page.getByLabel(t("semantic.designJson"), { exact: true }).inputValue()).toBe(beforeDocument);
+  expect(inspections).toBe(0);
+  expect(workers).toBe(1);
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(counter).toHaveAttribute("style", beforePosition);
+});
+
+test("ELK worker cancellation and stale results preserve user edits", async ({ page }) => {
+  await openEditor(page);
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  const counter = page.locator('.react-flow__node[data-id="counter_0"]');
+  const originalPosition = await counter.getAttribute("style");
+  let release;
+  let gate = new Promise((resolve) => { release = resolve; });
+  await page.route("**/assets/worker-*.js", async (route) => { await gate; try { await route.continue(); } catch { return; } });
+  await page.getByRole("button", { name: "整理布局", exact: true }).click();
+  await page.getByRole("button", { name: t("layout.cancel"), exact: true }).click();
+  release();
+  await expect(page.getByText(t("layout.cancelled"), { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "撤销", exact: true })).toBeDisabled();
+  gate = new Promise((resolve) => { release = resolve; });
+  await page.getByRole("button", { name: "整理布局", exact: true }).click();
+  await page.locator('.react-flow__node[data-id="compare_0"] .block-heading').dblclick();
+  const threshold = page.getByLabel(t("semantic.parameterLabel", { instance: "compare_0", name: "THRESHOLD" }), { exact: true });
+  await threshold.fill("19");
+  await threshold.press("Tab");
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  release();
+  await expect(page.getByText(t("layout.stale"), { exact: true })).toBeVisible();
+  await expect(threshold).toHaveValue("19");
+  await expect(counter).toHaveAttribute("style", originalPosition);
+});
+
+test("[layout-apply] cancelling staged coordinates restores the original layout", async ({ page }) => {
+  await page.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());
+  await page.goto(server.url);
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  const node = page.locator('.react-flow__node[data-id="unit_0"]');
+  const original = await node.getAttribute("style");
+  await page.getByRole("button", { name: "整理布局", exact: true }).click();
+  await expect(page.getByLabel("设计画布", { exact: true })).toHaveAttribute("data-layout-stage", "applying");
+  await expect.poll(() => node.getAttribute("style")).not.toBe(original);
+  await page.getByRole("button", { name: t("layout.cancel"), exact: true }).click();
+  await expect(page.getByText(t("layout.cancelled"), { exact: true })).toBeVisible();
+  await expect(node).toHaveAttribute("style", original);
+  await expect(page.getByRole("button", { name: "撤销", exact: true })).toBeDisabled();
+});
+
+test("[dense] net labels preserve selection and vector thickness", async ({ page }, testInfo) => {
+  await page.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());
+  await page.goto(server.url);
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  const edge = page.locator('.react-flow__edge[data-id^="net_"]').filter({ has: page.locator('[data-routing="labels"] .react-flow__edge-textwrapper') }).first();
+  const identifier = await edge.getAttribute("data-id");
+  expect(Number.parseFloat(await edge.locator(".react-flow__edge-path").first().evaluate((element) => getComputedStyle(element).strokeWidth))).toBeGreaterThan(1);
+  await edge.locator(".react-flow__edge-textwrapper").first().click();
+  await expect(page.getByLabel("网络名称", { exact: true })).toHaveValue(identifier.split("|")[0]);
+  await expect(page.locator('.react-flow__edge.selected [data-routing="dense"]')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("dense-net-labels.png") });
+});
 
 test("[hierarchy] compact ports expand and bundled nets remain individually selectable", async ({ page }, testInfo) => {
   await page.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());

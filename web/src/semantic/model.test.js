@@ -33,9 +33,20 @@ test("hierarchy names do not resolve or overwrite inherited object properties", 
   const state = { document, design: { modules: {} }, layout: { nodes: {} } };
   assert.equal(scopeState(state, "constructor"), state);
   const scoped = scopeState(state, "__proto__");
-  const merged = mergeScopeState(state, scoped, "__proto__");
+  const merged = mergeScopeState(state, { ...scoped, document: { ...scoped.document, ports: { clock: { direction: "input" } } } }, "__proto__");
   assert.ok(Object.hasOwn(merged.design.modules, "__proto__"));
   assert.equal(Object.getPrototypeOf(merged.design.modules), Object.prototype);
+});
+
+test("layout-only child updates preserve root logical document identity", () => {
+  const document = { schema_version: 4, name: "top", ports: {}, instances: [], nets: [], subdesigns: {
+    child: { schema_version: 3, name: "child", ports: {}, instances: [], nets: [] },
+  } };
+  const state = { document, design: { modules: {} }, layout: { nodes: {} } };
+  const scoped = scopeState(state, "child");
+  const next = mergeScopeState(state, { ...scoped, layout: { ...scoped.layout, nodes: { block: { x: 2, y: 3 } } } }, "child");
+  assert.equal(next.document, state.document);
+  assert.equal(next.design, state.design);
 });
 import test from "node:test";
 import assert from "node:assert/strict";

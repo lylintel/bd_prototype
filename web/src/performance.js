@@ -6,6 +6,23 @@ export function recordRender(kind, identifier) {
   if (enabled) counters[kind][identifier] = (counters[kind][identifier] ?? 0) + 1;
 }
 
+export function markLayout(phase) {
+  if (enabled) performance.mark(`bd-layout:${phase}`);
+}
+
+export function visibleLabelEdges(edges, nodes, viewport, width, height) {
+  if (!width || !height) return edges;
+  const visible = new Set(nodes.filter((node) => {
+    const left = node.position.x * viewport.zoom + viewport.x;
+    const top = node.position.y * viewport.zoom + viewport.y;
+    const nodeWidth = (node.measured?.width ?? node.initialWidth ?? 250) * viewport.zoom;
+    const nodeHeight = (node.measured?.height ?? node.initialHeight ?? 186) * viewport.zoom;
+    return left <= width + 120 && left + nodeWidth >= -120 && top <= height + 40 && top + nodeHeight >= -40;
+  }).map((node) => node.id));
+  return edges.filter((edge) => edge.selected || edge.className?.includes("ai-preview") ||
+    visible.has(edge.target) || edge.data?.sourceLabel !== false && visible.has(edge.source));
+}
+
 export function sameNodeData(previous, next) {
   if (previous === next) return true;
   if (!previous || !next) return false;
