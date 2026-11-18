@@ -1,4 +1,5 @@
 {
+  "layout.nodeMoved": "画布位置已更新",
   "ai.requestDisclosure": "AI 请求会把设计网表与所选 IP 元数据发送到当前配置的端点",
   "ai.sdkDisclosure": "旧 Copilot 入口会把设计网表与所选 IP 元数据发送到 Copilot 服务，不使用自定义模型端点",
   "ai.endpoint.local": "本地端点",

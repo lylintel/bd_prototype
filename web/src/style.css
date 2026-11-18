@@ -98,7 +98,7 @@ svg { flex-shrink: 0; }
 .react-flow__node { border: 0; box-shadow: none; }
 .block-node { width: 250px; border: 1px solid #b8cddc; background: #fff; border-radius: 6px; box-shadow: 0 3px 10px #395b7310; }
 .block-node.tone-amber { border-color: #d8c8a7; }
-.block-heading { display: flex; align-items: center; gap: 10px; padding: 14px 12px; border-radius: 5px 5px 0 0; background: #eef4f9; border-bottom: 1px solid #dce7ef; }
+.block-heading { display: flex; align-items: center; gap: 10px; height: 60px; line-height: 1.2; padding: 12px; border-radius: 5px 5px 0 0; background: #eef4f9; border-bottom: 1px solid #dce7ef; }
 .tone-amber .block-heading { background: #faf5ea; border-bottom-color: #efe5d2; }
 .block-symbol { color: #527f9f; display: grid; place-items: center; width: 29px; }
 .tone-amber .block-symbol { color: #a38343; }

@@ -7,6 +7,8 @@ import base64
 import binascii
 import copy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import gzip
+import hashlib
 import json
 import math
 import mimetypes
@@ -64,6 +66,8 @@ class Workspace:
         self._ai_settings = None
         self._ai_settings_lock = RLock()
         self._ai_generation_lock = Lock()
+        self._schema_lock = Lock()
+        self._checked_documents = set()
         self.llm_client_factory = None
 
     def ip_library(self):
@@ -242,12 +246,19 @@ class Workspace:
         path = self.path(filename)
         if path.suffix.lower() != ".json":
             raise bdtool.DesignError("path: expected a JSON design")
-        data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=bdtool._unique_keys)
+        raw = path.read_bytes()
+        data = json.loads(raw.decode("utf-8"), object_pairs_hook=bdtool._unique_keys)
         versioned = isinstance(data, dict) and "schema_version" in data
         if versioned:
             from core.design import check_document
 
-            check_document(data)
+            digest = hashlib.sha256(raw).digest()
+            with self._schema_lock:
+                if digest not in self._checked_documents:
+                    check_document(data)
+                    if len(self._checked_documents) >= 16:
+                        self._checked_documents.clear()
+                    self._checked_documents.add(digest)
         else:
             data = self.structure(data)
             self.sources(data, path.parent)
@@ -343,8 +354,25 @@ class EditorHandler(BaseHTTPRequestHandler):
             raise PermissionError("Invalid session token; reload the editor")
 
     def respond(self, status: int, content: bytes, content_type: str) -> None:
+        compressible = len(content) >= 16384 and content_type.split(";", 1)[0] in {"application/json", "application/javascript", "text/javascript", "text/css", "text/html"}
+        accepts_gzip = False
+        for entry in self.headers.get("Accept-Encoding", "").lower().split(","):
+            name, *options = entry.strip().split(";")
+            if name.strip() != "gzip":
+                continue
+            try:
+                quality = next((float(option.split("=", 1)[1]) for option in options if option.strip().startswith("q=")), 1.0)
+            except ValueError:
+                quality = 0
+            accepts_gzip |= 0 < quality <= 1
+        if compressible and accepts_gzip:
+            content = gzip.compress(content, compresslevel=1, mtime=0)
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        if compressible:
+            self.send_header("Vary", "Accept-Encoding")
+        if compressible and accepts_gzip:
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")

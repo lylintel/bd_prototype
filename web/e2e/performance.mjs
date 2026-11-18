@@ -104,6 +104,12 @@ async function measure(directory, size, sample) {
     })(), ceiling, "load");
     result.load_ms = performance.now() - started;
     result.status = "loaded";
+    Object.assign(result, await deadline(page.evaluate(() => {
+      const request = performance.getEntriesByType("resource").find((entry) => entry.name.endsWith("/api/state"));
+      return { state_request_ms: request?.duration, response_bytes: request?.decodedBodySize, response_wire_bytes: request?.encodedBodySize,
+        initially_rendered_nodes: Object.keys(window.__bdPerformance.node).length,
+        mounted_nodes: document.querySelectorAll(".react-flow__node").length };
+    }), ceiling, "load_breakdown"));
     const pane = await deadline(page.locator(".react-flow__pane").boundingBox(), ceiling, "pane");
     const start = { x: pane.x + 25, y: pane.y + pane.height * 0.6 };
     result.phase = "pan";
@@ -121,17 +127,36 @@ async function measure(directory, size, sample) {
       let step = 0;
       while (performance.now() < until) await page.mouse.wheel(0, step++ % 2 ? 20 : -20);
     }), ceiling, "zoom");
+    await deadline(page.evaluate(() => new Promise((resolve) => {
+      let previous = "", stable = 0;
+      function tick() {
+        const current = document.querySelector(".react-flow__viewport").getAttribute("style");
+        stable = current === previous ? stable + 1 : 0;
+        previous = current;
+        if (stable >= 4) resolve(); else requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    })), ceiling, "viewport_settle");
     const header = page.locator('.react-flow__node[data-id="unit_0"] .block-heading');
     result.phase = "drag";
+    await header.hover();
     const bounds = await deadline(header.boundingBox(), ceiling, "header");
+    const beforePosition = await page.locator('.react-flow__node[data-id="unit_0"]').evaluate((node) => node.style.transform);
     const before = await deadline(page.evaluate(() => ({ ...window.__bdPerformance.node })), ceiling, "counters");
+    result.drag_before = beforePosition;
+    result.drag_target = await page.evaluate((point) => document.elementFromPoint(point.x, point.y)?.closest(".react-flow__node")?.getAttribute("data-id"), { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
     result.drag = await deadline(frames(page, async () => {
-      await page.mouse.move(bounds.x + 50, bounds.y + 12); await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2); await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width / 2 + 30, bounds.y + bounds.height / 2 + 20, { steps: 3 });
+      result.drag_during = await page.locator('.react-flow__node[data-id="unit_0"]').evaluate((node) => node.style.transform);
       const until = performance.now() + 1500;
       let step = 0;
-      while (performance.now() < until) await page.mouse.move(bounds.x + 50 + (step++ % 2 ? 60 : 20), bounds.y + 24);
+      while (performance.now() < until) await page.mouse.move(bounds.x + bounds.width / 2 + (step++ % 2 ? 60 : 20), bounds.y + bounds.height / 2 + 20);
       await page.mouse.up();
     }), ceiling, "drag");
+    result.drag_after = await page.locator('.react-flow__node[data-id="unit_0"]').evaluate((node) => node.style.transform);
+    result.drag_changed_position = beforePosition !== result.drag_after;
+    if (!result.drag_changed_position) throw new Error("drag_not_applied");
     result.drag_rendered_nodes = await deadline(page.evaluate((previous) => Object.entries(window.__bdPerformance.node).filter(([identifier, count]) => count > (previous[identifier] ?? 0)).length, before), ceiling, "counters");
     result.phase = "selection";
     const selectedAt = performance.now();
@@ -157,7 +182,7 @@ async function measure(directory, size, sample) {
     await server.stop();
   }
   const budget = size === 2000 ? { load: 4000, pan: 30, drag: 20 } : { load: 2000, pan: 45, drag: 30 };
-  result.budget_passed = result.status === "measured" && result.load_ms < budget.load && Math.min(result.pan.fps, result.zoom.fps) >= budget.pan && result.drag.fps >= budget.drag;
+  result.budget_passed = result.status === "measured" && result.load_ms < budget.load && Math.min(result.pan.fps, result.zoom.fps) >= budget.pan && result.drag.fps >= budget.drag && result.drag_rendered_nodes < 10;
   return result;
 }
 

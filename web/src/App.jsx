@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Background, BackgroundVariant, ConnectionLineType, ConnectionMode, Position, ReactFlow, applyNodeChanges, useNodesInitialized, useReactFlow } from "@xyflow/react";
 import * as FlowComponents from "@xyflow/react";
 import { ArrowUpRight, Blocks, Bot, Check, CheckCheck, ChevronDown, CircleAlert, CircleCheck, CircuitBoard, Code2, Copy, Cpu, Download, FilePlus2, FolderOpen, GripVertical, LayoutGrid, ListTree, LoaderCircle, Maximize2, PanelLeft, PanelRight, Plus, Redo2, Save, Search, Settings2, ShieldCheck, Trash2, Undo2, Unplug, Workflow, X, ZoomIn, ZoomOut } from "lucide-react";
@@ -18,7 +18,7 @@ import Parameters from "./semantic/Parameters.jsx";
 import Diagnostics from "./semantic/Diagnostics.jsx";
 import Connections from "./semantic/Connections.jsx";
 import ExpressionNode from "./semantic/ExpressionNode.jsx";
-import { recordRender } from "./performance.js";
+import { nodeGeometry, recordRender, sameNodeData } from "./performance.js";
 import { expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, scheduleInspection, syncDocument } from "./semantic/model.js";
 import "./semantic/semantic.css";
 
@@ -76,7 +76,7 @@ function BlockNode({ data, selected }) {
   </div>;
 }
 
-const nodeTypes = { block: BlockNode, expression: ExpressionNode };
+const nodeTypes = { block: memo(BlockNode, (previous, next) => previous.selected === next.selected && sameNodeData(previous.data, next.data)), expression: memo(ExpressionNode) };
 const edgeTypes = { circuit: CircuitEdge };
 
 function defaultPosition(id, design) {
@@ -137,14 +137,29 @@ export default function App() {
   const [viewportRequest, setViewportRequest] = useState(null);
   const modalRef = useRef(null);
   const inspectedDesign = useRef(null);
+  const inspectedSnapshot = useRef(null);
+  const pinAction = useRef(pickPin);
+  const layoutAction = useRef(moveNode);
+  const stablePickPin = useCallback((endpoint) => pinAction.current(endpoint), []);
+  const onNodeDragStop = useCallback((event, node) => layoutAction.current(node), []);
+  useEffect(() => { pinAction.current = pickPin; layoutAction.current = moveNode; });
   const editorState = useRef(null);
   editorState.current = { history, baseDir, busy };
   const design = history?.current.design;
   const document = history?.current.document ?? design;
   const layout = history?.current.layout;
-  const connectionReady = !preview && !checking && !busy && inspectedDesign.current === design;
+  const connectionReady = !preview && !checking && !busy && inspectedDesign.current === design && inspectedSnapshot.current?.document === document && inspectedSnapshot.current?.baseDir === baseDir;
   const interfaces = connectionReady ? inspection.interfaces : emptyInspection.interfaces;
-  const expressionGraph = projectConnections(inspection.connections ?? [], layout?.nodes ?? {});
+  const hasExpressions = useMemo(() => inspection.connections?.some((net) => net.endpoints.some((endpoint) => endpoint.expression)), [inspection.connections]);
+  const expressionLayout = hasExpressions ? layout?.nodes : null;
+  const expressionGraph = useMemo(() => projectConnections(inspection.connections ?? [], expressionLayout ?? {}), [inspection.connections, expressionLayout]);
+  const onNodesChange = useCallback((changes) => { if (!preview) setNodes((current) => applyNodeChanges(changes.filter((change) => change.type !== "remove"), current)); }, [preview]);
+  const onMoveEnd = useCallback((event, viewport) => setZoom(Math.round(viewport.zoom * 100)), []);
+  const onNodeClick = useCallback((event, node) => { if (!preview) { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setPendingPin(null); } }, [preview]);
+  const onNodeDoubleClick = useCallback((event, node) => { if (!preview) { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setMobilePanel("inspector"); } }, [preview]);
+  const onEdgeClick = useCallback((event, edge) => { if (!preview) { setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setPendingPin(null); } }, [preview]);
+  const onPaneClick = useCallback(() => { setSelection(null); setPendingPin(null); setMobilePanel(null); }, []);
+  const isValidConnection = useCallback((connection) => connectionReady && connectionError(design, connection.sourceHandle, connection.targetHandle, interfaces) === null, [connectionReady, design, interfaces]);
 
   function notify(message, error = false) { setToast({ message, error }); }
 
@@ -168,6 +183,7 @@ export default function App() {
     setBaseDir(result.base_dir);
     setDocumentPath(result.path);
     inspectedDesign.current = canvas;
+    inspectedSnapshot.current = { document: versioned ? result.design : canvas, baseDir: result.base_dir };
     setInspection(normalizeInspection(result.inspection));
     setSaved(true);
     setSelection(null);
@@ -187,11 +203,13 @@ export default function App() {
 
   useEffect(() => {
     if (!design || !token) return;
+    if (inspectedSnapshot.current?.document === document && inspectedSnapshot.current?.baseDir === baseDir) { setChecking(false); return; }
     setChecking(true);
     return scheduleInspection(
       (signal) => api("/api/semantic/inspect", { design: document, base_dir: baseDir }, signal),
       (result) => {
         inspectedDesign.current = design;
+        inspectedSnapshot.current = { document, baseDir };
         setInspection(normalizeInspection(result));
         setChecking(false);
       },
@@ -201,12 +219,12 @@ export default function App() {
 
   useEffect(() => { if (document) setJsonDraft(JSON.stringify(document, null, 2)); }, [document]);
   useEffect(() => {
-    if (!nodesReady || !viewportRequest) return;
+    if ((!nodesReady && nodes.length < 64) || !viewportRequest) return;
     if (viewportRequest.waitFor && !flow.getNode(viewportRequest.waitFor)) return;
     if (viewportRequest.fit) flow.fitView({ padding: 0.16, maxZoom: 1 });
     else flow.setViewport(viewportRequest.viewport);
     setViewportRequest(null);
-  }, [nodesReady, viewportRequest, flow]);
+  }, [nodesReady, nodes.length, viewportRequest, flow]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 5000); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => {
     const handler = (event) => { if (!saved) { event.preventDefault(); event.returnValue = ""; } };
@@ -246,6 +264,21 @@ export default function App() {
       if (message) setActivity(message);
       return true;
     } catch (error) { notify(error.message, true); return false; }
+  }
+
+  function moveNode(node) {
+    const current = editorState.current;
+    if (preview || current.busy || !current.history) return;
+    const previous = current.history;
+    const before = previous.current;
+    const position = before.layout.nodes[node.id];
+    if (position?.x === node.position.x && position?.y === node.position.y) return;
+    const next = { ...before, layout: { ...before.layout, nodes: { ...before.layout.nodes, [node.id]: { ...node.position } } } };
+    const nextHistory = { past: [...previous.past, before].slice(-80), current: next, future: [] };
+    editorState.current = { ...current, history: nextHistory };
+    setHistory(nextHistory);
+    setSaved(false);
+    setActivity(t("layout.nodeMoved"));
   }
 
   async function applyCopilotProposal(proposal, selected) {
@@ -325,19 +358,32 @@ export default function App() {
       const definition = design.modules[instance.module];
       const parameters = inspection.parameters?.[name] ?? Object.fromEntries(Object.entries(definition?.parameters ?? {}).map(([key, spec]) => [key, instance.parameters?.[key] ?? spec.default]));
       result.push({ id: name, type: "block", position: layout.nodes[name] ?? defaultPosition(name, design), selected: selection?.id === name,
-        data: { name, module: instance.module, parameters, ports: Object.keys(definition?.ports ?? {}).map((port) => endpointInfo(design, `${name}.${port}`, interfaces)).filter(Boolean), onPin: pickPin, active: pendingPin, connectable: connectionReady, highlight: structured ? errorNodes.has(name) : errors.includes(`instances.${name}.`) || errors.includes(`${name}.`) } });
+        data: { name, module: instance.module, parameters, ports: Object.keys(definition?.ports ?? {}).map((port) => endpointInfo(design, `${name}.${port}`, interfaces)).filter(Boolean), onPin: stablePickPin, active: pendingPin?.startsWith(`${name}.`) ? pendingPin : null, connectable: connectionReady, highlight: structured ? errorNodes.has(name) : errors.includes(`instances.${name}.`) || errors.includes(`${name}.`) } });
     }
     for (const name of Object.keys(design.ports)) {
       const id = externalId(name);
       result.push({ id, type: "block", position: layout.nodes[id] ?? defaultPosition(id, design), selected: selection?.id === id,
-        data: { name, external: true, ports: [endpointInfo(design, id, interfaces)], onPin: pickPin, active: pendingPin, connectable: connectionReady, highlight: structured ? errorNodes.has(id) : errors.includes(`ports.${name}:`) } });
+        data: { name, external: true, ports: [endpointInfo(design, id, interfaces)], onPin: stablePickPin, active: pendingPin === id ? pendingPin : null, connectable: connectionReady, highlight: structured ? errorNodes.has(id) : errors.includes(`ports.${name}:`) } });
     }
       result.push(...expressionGraph.nodes.map((node) => ({ ...node, selected: selection?.type === "net" && selection.id === node.data.net })));
-    setNodes((previous) => result.map((node) => ({ ...node, measured: previous.find((item) => item.id === node.id)?.measured })));
+    setNodes((previous) => {
+      const byId = new Map(previous.map((node) => [node.id, node]));
+      return result.map((node) => {
+        const prior = byId.get(node.id);
+        const reusable = node.type === "block" && sameNodeData(prior?.data, node.data);
+        if (reusable && prior.selected === node.selected && prior.position.x === node.position.x && prior.position.y === node.position.y) return prior;
+        const geometry = reusable ? { initialWidth: prior.initialWidth, initialHeight: prior.initialHeight, handles: prior.handles } : node.type === "block" ? nodeGeometry(node.data) : {};
+        const sameGeometry = prior?.initialWidth === geometry.initialWidth && prior?.initialHeight === geometry.initialHeight;
+        return { ...node, ...geometry, measured: sameGeometry ? prior?.measured : undefined,
+          data: reusable ? prior.data : node.data };
+      });
+    });
   }, [design, layout, inspection, selection, pendingPin, connectionReady]);
 
   const invalidNets = new Set((inspection.structuredDiagnostics ?? []).filter((item) => item.severity === "error").map((item) => item.location.net).filter(Boolean));
-  const edges = design ? Object.entries(design.nets).flatMap(([net, pins]) => {
+  const selectedNetId = selection?.type === "net" ? selection.id : null;
+  const selectedSink = selection?.type === "net" ? selection.sink : null;
+  const edges = useMemo(() => design ? Object.entries(design.nets).flatMap(([net, pins]) => {
     if (expressionGraph.nets.has(net)) return [];
     const drivers = pins.filter((pin) => endpointInfo(design, pin)?.drives);
     const driver = drivers[0] ?? pins.find((pin) => endpointInfo(design, pin));
@@ -345,15 +391,15 @@ export default function App() {
     const shape = endpointInfo(design, driver, interfaces);
     return pins.filter((pin) => pin !== driver && endpointInfo(design, pin)).map((sink) => ({
       id: `${net}|${sink}`, source: nodeId(driver), target: nodeId(sink), sourceHandle: driver, targetHandle: sink,
-      type: "circuit", label: net, data: { net, sink }, selected: selection?.type === "net" && selection.id === net && (!selection.sink || selection.sink === sink),
-      style: { stroke: selection?.id === net && (!selection.sink || selection.sink === sink) ? "#0a8f7b" : invalidNets.has(net) ? "#ba4545" : (shape?.range ? "#477caa" : "#8c969f"), strokeWidth: shape?.range ? 2.4 : 1.5 },
+      type: "circuit", label: net, data: { net, sink, width: shape?.width ?? 1 }, selected: selectedNetId === net && (!selectedSink || selectedSink === sink),
+      style: { stroke: selectedNetId === net && (!selectedSink || selectedSink === sink) ? "#0a8f7b" : invalidNets.has(net) ? "#ba4545" : (shape?.range ? "#477caa" : "#8c969f"), strokeWidth: shape?.range ? 2.4 : 1.5 },
       labelStyle: { fill: "#66747e", fontSize: 11, fontFamily: "IBM Plex Mono, monospace" }, labelBgStyle: { fill: "#f8fafb", fillOpacity: 0.95 }, labelBgPadding: [7, 3], labelBgBorderRadius: 3,
     }));
-  }).concat(expressionGraph.edges.map((edge) => ({ ...edge, selected: selection?.type === "net" && selection.id === edge.data.net,
-    style: { stroke: selection?.id === edge.data.net ? "#0a8f7b" : invalidNets.has(edge.data.net) ? "#ba4545" : "#477caa", strokeWidth: edge.data.width > 1 ? 2.4 : 1.5 },
+  }).concat(expressionGraph.edges.map((edge) => ({ ...edge, selected: selectedNetId === edge.data.net,
+    style: { stroke: selectedNetId === edge.data.net ? "#0a8f7b" : invalidNets.has(edge.data.net) ? "#ba4545" : "#477caa", strokeWidth: edge.data.width > 1 ? 2.4 : 1.5 },
     labelStyle: { fill: "#66747e", fontSize: 11, fontFamily: "IBM Plex Mono, monospace" },
     labelBgStyle: { fill: "#f8fafb", fillOpacity: 0.95 }, labelBgPadding: [7, 3], labelBgBorderRadius: 3,
-  }))) : [];
+  }))) : [], [design, interfaces, inspection.structuredDiagnostics, selectedNetId, selectedSink, expressionGraph]);
 
   const candidate = preview ? candidateGraph(preview, layout.nodes, defaultPosition) : null;
   const graph = candidate ? mergePreview(nodes, edges, candidate.nodes, candidate.edges, designChanges(design, preview.canvas)) : { nodes, edges };
@@ -633,16 +679,16 @@ export default function App() {
       <section className="center-panel">
         <div className="canvas-heading"><div><span className="canvas-tab"><Workflow size={14} />Block Design</span><span className="canvas-meta">{Object.keys(design.instances).length} instances <span>/</span> {Object.keys(design.nets).length} nets</span></div><div><IconButton icon={LayoutGrid} label="整理布局" onClick={autoLayout} /><IconButton icon={Maximize2} label="适应画布" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div></div>
         <div className="canvas" aria-label="设计画布" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={dropModule}>
-          <ReactFlow nodes={graph.nodes} edges={graph.edges} nodesDraggable={!preview} nodesConnectable={!preview} elementsSelectable={!preview} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={0.25} maxZoom={2} deleteKeyCode={null} connectOnClick={false} snapToGrid snapGrid={[10, 10]}
+          <ReactFlow onlyRenderVisibleElements nodes={graph.nodes} edges={graph.edges} nodesDraggable={!preview} nodesConnectable={!preview} elementsSelectable={!preview} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={0.25} maxZoom={2} deleteKeyCode={null} connectOnClick={false} snapToGrid snapGrid={[10, 10]}
             connectionMode={ConnectionMode.Loose} connectionLineType={ConnectionLineType.Step}
-            isValidConnection={(connection) => connectionReady && connectionError(design, connection.sourceHandle, connection.targetHandle, interfaces) === null}
+            isValidConnection={isValidConnection}
             fitView={!Object.keys(layout.nodes).length} fitViewOptions={{ padding: 0.16, maxZoom: 1 }} defaultViewport={layout.viewport}
-            onNodesChange={(changes) => { if (!preview) setNodes((current) => applyNodeChanges(changes.filter((change) => change.type !== "remove"), current)); }}
-            onNodeDragStop={(_, node) => mutate((next, nextLayout) => { nextLayout.nodes[node.id] = node.position; }, "画布位置已更新")}
-            onNodeClick={(_, node) => { if (!preview) { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setPendingPin(null); } }}
-            onNodeDoubleClick={(_, node) => { if (!preview) { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setMobilePanel("inspector"); } }}
-            onEdgeClick={(_, edge) => { if (!preview) { setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setPendingPin(null); } }}
-            onPaneClick={() => { setSelection(null); setPendingPin(null); setMobilePanel(null); }}
+            onNodesChange={onNodesChange}
+            onNodeDragStop={onNodeDragStop}
+            onNodeClick={onNodeClick}
+            onNodeDoubleClick={onNodeDoubleClick}
+            onEdgeClick={onEdgeClick}
+            onPaneClick={onPaneClick}
             onConnect={(connection) => connect(connection.sourceHandle, connection.targetHandle)}
             onConnectEnd={(event, state) => {
               const first = state.fromHandle?.id;
@@ -653,7 +699,7 @@ export default function App() {
               }
               setPendingPin(null);
             }}
-            onMoveEnd={(_, viewport) => setZoom(Math.round(viewport.zoom * 100))}>
+            onMoveEnd={onMoveEnd}>
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd4dc" />
           </ReactFlow>
           <div className="canvas-stamp"><CircuitBoard size={13} />STRUCTURAL RTL</div>

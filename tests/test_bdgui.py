@@ -1,5 +1,7 @@
 import copy
+import gzip
 from http.client import HTTPConnection
+from io import BytesIO
 import json
 from pathlib import Path
 import shutil
@@ -9,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 import bdtool
-from bdgui import EditorServer, Workspace
+from bdgui import EditorHandler, EditorServer, Workspace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +38,24 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(preview["files"], {})
         self.assertIn("required input is unconnected", preview["diagnostics"][0])
         self.assertEqual(preview["interfaces"]["instances"]["compare_0"]["value"]["range"], [7, 0])
+
+    def test_large_responses_negotiate_gzip_without_changing_contents(self):
+        content = json.dumps({"value": "repeat" * 20000}).encode()
+        for accepted, compressed in (("", False), ("gzip", True), ("gzip;q=0", False), ("br, gzip;q=0.8", True)):
+            with self.subTest(accepted=accepted):
+                handler = object.__new__(EditorHandler)
+                handler.headers = {"Accept-Encoding": accepted}
+                handler.wfile = BytesIO()
+                headers = {}
+                handler.send_response = lambda status: None
+                handler.send_header = lambda name, value: headers.update({name: value})
+                handler.end_headers = lambda: None
+                handler.respond(200, content, "application/json; charset=utf-8")
+                encoded = handler.wfile.getvalue()
+                self.assertEqual(gzip.decompress(encoded) if compressed else encoded, content)
+                self.assertEqual(headers.get("Content-Encoding"), "gzip" if compressed else None)
+                self.assertEqual(headers["Cache-Control"], "no-store")
+                self.assertEqual(headers["Content-Length"], str(len(encoded)))
 
     def test_save_separates_layout_and_rebases_sources(self):
         original = copy.deepcopy(self.data)
