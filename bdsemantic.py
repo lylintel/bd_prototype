@@ -22,16 +22,23 @@ def prepare(workspace, document, base_dir):
         project = tuple(migrate_legacy_modules(document, base, workspace_root=workspace.root).values())
         ids = {metadata.id for metadata in project}
     else:
-        if document.get("schema_version") not in (2, 3):
+        if document.get("schema_version") not in (2, 3, 4):
             raise DesignFormatError(issue("D001", {}, reason="schema_version"))
         raw_project = document.get("project_ips", [])
         if not isinstance(raw_project, list) or len(raw_project) > 200:
             raise DesignFormatError(issue("D001", {}, reason="project_ips"))
         project = tuple(IpMetadata.from_dict(item, base_dir=base) for item in raw_project)
         ids = {metadata.id for metadata in project}
-        for instance in document.get("instances", []) if isinstance(document.get("instances"), list) else []:
-            if isinstance(instance, dict) and isinstance(instance.get("ip"), dict) and isinstance(instance["ip"].get("id"), str):
-                ids.add(instance["ip"]["id"])
+        scopes = [document]
+        if document.get("schema_version") == 4:
+            from core.hierarchy import check_hierarchy_document
+            check_hierarchy_document(document)
+            scopes.extend(document["subdesigns"].values())
+        for scope in scopes:
+            for instance in scope.get("instances", []) if isinstance(scope.get("instances"), list) else []:
+                if isinstance(instance, dict) and isinstance(instance.get("ip"), dict) and isinstance(instance["ip"].get("id"), str):
+                    ids.add(instance["ip"]["id"])
+        ids.difference_update(document.get("subdesigns", {}))
     published = workspace.ip_library().metadata_snapshot(ids, base_dir=base)
     library = list(published)
     seen_project = set()
@@ -74,6 +81,9 @@ def _canvas_pins(endpoint, depth=0):
 
 
 def canvas_document(document, library):
+    if document.get("schema_version") == 4:
+        from core.hierarchy import hierarchy_library
+        _, library = hierarchy_library(document, library)
     modules = {}
     for metadata in library:
         try:
@@ -102,13 +112,60 @@ def canvas_document(document, library):
 def inspect_workspace(workspace, document, base_dir):
     try:
         prepared, library = prepare(workspace, document, base_dir)
-        result = inspect_design(prepared, library)
-        result.update(document=prepared, canvas=canvas_document(prepared, library), metadata=[metadata.to_dict() for metadata in library])
+        metadata_library = library
+        canvas_source = prepared
+        if prepared.get("schema_version") == 4:
+            from core.hierarchy import hierarchy_library, inspect_hierarchy_documents
+            resolutions = {}
+            documents, metadata_library = hierarchy_library(prepared, library, resolutions=resolutions)
+            result = inspect_hierarchy_documents(documents, metadata_library, resolutions=resolutions)
+            canvas_source = documents[-1]
+        else:
+            result = inspect_design(prepared, library)
+        result.update(document=prepared, canvas=canvas_document(canvas_source, metadata_library), metadata=[metadata.to_dict() for metadata in metadata_library])
         return result
     except (bdtool.DesignError, DesignFormatError, OSError, ValueError, TypeError, KeyError) as error:
         diagnostic = error.diagnostic if isinstance(error, DesignFormatError) else issue("D005", {}, reason=getattr(error, "code", "source_or_metadata"))
         return {"valid": False, "diagnostics": [diagnostic.to_dict()], "files": {}, "parameters": {},
                 "interfaces": {"ports": {}, "instances": {}}}
+
+
+def collapse_workspace(workspace, payload):
+    from core.hierarchy import collapse_design
+
+    document, library = prepare(workspace, payload.get("design"), payload.get("base_dir", "."))
+    selection = payload.get("selection")
+    if not isinstance(selection, list) or any(not isinstance(name, str) for name in selection):
+        raise DesignFormatError(issue("D001", {}, reason="hierarchy_selection"))
+    result = collapse_design(document, library, selection, payload.get("name"))
+    return inspect_workspace(workspace, result, payload.get("base_dir", "."))
+
+
+def inspect_scope(workspace, payload):
+    document = payload.get("design")
+    root = inspect_workspace(workspace, document, payload.get("base_dir", "."))
+    scope = payload.get("scope")
+    if not scope or "document" not in root:
+        return root
+    children = root["document"].get("subdesigns", {})
+    if not isinstance(scope, str) or scope not in children:
+        raise DesignFormatError(issue("D001", {}, reason="hierarchy_scope"))
+    reachable = set()
+
+    def visit(name):
+        if name in reachable or name == scope or name not in children:
+            return
+        reachable.add(name)
+        for instance in children[name]["instances"]:
+            visit(instance["ip"]["id"])
+
+    for instance in children[scope]["instances"]:
+        visit(instance["ip"]["id"])
+    view = {**children[scope], "schema_version": 4, "project_ips": document.get("project_ips", []),
+            "subdesigns": {name: children[name] for name in reachable}}
+    result = inspect_workspace(workspace, view, payload.get("base_dir", "."))
+    diagnostics = [{key: value for key, value in item.items() if key != "fix"} for item in root["diagnostics"]]
+    return {**result, "valid": root["valid"], "diagnostics": diagnostics, "files": root["files"]}
 
 
 def save_document(workspace, payload):

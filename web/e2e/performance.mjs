@@ -1,6 +1,6 @@
 import { chromium } from "@playwright/test";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +12,7 @@ const sizes = argument("--sizes", "100,500,2000").split(",").map(Number);
 const samples = Number(argument("--samples", "3"));
 const ceiling = Number(argument("--ceiling", "20000"));
 const output = path.resolve(argument("--report", "build/phase4-performance"));
+const fixture = argument("--fixture", null);
 const venv = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
 const python = process.env.BD_PYTHON || (existsSync(venv) ? venv : "python");
 if (sizes.some((size) => ![100, 500, 2000].includes(size)) || !Number.isInteger(samples) || samples < 1 || samples > 11 || !Number.isFinite(ceiling) || ceiling < 1000) throw new Error("Invalid benchmark arguments");
@@ -74,6 +75,9 @@ async function frames(page, action) {
 }
 
 async function measure(directory, size, sample) {
+  const document = JSON.parse(readFileSync(path.join(directory, "design.json"), "utf8"));
+  const firstNode = `.react-flow__node[data-id="${document.instances[0].name}"]`;
+  const secondNode = `.react-flow__node[data-id="${document.instances[1].name}"]`;
   console.log(JSON.stringify({ instances: size, sample, phase: "server_start" }));
   const server = await serverFor(directory);
   console.log(JSON.stringify({ instances: size, sample, phase: "browser_start" }));
@@ -92,14 +96,14 @@ async function measure(directory, size, sample) {
     window.__bdLongTasks = [];
     new PerformanceObserver((entries) => { window.__bdLongTasks.push(...entries.getEntries().map((entry) => entry.duration)); }).observe({ type: "longtask", buffered: true });
   });
-  const result = { instances: size, nets: size * 3 + 1, sample, status: "unavailable", load_ms: null, pan: null, zoom: null, drag: null, selection_ms: null, drag_rendered_nodes: null, chromium: browser.version() };
+  const result = { instances: size, top_level_instances: document.instances.length, nets: document.nets.length, sample, status: "unavailable", load_ms: null, pan: null, zoom: null, drag: null, selection_ms: null, drag_rendered_nodes: null, chromium: browser.version() };
   const started = performance.now();
   try {
     result.phase = "load";
     await deadline((async () => {
       await page.goto(`${server.url}/?perf=1`, { waitUntil: "domcontentloaded", timeout: ceiling });
       await page.locator('[aria-label="校验设计"].valid').waitFor();
-      await page.locator('.react-flow__node[data-id="unit_0"] .block-heading').waitFor();
+      await page.locator(`${firstNode} .block-heading`).waitFor();
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     })(), ceiling, "load");
     result.load_ms = performance.now() - started;
@@ -137,31 +141,31 @@ async function measure(directory, size, sample) {
       }
       requestAnimationFrame(tick);
     })), ceiling, "viewport_settle");
-    const header = page.locator('.react-flow__node[data-id="unit_0"] .block-heading');
+    const header = page.locator(`${firstNode} .block-heading`);
     result.phase = "drag";
     await header.hover();
     const bounds = await deadline(header.boundingBox(), ceiling, "header");
-    const beforePosition = await page.locator('.react-flow__node[data-id="unit_0"]').evaluate((node) => node.style.transform);
+    const beforePosition = await page.locator(firstNode).evaluate((node) => node.style.transform);
     const before = await deadline(page.evaluate(() => ({ ...window.__bdPerformance.node })), ceiling, "counters");
     result.drag_before = beforePosition;
     result.drag_target = await page.evaluate((point) => document.elementFromPoint(point.x, point.y)?.closest(".react-flow__node")?.getAttribute("data-id"), { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
     result.drag = await deadline(frames(page, async () => {
       await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2); await page.mouse.down();
       await page.mouse.move(bounds.x + bounds.width / 2 + 30, bounds.y + bounds.height / 2 + 20, { steps: 3 });
-      result.drag_during = await page.locator('.react-flow__node[data-id="unit_0"]').evaluate((node) => node.style.transform);
+      result.drag_during = await page.locator(firstNode).evaluate((node) => node.style.transform);
       const until = performance.now() + 1500;
       let step = 0;
       while (performance.now() < until) await page.mouse.move(bounds.x + bounds.width / 2 + (step++ % 2 ? 60 : 20), bounds.y + bounds.height / 2 + 20);
       await page.mouse.up();
     }), ceiling, "drag");
-    result.drag_after = await page.locator('.react-flow__node[data-id="unit_0"]').evaluate((node) => node.style.transform);
+    result.drag_after = await page.locator(firstNode).evaluate((node) => node.style.transform);
     result.drag_changed_position = beforePosition !== result.drag_after;
     if (!result.drag_changed_position) throw new Error("drag_not_applied");
     result.drag_rendered_nodes = await deadline(page.evaluate((previous) => Object.entries(window.__bdPerformance.node).filter(([identifier, count]) => count > (previous[identifier] ?? 0)).length, before), ceiling, "counters");
     result.phase = "selection";
     const selectedAt = performance.now();
-    await page.locator('.react-flow__node[data-id="unit_1"] .block-heading').click();
-    await page.locator('.react-flow__node[data-id="unit_1"] .block-node.is-selected').waitFor();
+    await page.locator(`${secondNode} .block-heading`).click();
+    await page.locator(`${secondNode} .block-node.is-selected`).waitFor();
     result.selection_ms = performance.now() - selectedAt;
     result.max_long_task_ms = await deadline(page.evaluate(() => Math.max(0, ...window.__bdLongTasks)), ceiling, "long_tasks");
     await page.screenshot({ path: path.join(output, `${size}-${sample}.png`), timeout: ceiling });
@@ -194,8 +198,11 @@ const report = { schema_version: 1, created: new Date().toISOString(), viewport:
 for (const size of sizes) {
   const directory = mkdtempSync(path.join(os.tmpdir(), "bd-gui-benchmark-"));
   try {
-    const generated = spawnSync(python, ["-m", "scripts.gui_benchmark", "--output", directory, "--instances", String(size)], { cwd: root, encoding: "utf8", timeout: 60000 });
-    if (generated.status !== 0) throw new Error(`fixture_generation_failed: ${generated.stderr}`);
+    if (fixture) cpSync(path.resolve(fixture), directory, { recursive: true });
+    else {
+      const generated = spawnSync(python, ["-m", "scripts.gui_benchmark", "--output", directory, "--instances", String(size)], { cwd: root, encoding: "utf8", timeout: 60000 });
+      if (generated.status !== 0) throw new Error(`fixture_generation_failed: ${generated.stderr}`);
+    }
     for (let sample = 1; sample <= samples; sample++) {
       const result = await measure(directory, size, sample);
       report.results.push(result);

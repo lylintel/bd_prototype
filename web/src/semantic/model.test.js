@@ -1,3 +1,42 @@
+import { scopeState, mergeScopeState, bundleHierarchyEdges } from "./hierarchy.js";
+
+test("compact hierarchy bundles keep every distinct electrical net selectable", () => {
+  const nodes = [{ id: "first", data: { compact: true } }, { id: "second", data: { compact: true } }];
+  const edges = [1, 2, 3].map((value) => ({ id: `edge_${value}`, source: "first", target: "second", data: { net: `net_${value}`, width: value } }));
+  const result = bundleHierarchyEdges(edges, nodes);
+  assert.equal(result.length, 1);
+  assert.deepEqual(result[0].data.bundle.map((edge) => edge.data.net), ["net_1", "net_2", "net_3"]);
+  assert.equal(edges.length, 3);
+  assert.equal(bundleHierarchyEdges(edges, [{ id: "first", data: { compact: false } }]).length, 3);
+});
+
+test("hierarchy scope edits preserve root topology and independent layouts", () => {
+  const child = { schema_version: 3, name: "group", ports: {}, instances: [], nets: [] };
+  const document = { schema_version: 4, name: "top", ports: {}, instances: [{ name: "first", ip: { id: "group", version: "1.0.0" } }], nets: [], subdesigns: { group: child } };
+  const state = { document, design: { name: "top", modules: {}, ports: {}, instances: {}, nets: {} }, layout: { nodes: { first: { x: 10, y: 20 } }, viewport: { x: 0, y: 0, zoom: 1 } } };
+  const scoped = scopeState(state, "group");
+  assert.equal(scoped.document.name, "group");
+  assert.deepEqual(scoped.document.subdesigns, {});
+  const next = { ...scoped, document: { ...scoped.document, ports: { clock: { direction: "input" } } }, layout: { ...scoped.layout, nodes: { "@clock": { x: 30, y: 40 } } } };
+  const merged = mergeScopeState(state, next, "group");
+  assert.deepEqual(merged.document.instances, document.instances);
+  assert.deepEqual(merged.document.subdesigns.group.ports, next.document.ports);
+  assert.deepEqual(merged.layout.nodes, state.layout.nodes);
+  assert.deepEqual(merged.layout.scopes.group.nodes, next.layout.nodes);
+  assert.deepEqual(document.subdesigns.group.ports, {});
+});
+
+test("hierarchy names do not resolve or overwrite inherited object properties", () => {
+  const child = { schema_version: 3, name: "__proto__", ports: {}, instances: [], nets: [] };
+  const document = { schema_version: 4, name: "top", ports: {}, instances: [], nets: [], subdesigns: JSON.parse('{"__proto__":null}') };
+  document.subdesigns.__proto__ = child;
+  const state = { document, design: { modules: {} }, layout: { nodes: {} } };
+  assert.equal(scopeState(state, "constructor"), state);
+  const scoped = scopeState(state, "__proto__");
+  const merged = mergeScopeState(state, scoped, "__proto__");
+  assert.ok(Object.hasOwn(merged.design.modules, "__proto__"));
+  assert.equal(Object.getPrototypeOf(merged.design.modules), Object.prototype);
+});
 import test from "node:test";
 import assert from "node:assert/strict";
 import { syncDocument, parameterValue, diagnosticMessage, normalizeInspection, replaceEndpoint, projectConnections, renameSemantic, scheduleInspection } from "./model.js";

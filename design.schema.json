@@ -1,11 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "BD Studio design v2 and v3",
+  "title": "BD Studio design v2, v3 and v4",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "name", "ports", "instances", "nets"],
   "properties": {
-    "schema_version": {"enum": [2, 3], "type": "integer"},
+    "schema_version": {"enum": [2, 3, 4], "type": "integer"},
+    "subdesigns": {"type": "object", "maxProperties": 200, "additionalProperties": {"$ref": "#/$defs/child"}},
     "name": {"type": "string", "maxLength": 256},
     "project_ips": {"type": "array", "maxItems": 200, "items": {"type": "object"}},
     "ports": {"type": "object", "maxProperties": 20000, "additionalProperties": {"$ref": "#/$defs/port"}},
@@ -23,8 +24,12 @@
       "properties": {"name": {"type": "string", "maxLength": 256}, "endpoints": {"type": "array", "maxItems": 20000, "items": {"$ref": "#/$defs/endpoint"}}}
     }}
   },
-  "allOf": [{"if": {"properties": {"schema_version": {"const": 2}}}, "then": {"properties": {"nets": {"items": {"properties": {"endpoints": {"items": {"$ref": "#/$defs/plainEndpoint"}}}}}}}}],
+  "allOf": [
+    {"if": {"properties": {"schema_version": {"const": 2}}}, "then": {"properties": {"nets": {"items": {"properties": {"endpoints": {"items": {"$ref": "#/$defs/plainEndpoint"}}}}}}}},
+    {"if": {"properties": {"schema_version": {"const": 4}}}, "then": {"required": ["subdesigns"]}, "else": {"not": {"required": ["subdesigns"]}}}
+  ],
   "$defs": {
+    "child": {"$ref": "#", "properties": {"schema_version": {"const": 3}}, "not": {"required": ["project_ips"]}},
     "integerExpression": {"oneOf": [{"type": "integer", "minimum": -2147483648, "maximum": 2147483647}, {"type": "string", "minLength": 1, "maxLength": 4096}]},
     "port": {"type": "object", "additionalProperties": false, "required": ["direction"], "properties": {
       "direction": {"enum": ["input", "output"]}, "signed": {"type": "boolean"},

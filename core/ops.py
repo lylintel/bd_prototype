@@ -259,7 +259,7 @@ class _Draft:
             self.available_name(name)
             self.document["nets"].append({"name": name, "endpoints": [source, target]})
         if operation["from"]["type"] != "port" or operation["to"]["type"] != "port":
-            self.document["schema_version"] = 3
+            self.document["schema_version"] = max(3, self.document["schema_version"])
 
 
 def apply_ops(document, library, operations):
@@ -273,7 +273,11 @@ def apply_ops(document, library, operations):
     try:
         commands = validate_operations(operations)
         library = tuple(library)
-        draft = _Draft(deepcopy(document), library)
+        operation_library = library
+        if document.get("schema_version") == 4:
+            from core.hierarchy import hierarchy_library
+            _, operation_library = hierarchy_library(document, library)
+        draft = _Draft(deepcopy(document), operation_library)
         for index, operation in enumerate(commands):
             if operation["op"] in ("connect", "disconnect"):
                 draft.connection(operation)

@@ -38,7 +38,15 @@ def port_info(port: bdtool.Port) -> dict:
 
 
 def check_layout(value: object) -> dict:
-    layout = bdtool._fields(value, "layout", set(), {"nodes", "viewport"})
+    layout = bdtool._fields(value, "layout", set(), {"nodes", "viewport", "schema_version", "scopes"})
+    if "scopes" in layout or "schema_version" in layout:
+        if type(layout.get("schema_version")) is not int or layout["schema_version"] != 1:
+            raise bdtool.DesignError("layout.schema_version: expected 1")
+        scopes = bdtool._object(layout.get("scopes", {}), "layout.scopes")
+        if len(scopes) > 200 or any(not isinstance(item, dict) or "scopes" in item or "schema_version" in item for item in scopes.values()):
+            raise bdtool.DesignError("layout.scopes: invalid scopes")
+    else:
+        scopes = None
     nodes = bdtool._object(layout.get("nodes", {}), "layout.nodes")
     for name, position in nodes.items():
         bdtool._fields(position, f"layout.nodes.{name}", {"x", "y"})
@@ -52,7 +60,8 @@ def check_layout(value: object) -> dict:
             raise bdtool.DesignError("layout.viewport: invalid coordinate")
     if not 0.1 <= viewport["zoom"] <= 3:
         raise bdtool.DesignError("layout.viewport.zoom: expected a value between 0.1 and 3")
-    return {"nodes": nodes, "viewport": viewport}
+    return {"nodes": nodes, "viewport": viewport,
+            **({"schema_version": 1, "scopes": {name: check_layout(item) for name, item in scopes.items()}} if scopes is not None else {})}
 
 
 class Workspace:
@@ -491,6 +500,12 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(workspace.semantic_inspect(payload.get("design"), payload.get("base_dir", ".")))
             elif self.path == "/api/semantic/fix":
                 self.json_response(workspace.semantic_fix(payload))
+            elif self.path == "/api/hierarchy/collapse":
+                from bdsemantic import collapse_workspace
+                self.json_response(collapse_workspace(workspace, payload))
+            elif self.path == "/api/hierarchy/inspect":
+                from bdsemantic import inspect_scope
+                self.json_response(inspect_scope(workspace, payload))
             elif self.path == "/api/ops/preview":
                 self.json_response(workspace.propose_ops(payload))
             elif self.path == "/api/ops/accept":

@@ -9,7 +9,7 @@ from core.semantic import validate
 from scripts.synthetic_design import synthetic_design
 
 
-def write_fixture(directory, count, *, seed=20261117):
+def write_fixture(directory, count, *, seed=20261117, groups=0):
     directory = Path(directory)
     document, library = synthetic_design(instance_count=count, connections_per_instance=3, seed=seed)
     ports = ["input wire clk"]
@@ -32,6 +32,20 @@ def write_fixture(directory, count, *, seed=20261117):
     layout = {"nodes": {instance["name"]: {"x": 280 + index % columns * 360, "y": 80 + index // columns * 240}
                         for index, instance in enumerate(document["instances"])}, "viewport": {"x": 0, "y": 0, "zoom": 0.75}}
     layout["nodes"]["@clk"] = {"x": 20, "y": 80}
+    if groups:
+        from core.hierarchy import collapse_design
+
+        if groups < 1 or groups > count or count % groups:
+            raise ValueError("Groups must divide the instance count")
+        definitions = (IpMetadata.from_dict(metadata),)
+        scopes = {}
+        for group in range(groups):
+            selected = [f"unit_{index}" for index in range(group * (count // groups), (group + 1) * (count // groups))]
+            name = f"group_{group}"
+            document = collapse_design(document, definitions, selected, name)
+            scopes[name] = {"nodes": {item: layout["nodes"].pop(item) for item in selected}, "viewport": layout["viewport"]}
+            layout["nodes"][name] = {"x": 280 + group % 3 * 450, "y": 80 + group // 3 * 300}
+        layout.update(schema_version=1, scopes=scopes)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "synthetic_cell.v").write_bytes(rtl.encode("utf-8"))
     (directory / "design.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
@@ -43,8 +57,9 @@ def main():
     parser = argparse.ArgumentParser(description="Generate a deterministic local GUI performance fixture")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--instances", type=int, choices=(100, 500, 2000), required=True)
+    parser.add_argument("--groups", type=int, default=0)
     args = parser.parse_args()
-    document, _ = write_fixture(args.output, args.instances)
+    document, _ = write_fixture(args.output, args.instances, groups=args.groups)
     print(json.dumps({"instances": len(document["instances"]), "nets": len(document["nets"]), "seed": 20261117}))
 
 

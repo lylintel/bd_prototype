@@ -1,3 +1,72 @@
+test("hierarchy folds selection edits a child and restores root with undo", async ({ page }, testInfo) => {
+  await openEditor(page);
+  const badge = page.getByRole("button", { name: "校验设计", exact: true });
+  await expect(badge).toContainText("校验通过");
+  await page.locator('.react-flow__node[data-id="counter_0"] .block-heading').click();
+  await page.locator('.react-flow__node[data-id="compare_0"] .block-heading').click({ modifiers: ["Shift"] });
+  await page.getByRole("button", { name: t("hierarchy.collapse"), exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: t("hierarchy.collapse") });
+  await dialog.getByLabel(t("hierarchy.name"), { exact: true }).fill("counter_group");
+  await dialog.getByRole("button", { name: "添加", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(badge).toContainText("校验通过");
+  const group = page.locator('.react-flow__node[data-id="counter_group"]');
+  await expect(group).toBeVisible();
+  await expect(page.locator('.react-flow__node[data-id="counter_0"]')).toHaveCount(0);
+  await group.locator(".block-heading").dblclick();
+  await expect(page.getByRole("navigation", { name: t("hierarchy.path") })).toBeVisible();
+  await expect(page.locator('.react-flow__node[data-id="counter_0"]')).toBeVisible();
+  await expect(badge).toContainText("校验通过");
+  await page.locator('.react-flow__node[data-id="compare_0"] .block-heading').dblclick();
+  const width = page.getByLabel(t("semantic.parameterLabel", { instance: "compare_0", name: "WIDTH" }), { exact: true });
+  await width.fill("12");
+  await width.press("Tab");
+  await expect(badge).toContainText("待修复");
+  await page.getByRole("navigation", { name: t("hierarchy.path") }).getByRole("button", { name: "example_bd", exact: true }).click();
+  await page.getByRole("button", { name: t("semantic.locate", { code: "E001" }), exact: true }).first().click();
+  await expect(page.getByRole("navigation", { name: t("hierarchy.path") })).toBeVisible();
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(badge).toContainText("校验通过");
+  await page.locator('.react-flow__node[data-id="compare_0"] .block-heading').dblclick();
+  const threshold = page.getByLabel(t("semantic.parameterLabel", { instance: "compare_0", name: "THRESHOLD" }), { exact: true });
+  await threshold.fill("19");
+  await threshold.press("Tab");
+  await expect(badge).toContainText("校验通过");
+  await page.screenshot({ path: testInfo.outputPath("hierarchy-child-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("navigation", { name: t("hierarchy.path") }).getByRole("button", { name: "example_bd", exact: true }).click();
+  await expect(group).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("hierarchy-parent-mobile.png") });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(group).toHaveCount(0);
+  await expect(page.locator('.react-flow__node[data-id="counter_0"]')).toBeVisible();
+  await expect(badge).toContainText("校验通过");
+  await page.getByRole("button", { name: "重做", exact: true }).click();
+  await page.getByRole("button", { name: "重做", exact: true }).click();
+  await expect(badge).toContainText("校验通过");
+  await page.getByRole("button", { name: "添加 counter_group", exact: true }).click();
+  await expect(page.locator('.react-flow__node[data-id="counter_group_0"]')).toBeVisible();
+  await expect(badge).toContainText("待修复");
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(badge).toContainText("校验通过");
+  await page.getByRole("button", { name: "保存设计", exact: true }).click();
+  const save = page.getByRole("dialog", { name: "保存设计", exact: true });
+  await save.getByLabel("保存路径", { exact: true }).fill("designs/hierarchy.json");
+  await save.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(save).not.toBeVisible();
+  const stored = JSON.parse(readFileSync(path.join(server.directory, "designs/hierarchy.json"), "utf8"));
+  expect(stored.subdesigns.counter_group.instances.find((item) => item.name === "compare_0").params.THRESHOLD).toBe(19);
+  await page.reload();
+  await page.getByRole("button", { name: "打开设计", exact: true }).click();
+  const open = page.getByRole("dialog", { name: "打开设计", exact: true });
+  await open.getByLabel("打开路径", { exact: true }).fill("designs/hierarchy.json");
+  await open.getByRole("button", { name: "打开", exact: true }).click();
+  await expect(open).not.toBeVisible();
+  await expect(group).toBeVisible();
+  await expect(badge).toContainText("校验通过");
+});
 import { test, expect } from "@playwright/test";
 import { spawn, execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -28,7 +97,9 @@ test.beforeEach(async ({ page }, testInfo) => {
   cpSync(path.join(root, "examples"), path.join(directory, "examples"), { recursive: true });
   if (existsSync(path.join(root, "ip_library/builtin"))) cpSync(path.join(root, "ip_library/builtin"), path.join(directory, "ip_library/builtin"), { recursive: true });
   const serverModule = testInfo.title.includes("[mock-sdk]") ? "scripts.mock_copilot_server" : "bdgui";
-  const child = spawn(python, ["-u", "-m", serverModule, "--workspace", directory, "--port", "0"], {
+  const hierarchical = testInfo.title.includes("[hierarchy]");
+  if (hierarchical) execFileSync(python, ["-m", "scripts.gui_benchmark", "--output", directory, "--instances", "100", "--groups", "2"], { cwd: root, timeout: 60000 });
+  const child = spawn(python, ["-u", "-m", serverModule, "--workspace", directory, "--port", "0", ...(hierarchical ? ["--design", "design.json"] : [])], {
     cwd: root, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32",
   });
   const exited = new Promise((resolve) => child.once("close", resolve));
@@ -56,6 +127,29 @@ async function openEditor(page) {
   await page.goto(server.url);
   await expect(page.getByRole("heading", { name: "example_bd", level: 1, exact: true })).toBeVisible();
 }
+
+test("[hierarchy] compact ports expand and bundled nets remain individually selectable", async ({ page }, testInfo) => {
+  await page.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());
+  await page.goto(server.url);
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  const group = page.locator('.react-flow__node[data-id="group_0"]');
+  await expect(group.locator(".compact-pins")).toBeVisible();
+  await group.getByRole("button", { name: t("hierarchy.expandPorts", { name: "group_0" }), exact: true }).click();
+  await expect(group.locator(".node-pin").first()).toBeVisible();
+  await group.getByRole("button", { name: t("hierarchy.collapsePorts", { name: "group_0" }), exact: true }).click();
+  await expect(group.locator(".compact-pins")).toBeVisible();
+  await page.getByRole("button", { name: "适应画布", exact: true }).click();
+  const bundle = page.locator('.react-flow__edge[data-id="bundle:group_0:group_1"]');
+  await bundle.locator(".react-flow__edge-textwrapper").click();
+  const dialog = page.getByRole("dialog", { name: t("hierarchy.networks"), exact: true });
+  await expect(dialog).toBeVisible();
+  const target = dialog.locator(".hierarchy-net-list button").first();
+  const selected = (await target.innerText()).trim().split(/\s/)[0];
+  await target.click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByLabel("网络名称", { exact: true })).toHaveValue(selected);
+  await page.screenshot({ path: testInfo.outputPath("hierarchy-bundle-desktop.png") });
+});
 
 test("preview confirm search drag validate and undo use the real backend", async ({ page }, testInfo) => {
   const errors = [];

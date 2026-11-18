@@ -42,7 +42,7 @@ export function endpointObject(value) {
 }
 
 export function syncDocument(previous, canvas, metadata) {
-  if (!previous || ![2, 3].includes(previous.schema_version)) throw new Error(t("semantic.notReady"));
+  if (!previous || ![2, 3, 4].includes(previous.schema_version)) throw new Error(t("semantic.notReady"));
   if ([previous.instances, previous.nets].some((items) => new Set(items.map((item) => item.name)).size !== items.length)) throw new Error(t("semantic.duplicateDraft"));
   const candidates = [...(previous.project_ips ?? []), ...metadata];
   const instances = Object.entries(canvas.instances).map(([name, item]) => {
@@ -90,7 +90,7 @@ export function replaceEndpoint(document, name, index, endpoint) {
   const result = structuredClone(document);
   const matches = result.nets.filter((net) => net.name === name);
   if (matches.length !== 1 || !Number.isInteger(index) || index < 0 || index >= matches[0].endpoints.length) throw new Error(t("semantic.invalidEndpoint"));
-  result.schema_version = 3;
+  result.schema_version = Math.max(3, result.schema_version);
   matches[0].endpoints[index] = structuredClone(endpoint);
   return result;
 }

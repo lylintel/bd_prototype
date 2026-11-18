@@ -246,6 +246,9 @@ def _endpoint(raw, ports, instances, budget, depth=0, index=0):
 
 
 def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) -> Resolution:
+    if isinstance(document, dict) and document.get("schema_version") == 4:
+        from core.hierarchy import resolve_hierarchy
+        return resolve_hierarchy(document, library)
     findings, ports, instances, nets = [], {}, {}, []
     if (not isinstance(document, dict) or type(document.get("schema_version")) is not int
             or document["schema_version"] not in (2, 3) or not isinstance(document.get("name"), str)

@@ -1,3 +1,14 @@
+test("compact hierarchy geometry uses display anchors without changing logical ports", () => {
+  const ports = Array.from({ length: 200 }, (_, index) => ({ endpoint: `group.pin_${index}`, drives: index >= 100 }));
+  const compact = { name: "group", compact: true, ports };
+  const geometry = nodeGeometry(compact);
+  assert.equal(geometry.initialHeight, 186);
+  assert.equal(geometry.handles.length, 2);
+  assert.equal(compact.ports.length, 200);
+  assert.equal(nodeGeometry({ ...compact, compact: false }).handles.length, 200);
+  assert.ok(geometry.handles.every((handle) => handle.y >= 82 && handle.y <= 130));
+  assert.equal(sameNodeData(compact, { ...compact, compact: false }), false);
+});
 import test from "node:test";
 import assert from "node:assert/strict";
 import { edgeLabelPosition, nodeGeometry, sameNodeData } from "./performance.js";

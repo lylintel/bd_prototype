@@ -55,5 +55,30 @@ P4.2 完整 scripts/check.py 通过，包含 18 条既有浏览器流程；记�
 
 ## 尚待完成
 
-P4.3 层次设计、P4.4 Worker 布局与密集连线显示、P4.5 输出虚拟化、P4.6 补丁历史及最终门禁。
+P4.4 Worker 布局与密集连线显示、P4.5 输出虚拟化、P4.6 补丁历史及最终门禁。
 原首屏/帧率预算未放宽，超时不视为通过，真实模型仍不调用。
+
+## P4.3 层次化设计
+
+已实现 v4 定义表、非破坏迁移、选择折叠、自动边界端口、同项目 IP 复用、双击进入/面包屑退出、跨层诊断定位与独立模块输出。
+根文档统一保存和撤销，布局 v1 scopes 独立存放。真实浏览器测试覆盖子层参数、根级错误、复用后未连接诊断、撤销/重做、保存重开以及端口摘要/网络束选择；桌面和手机截图均已检查。
+新示例 examples/hierarchy/counter.json 的冻结 HDL 通过严格 Verilator --lint-only，无警告豁免；原示例和旧 golden 未变。
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.gui_benchmark --output build/phase4-hierarchy-fixture --instances 500 --groups 10
+node web/e2e/performance.mjs --sizes 500 --samples 3 --fixture build/phase4-hierarchy-fixture --report build/phase4-p43-verified --strict
+```
+
+同一固定种子拓扑：500 个叶实例、10 个顶层块、1337 根顶层网络。不是删减到 10 个叶实例。
+
+| 样本 | 首屏 ms | 平移 fps | 缩放 fps | 拖动 fps | 重渲染节点 | 预算 |
+|---:|---:|---:|---:|---:|---:|---|
+| 1 | 1625.923 | 59.646 | 59.950 | 57.233 | 1 | 通过 |
+| 2 | 1376.510 | 60.008 | 60.260 | 56.096 | 1 | 通过 |
+| 3 | 1694.102 | 59.721 | 59.091 | 59.613 | 1 | 通过 |
+
+此前 performance/indexed/compact/bundled/bounded/shared 目录中的失败样本全部保留，未放宽预算；定位过程见 D037。
+限制：跨分组混合拼接须先拆分；最大 200 个定义、16 层、2 MiB。网络束与代理锚点仅聚合显示，不改变电气连接。密集图仍非全局避障，也不构成 CDC 或时序签核。
+
+P4.3 完整门禁通过：605 项 Python 测试、72 个子测试、49 项前端单测、20 条真实浏览器流程；Ruff/ESLint/typecheck/build 和严格 HDL lint 全绿。
+日志 build/phase4-p43-check.log；独立语义性能中位数 282.339ms、最大 312.031ms，通过原预算。

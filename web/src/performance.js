@@ -9,7 +9,7 @@ export function recordRender(kind, identifier) {
 export function sameNodeData(previous, next) {
   if (previous === next) return true;
   if (!previous || !next) return false;
-  if (["name", "module", "external", "active", "connectable", "highlight", "onPin"].some((key) => previous[key] !== next[key])) return false;
+  if (["name", "module", "external", "active", "connectable", "highlight", "onPin", "compact", "foldable", "onTogglePins"].some((key) => previous[key] !== next[key])) return false;
   return (previous.parameters === next.parameters || JSON.stringify(previous.parameters) === JSON.stringify(next.parameters))
     && (previous.ports === next.ports || JSON.stringify(previous.ports) === JSON.stringify(next.ports));
 }
@@ -18,7 +18,11 @@ export function nodeGeometry(data) {
   const ports = (data.ports ?? []).filter(Boolean);
   const initialWidth = data.external ? 156 : 250;
   const inputs = ports.filter((port) => !port.drives), outputs = ports.filter((port) => port.drives);
-  const initialHeight = data.external ? 59 : 94 + Math.max(92, 26 + Math.max(inputs.length, outputs.length) * 30);
+  const initialHeight = data.external ? 59 : data.compact ? 186 : 94 + Math.max(92, 26 + Math.max(inputs.length, outputs.length) * 30);
+  if (data.compact) return { initialWidth, initialHeight, handles: [
+    ...(inputs.length ? [{ id: "~compact-in", type: "target", position: "left", x: -5, y: 101, width: 10, height: 10 }] : []),
+    ...(outputs.length ? [{ id: "~compact-out", type: "source", position: "right", x: initialWidth - 5, y: 101, width: 10, height: 10 }] : []),
+  ] };
   const handles = ports.map((port) => ({ id: port.endpoint, type: port.drives ? "source" : "target", position: port.drives ? "right" : "left",
     x: port.drives ? initialWidth - 5 : -5, y: data.external ? 24.5 : 82 + (port.drives ? outputs : inputs).indexOf(port) * 30, width: 10, height: 10 }));
   return { initialWidth, initialHeight, handles };

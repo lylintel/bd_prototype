@@ -42,7 +42,10 @@ P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、
 
 GUI 与新语义 API 支持明确的 IP 版本引用、参数表达式、可定位诊断和显式修复。v3 端点支持切片、定宽常量和拼接，
 可从连线属性编辑；示例见 [examples/semantic/connections.json](examples/semantic/connections.json)。旧示例、旧 CLI/API 和原 HDL golden 保持兼容。
-格式、限制与迁移见 [docs/design-semantics.md](docs/design-semantics.md)。v2/v3 不能直接交给只接受旧格式的 CLI。
+格式、限制与迁移见 [docs/design-semantics.md](docs/design-semantics.md)。v2/v3/v4 不能直接交给只接受旧格式的 CLI。
+
+v4 支持多选实例折叠为可复用子设计、双击进入和面包屑返回。子层参数及连接修改写回整个权威设计，生成每个子设计的独立模块。
+层次示例见 [examples/hierarchy/counter.json](examples/hierarchy/counter.json)。高端口数子设计默认显示可展开摘要，网络束仅聚合显示，点击后可选择真实网络。
 
 自动校验防抖为 150ms。性能生成器可用 `python -m scripts.synthetic_design --instances 2000 --connections 4 --samples 11` 运行；
 性能测量使用新子进程，每样本前收集 GC。本机预算超限仅告警，`scripts/check.py --strict-perf` 可强制失败；
@@ -56,7 +59,7 @@ CI 与本地共用 [scripts/check.py](scripts/check.py)，依次执行 Ruff、�
 追加 `--strict-perf` 可将预算超限设为失败。CI 在固定 Ubuntu runner 类别上先采集五次（每次 11 样本），
 逐次数据写 job summary 并归档；任一次超限时仅性能预算步骤自动非阻塞，功能检查始终阻塞。
 
-准备 Python 3.10+、Node.js 24 和 Icarus Verilog（`iverilog`、`vvp` 必须在 PATH；Ubuntu 可用 `sudo apt-get install iverilog`），已有虚拟环境后安装依赖：
+准备 Python 3.10+、Node.js 24、Icarus Verilog 和 Verilator（`iverilog`、`vvp`、`verilator` 须在 PATH；Ubuntu 可用 `sudo apt-get install iverilog verilator`）。Windows 可用 OSS CAD Suite 便携包；直接使用 `verilator_bin.exe` 时，设置 `BD_VERILATOR` 为可执行文件路径、`VERILATOR_ROOT` 为包内 `share/verilator` 目录。已有虚拟环境后安装依赖：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt

@@ -72,7 +72,7 @@ def load_document(text: str) -> dict:
 def migrate(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata], *, target_version: int | None = None) -> dict:
     if not isinstance(document, dict):
         raise _invalid("$", "object")
-    if target_version not in (None, 2, 3):
+    if target_version not in (None, 2, 3, 4):
         raise _invalid("$.schema_version", "version")
     if "schema_version" in document:
         check_document(document)
@@ -81,6 +81,8 @@ def migrate(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata], 
         result = deepcopy(document)
         if target_version is not None:
             result["schema_version"] = target_version
+        if result["schema_version"] == 4:
+            result.setdefault("subdesigns", {})
         return result
     if set(document) != {"name", "modules", "ports", "instances", "nets"}:
         raise _invalid("$", "fields")
@@ -149,5 +151,7 @@ def migrate(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata], 
         nets.append({"name": name, "endpoints": converted})
     result = {"schema_version": target_version or 2, "name": document["name"], "ports": deepcopy(document["ports"]),
               "instances": instances, "nets": nets, "project_ips": [item.to_dict() for item in selected.values()]}
+    if target_version == 4:
+        result["subdesigns"] = {}
     check_document(result)
     return result

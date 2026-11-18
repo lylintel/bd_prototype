@@ -1,0 +1,249 @@
+{
+  "schema_version": 4,
+  "name": "example_bd",
+  "ports": {
+    "clk": {
+      "direction": "input"
+    },
+    "rst": {
+      "direction": "input"
+    },
+    "match": {
+      "direction": "output"
+    }
+  },
+  "instances": [
+    {
+      "name": "counter_group",
+      "ip": {
+        "id": "counter_group",
+        "version": "1.0.0"
+      }
+    }
+  ],
+  "nets": [
+    {
+      "name": "clk_net",
+      "endpoints": [
+        {
+          "ext": "clk"
+        },
+        {
+          "inst": "counter_group",
+          "port": "boundary_clk_net"
+        }
+      ]
+    },
+    {
+      "name": "rst_net",
+      "endpoints": [
+        {
+          "ext": "rst"
+        },
+        {
+          "inst": "counter_group",
+          "port": "boundary_rst_net"
+        }
+      ]
+    },
+    {
+      "name": "match_net",
+      "endpoints": [
+        {
+          "ext": "match"
+        },
+        {
+          "inst": "counter_group",
+          "port": "boundary_match_net"
+        }
+      ]
+    }
+  ],
+  "project_ips": [
+    {
+      "schema_version": 1,
+      "id": "counter",
+      "version": "1.0.0",
+      "display_name": "counter",
+      "description": "",
+      "tags": [],
+      "source": {
+        "kind": "verilog",
+        "path": "../rtl/counter.v",
+        "sha256": "bb7d4ce8624afcc84f044494eaf44b3b64e9a7f1a6f127be4208f0a78c7ce546",
+        "license": "NOASSERTION"
+      },
+      "language": "verilog-2005",
+      "parameters": [
+        {
+          "name": "WIDTH",
+          "type": "int",
+          "default": "8",
+          "min": 1
+        }
+      ],
+      "ports": [
+        {
+          "name": "clk",
+          "dir": "in",
+          "width": "1"
+        },
+        {
+          "name": "rst",
+          "dir": "in",
+          "width": "1"
+        },
+        {
+          "name": "count",
+          "dir": "out",
+          "width": "((WIDTH - 1) >= (0) ? (WIDTH - 1) - (0) + 1 : (0) - (WIDTH - 1) + 1)",
+          "range": [
+            "WIDTH - 1",
+            0
+          ]
+        }
+      ],
+      "interfaces": []
+    },
+    {
+      "schema_version": 1,
+      "id": "compare_eq",
+      "version": "1.0.0",
+      "display_name": "compare_eq",
+      "description": "",
+      "tags": [],
+      "source": {
+        "kind": "verilog",
+        "path": "../rtl/compare_eq.v",
+        "sha256": "705e9595199f777dfc07d4e03b19328fd756885229cdbf37658e1ed74660fc90",
+        "license": "NOASSERTION"
+      },
+      "language": "verilog-2005",
+      "parameters": [
+        {
+          "name": "WIDTH",
+          "type": "int",
+          "default": "8",
+          "min": 1
+        },
+        {
+          "name": "THRESHOLD",
+          "type": "int",
+          "default": "9",
+          "min": 0
+        }
+      ],
+      "ports": [
+        {
+          "name": "value",
+          "dir": "in",
+          "width": "((WIDTH - 1) >= (0) ? (WIDTH - 1) - (0) + 1 : (0) - (WIDTH - 1) + 1)",
+          "range": [
+            "WIDTH - 1",
+            0
+          ]
+        },
+        {
+          "name": "match",
+          "dir": "out",
+          "width": "1"
+        }
+      ],
+      "interfaces": []
+    }
+  ],
+  "subdesigns": {
+    "counter_group": {
+      "schema_version": 3,
+      "name": "counter_group",
+      "ports": {
+        "boundary_clk_net": {
+          "direction": "input",
+          "signed": false
+        },
+        "boundary_rst_net": {
+          "direction": "input",
+          "signed": false
+        },
+        "boundary_match_net": {
+          "direction": "output",
+          "signed": false
+        }
+      },
+      "instances": [
+        {
+          "name": "counter_0",
+          "ip": {
+            "id": "counter",
+            "version": "1.0.0"
+          },
+          "params": {
+            "WIDTH": 32
+          }
+        },
+        {
+          "name": "compare_0",
+          "ip": {
+            "id": "compare_eq",
+            "version": "1.0.0"
+          },
+          "params": {
+            "WIDTH": 32,
+            "THRESHOLD": 9
+          }
+        }
+      ],
+      "nets": [
+        {
+          "name": "clk_net",
+          "endpoints": [
+            {
+              "inst": "counter_0",
+              "port": "clk"
+            },
+            {
+              "ext": "boundary_clk_net"
+            }
+          ]
+        },
+        {
+          "name": "rst_net",
+          "endpoints": [
+            {
+              "inst": "counter_0",
+              "port": "rst"
+            },
+            {
+              "ext": "boundary_rst_net"
+            }
+          ]
+        },
+        {
+          "name": "count_bus",
+          "endpoints": [
+            {
+              "inst": "counter_0",
+              "port": "count"
+            },
+            {
+              "inst": "compare_0",
+              "port": "value"
+            }
+          ]
+        },
+        {
+          "name": "match_net",
+          "endpoints": [
+            {
+              "inst": "compare_0",
+              "port": "match"
+            },
+            {
+              "ext": "boundary_match_net"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

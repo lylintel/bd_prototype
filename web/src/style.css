@@ -1,3 +1,9 @@
+.hierarchy-path { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: auto; }
+.hierarchy-path button { border: 0; background: transparent; color: inherit; font: inherit; white-space: nowrap; cursor: pointer; }
+.compact-pins { position: relative; height: 92px; display: flex; align-items: center; justify-content: space-around; color: #627581; font-size: 12px; }
+.compact-handle { opacity: 0.2; pointer-events: none; }
+.hierarchy-net-list { display: grid; gap: 4px; max-height: 360px; overflow: auto; }
+.hierarchy-net-list button { justify-content: space-between; }
 :root {
   font-family: "IBM Plex Sans", "Microsoft YaHei", sans-serif;
   color: #2b333b;

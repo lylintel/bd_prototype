@@ -19,6 +19,7 @@ import Diagnostics from "./semantic/Diagnostics.jsx";
 import Connections from "./semantic/Connections.jsx";
 import ExpressionNode from "./semantic/ExpressionNode.jsx";
 import { nodeGeometry, recordRender, sameNodeData } from "./performance.js";
+import { bundleHierarchyEdges, hasSubdesign, mergeScopeState, scopeState } from "./semantic/hierarchy.js";
 import { expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, scheduleInspection, syncDocument } from "./semantic/model.js";
 import "./semantic/semantic.css";
 
@@ -71,8 +72,12 @@ function BlockNode({ data, selected }) {
   const outputs = data.ports.filter((port) => port.drives);
   return <div className={`block-node ${selected ? "is-selected" : ""} ${data.highlight ? "has-error" : ""} ${data.module.includes("compare") ? "tone-amber" : "tone-blue"}`}>
     <div className="block-heading"><div className="block-symbol"><Cpu size={20} strokeWidth={1.5} /></div><div><strong>{data.name}</strong><span>{data.module}</span></div><GripVertical size={14} className="block-grip" /></div>
-    <div className="block-pins"><div>{inputs.map((port) => <Pin key={port.endpoint} port={port} side="left" onPin={data.onPin} active={data.active} connectable={data.connectable} />)}</div><div>{outputs.map((port) => <Pin key={port.endpoint} port={port} side="right" onPin={data.onPin} active={data.active} connectable={data.connectable} />)}</div></div>
-    <div className="block-footer"><span className="rtl-dot" />RTL<span className="block-parameters">{Object.entries(data.parameters).map(([name, value]) => `${name} ${value}`).join(" · ")}</span></div>
+    {data.compact ? <div className="compact-pins">
+      <span>{t("hierarchy.inputs", { count: inputs.length })}</span><IconButton icon={ChevronDown} label={t("hierarchy.expandPorts", { name: data.name })} onClick={() => data.onTogglePins(data.name)} /><span>{t("hierarchy.outputs", { count: outputs.length })}</span>
+      {inputs.length > 0 && <Handle id="~compact-in" type="target" position={Position.Left} style={{ top: 46 }} className="compact-handle" isConnectable={false} />}
+      {outputs.length > 0 && <Handle id="~compact-out" type="source" position={Position.Right} style={{ top: 46 }} className="compact-handle" isConnectable={false} />}
+    </div> : <div className="block-pins"><div>{inputs.map((port) => <Pin key={port.endpoint} port={port} side="left" onPin={data.onPin} active={data.active} connectable={data.connectable} />)}</div><div>{outputs.map((port) => <Pin key={port.endpoint} port={port} side="right" onPin={data.onPin} active={data.active} connectable={data.connectable} />)}</div></div>}
+    <div className="block-footer"><span className="rtl-dot" />RTL<span className="block-parameters">{Object.entries(data.parameters).map(([name, value]) => `${name} ${value}`).join(" · ")}</span>{data.foldable && !data.compact && <IconButton icon={ChevronDown} label={t("hierarchy.collapsePorts", { name: data.name })} onClick={() => data.onTogglePins(data.name)} />}</div>
   </div>;
 }
 
@@ -105,6 +110,8 @@ export default function App() {
   const flow = useReactFlow();
   const nodesReady = useNodesInitialized();
   const [history, setHistory] = useState(null);
+  const [scopePath, setScopePath] = useState([]);
+  const [expandedGroups, setExpandedGroups] = useState([]);
   const [baseDir, setBaseDir] = useState("examples");
   const [documentPath, setDocumentPath] = useState("");
   const [token, setToken] = useState("");
@@ -140,14 +147,26 @@ export default function App() {
   const inspectedSnapshot = useRef(null);
   const pinAction = useRef(pickPin);
   const layoutAction = useRef(moveNode);
+  const navigationAction = useRef(null);
   const stablePickPin = useCallback((endpoint) => pinAction.current(endpoint), []);
   const onNodeDragStop = useCallback((event, node) => layoutAction.current(node), []);
   useEffect(() => { pinAction.current = pickPin; layoutAction.current = moveNode; });
   const editorState = useRef(null);
-  editorState.current = { history, baseDir, busy };
-  const design = history?.current.design;
-  const document = history?.current.document ?? design;
-  const layout = history?.current.layout;
+  const rootDocument = history?.current.document ?? history?.current.design;
+  const scope = hasSubdesign(rootDocument, scopePath.at(-1)) ? scopePath.at(-1) : "";
+  const toggleGroupPins = useCallback((name) => setExpandedGroups((current) => current.includes(`${scope}:${name}`) ? current.filter((item) => item !== `${scope}:${name}`) : [...current, `${scope}:${name}`]), [scope]);
+  const view = useMemo(() => scopeState(history?.current, scope), [history?.current, scope]);
+  editorState.current = { history, baseDir, busy, scope, view };
+  const design = view?.design;
+  const document = view?.document ?? design;
+  const layout = view?.layout;
+  useEffect(() => { navigationAction.current = (node) => {
+    const target = design?.instances[node.id]?.module;
+    if (!hasSubdesign(rootDocument, target)) return false;
+    setScopePath((current) => [...current, target]);
+    setSelection(null); setPendingPin(null); setViewportRequest({ fit: true });
+    return true;
+  }; }, [design, rootDocument]);
   const connectionReady = !preview && !checking && !busy && inspectedDesign.current === design && inspectedSnapshot.current?.document === document && inspectedSnapshot.current?.baseDir === baseDir;
   const interfaces = connectionReady ? inspection.interfaces : emptyInspection.interfaces;
   const hasExpressions = useMemo(() => inspection.connections?.some((net) => net.endpoints.some((endpoint) => endpoint.expression)), [inspection.connections]);
@@ -155,9 +174,13 @@ export default function App() {
   const expressionGraph = useMemo(() => projectConnections(inspection.connections ?? [], expressionLayout ?? {}), [inspection.connections, expressionLayout]);
   const onNodesChange = useCallback((changes) => { if (!preview) setNodes((current) => applyNodeChanges(changes.filter((change) => change.type !== "remove"), current)); }, [preview]);
   const onMoveEnd = useCallback((event, viewport) => setZoom(Math.round(viewport.zoom * 100)), []);
-  const onNodeClick = useCallback((event, node) => { if (!preview) { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setPendingPin(null); } }, [preview]);
-  const onNodeDoubleClick = useCallback((event, node) => { if (!preview) { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setMobilePanel("inspector"); } }, [preview]);
-  const onEdgeClick = useCallback((event, edge) => { if (!preview) { setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setPendingPin(null); } }, [preview]);
+  const onNodeClick = useCallback((event, node) => { if (!preview) {
+    setSelection((previous) => node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id,
+      ids: event.shiftKey || event.ctrlKey || event.metaKey ? [...new Set([...(previous?.ids ?? (previous?.type === "node" ? [previous.id] : [])), node.id])] : [node.id] });
+    setPendingPin(null);
+  } }, [preview]);
+  const onNodeDoubleClick = useCallback((event, node) => { if (!preview && !navigationAction.current?.(node)) { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setMobilePanel("inspector"); } }, [preview]);
+  const onEdgeClick = useCallback((event, edge) => { if (!preview) { if (edge.data.bundle) setModal({ kind: "bundle", edges: edge.data.bundle }); else setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setPendingPin(null); } }, [preview]);
   const onPaneClick = useCallback(() => { setSelection(null); setPendingPin(null); setMobilePanel(null); }, []);
   const isValidConnection = useCallback((connection) => connectionReady && connectionError(design, connection.sourceHandle, connection.targetHandle, interfaces) === null, [connectionReady, design, interfaces]);
 
@@ -177,7 +200,8 @@ export default function App() {
   }
 
   function acceptDocument(result) {
-    const versioned = [2, 3].includes(result.design.schema_version);
+    const versioned = [2, 3, 4].includes(result.design.schema_version);
+    setScopePath([]);
     const canvas = validateDocumentShape(versioned ? result.inspection.canvas : result.design);
     setHistory({ past: [], current: { design: canvas, document: versioned ? result.design : null, layout: { ...initialLayout, ...result.layout } }, future: [] });
     setBaseDir(result.base_dir);
@@ -203,19 +227,19 @@ export default function App() {
 
   useEffect(() => {
     if (!design || !token) return;
-    if (inspectedSnapshot.current?.document === document && inspectedSnapshot.current?.baseDir === baseDir) { setChecking(false); return; }
+    if (inspectedSnapshot.current?.document === document && inspectedSnapshot.current?.baseDir === baseDir && (!scope || inspectedSnapshot.current?.rootDocument === rootDocument)) { setChecking(false); return; }
     setChecking(true);
     return scheduleInspection(
-      (signal) => api("/api/semantic/inspect", { design: document, base_dir: baseDir }, signal),
+      (signal) => api(scope ? "/api/hierarchy/inspect" : "/api/semantic/inspect", { design: scope ? rootDocument : document, scope, base_dir: baseDir }, signal),
       (result) => {
         inspectedDesign.current = design;
-        inspectedSnapshot.current = { document, baseDir };
+        inspectedSnapshot.current = { document, baseDir, rootDocument };
         setInspection(normalizeInspection(result));
         setChecking(false);
       },
       (error) => { setInspection({ ...emptyInspection, diagnostics: [error.message] }); setChecking(false); },
     );
-  }, [design, document, baseDir, token]);
+  }, [design, document, rootDocument, scope, baseDir, token]);
 
   useEffect(() => { if (document) setJsonDraft(JSON.stringify(document, null, 2)); }, [document]);
   useEffect(() => {
@@ -244,16 +268,18 @@ export default function App() {
     if (!current.history || current.busy) return false;
     try {
       const previous = current.history;
-      const previousDesign = previous.current.design;
-      const next = clone(previous.current);
+      const previousView = current.view;
+      const previousDesign = previousView.design;
+      let next = clone(previousView);
       update(next.design, next.layout);
       const changed = JSON.stringify(next.design) !== JSON.stringify(previousDesign);
       if (replacement) next.document = clone(replacement);
-      else if (changed && (previous.current.document || upgrade)) {
+      else if (changed && (previousView.document || upgrade)) {
         if (upgrade && inspectedDesign.current !== previousDesign) throw new Error(t("semantic.notReady"));
-        next.document = syncDocument(previous.current.document ?? inspection.document, next.design,
+        next.document = syncDocument(previousView.document ?? inspection.document, next.design,
           [...(inspection.metadata ?? []), ...(ipCatalog.baseDir === current.baseDir ? ipCatalog.entries.map((entry) => entry.metadata) : [])]);
-      } else if (!changed) next.document = previous.current.document;
+      } else if (!changed) next.document = previousView.document;
+      next = mergeScopeState(previous.current, next, current.scope);
       if (JSON.stringify(next) === JSON.stringify(previous.current)) return true;
       if (JSON.stringify(next.design) === JSON.stringify(previousDesign)) next.design = previousDesign;
       else { setChecking(true); setInspection({ ...emptyInspection }); }
@@ -271,9 +297,10 @@ export default function App() {
     if (preview || current.busy || !current.history) return;
     const previous = current.history;
     const before = previous.current;
-    const position = before.layout.nodes[node.id];
+    const currentView = current.view;
+    const position = currentView.layout.nodes[node.id];
     if (position?.x === node.position.x && position?.y === node.position.y) return;
-    const next = { ...before, layout: { ...before.layout, nodes: { ...before.layout.nodes, [node.id]: { ...node.position } } } };
+    const next = mergeScopeState(before, { ...currentView, layout: { ...currentView.layout, nodes: { ...currentView.layout.nodes, [node.id]: { ...node.position } } } }, current.scope);
     const nextHistory = { past: [...previous.past, before].slice(-80), current: next, future: [] };
     editorState.current = { ...current, history: nextHistory };
     setHistory(nextHistory);
@@ -284,10 +311,10 @@ export default function App() {
   async function applyCopilotProposal(proposal, selected) {
     const current = editorState.current;
     if (!current.history || current.busy) throw new Error(t("semantic.notReady"));
-    const original = current.history.current.document ?? current.history.current.design;
+    const original = current.view.document ?? current.view.design;
     const result = await api("/api/ops/accept", { proposal_id: proposal.id, selected, confirmed: true, design: original, base_dir: current.baseDir });
     const latest = editorState.current;
-    if ((latest.history.current.document ?? latest.history.current.design) !== original || latest.baseDir !== current.baseDir) throw new Error(t("semantic.notReady"));
+    if ((latest.view.document ?? latest.view.design) !== original || latest.baseDir !== current.baseDir) throw new Error(t("semantic.notReady"));
     const applied = mutate((next, nextLayout) => {
       for (const key of Object.keys(next)) delete next[key];
       Object.assign(next, result.canvas);
@@ -304,11 +331,11 @@ export default function App() {
 
   async function generateProposal(prompt, allowRemovals) {
     const current = editorState.current;
-    const original = current.history.current.document ?? current.history.current.design;
+    const original = current.view.document ?? current.view.design;
     const selectedInstances = selection?.type === "node" && !selection.id.startsWith("@") ? [selection.id] : [];
     const result = await api("/api/ai/propose", { design: original, base_dir: current.baseDir, prompt, allow_removals: allowRemovals, selected_instances: selectedInstances });
     const latest = editorState.current;
-    if ((latest.history.current.document ?? latest.history.current.design) !== original || latest.baseDir !== current.baseDir) {
+    if ((latest.view.document ?? latest.view.design) !== original || latest.baseDir !== current.baseDir) {
       await api("/api/ops/discard", { proposal_id: result.id });
       throw new Error(t("semantic.notReady"));
     }
@@ -320,7 +347,7 @@ export default function App() {
   async function selectProposal(proposal, selected) {
     const current = editorState.current;
     const result = await api("/api/ops/select", { proposal_id: proposal.id, selected,
-      design: current.history.current.document ?? current.history.current.design, base_dir: current.baseDir });
+      design: current.view.document ?? current.view.design, base_dir: current.baseDir });
     setPreview(result);
     return result;
   }
@@ -357,8 +384,10 @@ export default function App() {
     for (const [name, instance] of Object.entries(design.instances)) {
       const definition = design.modules[instance.module];
       const parameters = inspection.parameters?.[name] ?? Object.fromEntries(Object.entries(definition?.parameters ?? {}).map(([key, spec]) => [key, instance.parameters?.[key] ?? spec.default]));
-      result.push({ id: name, type: "block", position: layout.nodes[name] ?? defaultPosition(name, design), selected: selection?.id === name,
-        data: { name, module: instance.module, parameters, ports: Object.keys(definition?.ports ?? {}).map((port) => endpointInfo(design, `${name}.${port}`, interfaces)).filter(Boolean), onPin: stablePickPin, active: pendingPin?.startsWith(`${name}.`) ? pendingPin : null, connectable: connectionReady, highlight: structured ? errorNodes.has(name) : errors.includes(`instances.${name}.`) || errors.includes(`${name}.`) } });
+      result.push({ id: name, type: "block", position: layout.nodes[name] ?? defaultPosition(name, design), selected: selection?.ids?.includes(name) || selection?.id === name,
+        data: { name, module: instance.module, parameters, foldable: hasSubdesign(rootDocument, instance.module) && Object.keys(definition?.ports ?? {}).length > 32,
+          compact: hasSubdesign(rootDocument, instance.module) && Object.keys(definition?.ports ?? {}).length > 32 && !expandedGroups.includes(`${scope}:${name}`), onTogglePins: toggleGroupPins,
+          ports: Object.keys(definition?.ports ?? {}).map((port) => endpointInfo(design, `${name}.${port}`, interfaces)).filter(Boolean), onPin: stablePickPin, active: pendingPin?.startsWith(`${name}.`) ? pendingPin : null, connectable: connectionReady, highlight: structured ? errorNodes.has(name) : errors.includes(`instances.${name}.`) || errors.includes(`${name}.`) } });
     }
     for (const name of Object.keys(design.ports)) {
       const id = externalId(name);
@@ -378,7 +407,7 @@ export default function App() {
           data: reusable ? prior.data : node.data };
       });
     });
-  }, [design, layout, inspection, selection, pendingPin, connectionReady]);
+  }, [design, layout, inspection, selection, pendingPin, connectionReady, expandedGroups, scope]);
 
   const invalidNets = new Set((inspection.structuredDiagnostics ?? []).filter((item) => item.severity === "error").map((item) => item.location.net).filter(Boolean));
   const selectedNetId = selection?.type === "net" ? selection.id : null;
@@ -402,7 +431,8 @@ export default function App() {
   }))) : [], [design, interfaces, inspection.structuredDiagnostics, selectedNetId, selectedSink, expressionGraph]);
 
   const candidate = preview ? candidateGraph(preview, layout.nodes, defaultPosition) : null;
-  const graph = candidate ? mergePreview(nodes, edges, candidate.nodes, candidate.edges, designChanges(design, preview.canvas)) : { nodes, edges };
+  const displayedEdges = useMemo(() => bundleHierarchyEdges(edges, nodes), [edges, nodes]);
+  const graph = candidate ? mergePreview(nodes, edges, candidate.nodes, candidate.edges, designChanges(design, preview.canvas)) : { nodes, edges: displayedEdges };
 
   function insertModule(module, position) {
     let id;
@@ -465,14 +495,35 @@ export default function App() {
     try { const result = await api("/api/designs"); setModal({ kind: "open", path: result.paths[0] ?? "", paths: result.paths }); }
     catch (error) { notify(error.message, true); }
   }
-  function saveDialog() { setModal({ kind: "save", path: documentPath.startsWith("designs/") ? documentPath : `designs/${design.name}.json` }); }
+  function saveDialog() { setModal({ kind: "save", path: documentPath.startsWith("designs/") ? documentPath : `designs/${rootDocument.name}.json` }); }
+
+  async function collapseSelection() {
+    const selected = (selection?.ids ?? (selection?.type === "node" ? [selection.id] : [])).filter((name) => design.instances[name]);
+    const snapshot = editorState.current.history.current;
+    const result = await api("/api/hierarchy/collapse", { design: document, base_dir: baseDir, selection: selected, name: modal.name });
+    if (editorState.current.history.current !== snapshot) throw new Error(t("semantic.notReady"));
+    if (!result.valid) throw new Error(normalizeInspection(result).diagnostics[0]);
+    const applied = mutate((next, nextLayout) => {
+      const childNodes = Object.fromEntries(selected.map((name) => [name, nextLayout.nodes[name] ?? defaultPosition(name, design)]));
+      const position = childNodes[selected[0]];
+      for (const key of Object.keys(next)) delete next[key];
+      Object.assign(next, result.canvas);
+      for (const name of selected) delete nextLayout.nodes[name];
+      nextLayout.nodes[modal.name] = position;
+      nextLayout.schema_version = 1;
+      nextLayout.scopes = { ...nextLayout.scopes, [modal.name]: { nodes: childNodes, viewport: initialLayout.viewport } };
+    }, t("hierarchy.folded"), false, result.document);
+    if (!applied) throw new Error(t("semantic.notReady"));
+    setSelection({ type: "node", id: modal.name });
+  }
 
   async function submitModal(event) {
     event.preventDefault();
     try {
       if (modal.kind === "save") {
         setBusy("保存中");
-        const result = await api("/api/save", { design: document, layout: { ...layout, viewport: flow.getViewport() }, base_dir: baseDir, path: modal.path });
+        const savedLayout = scope ? mergeScopeState(history.current, { ...view, layout: { ...layout, viewport: flow.getViewport() } }, scope).layout : { ...layout, viewport: flow.getViewport() };
+        const result = await api("/api/save", { design: rootDocument, layout: savedLayout, base_dir: baseDir, path: modal.path });
         acceptDocument(result);
         notify(`已保存 ${result.path}`); setActivity(`设计与布局已保存 · ${result.path}`);
       } else if (modal.kind === "open") {
@@ -480,6 +531,8 @@ export default function App() {
         setBusy("打开中");
         acceptDocument(await api(`/api/load?path=${encodeURIComponent(modal.path)}`));
         setActivity(`已打开 ${modal.path}`);
+      } else if (modal.kind === "hierarchy") {
+        await collapseSelection();
       } else if (modal.kind === "external") {
         let id;
         const ok = mutate((next, nextLayout) => {
@@ -509,7 +562,7 @@ export default function App() {
   async function generate() {
     try {
       setBusy("生成中");
-      const result = await api("/api/generate", { design: document, base_dir: baseDir });
+      const result = await api("/api/generate", { design: rootDocument, base_dir: baseDir });
       setInspection((previous) => ({ ...previous, files: result.files }));
       setTab("bd"); setPanelOpen(true);
       setActivity(`已生成 ${result.paths.join(" / ")}`); notify("两层 Verilog 已写入 build/gui/");
@@ -520,8 +573,9 @@ export default function App() {
   async function validateNow() {
     try {
       setChecking(true);
-      const result = normalizeInspection(await api("/api/semantic/inspect", { design: document, base_dir: baseDir }));
+      const result = normalizeInspection(await api(scope ? "/api/hierarchy/inspect" : "/api/semantic/inspect", { design: scope ? rootDocument : document, scope, base_dir: baseDir }));
       inspectedDesign.current = design;
+      inspectedSnapshot.current = { document, rootDocument, baseDir };
       setInspection(result); setTab("diagnostics"); setPanelOpen(true);
       notify(result.valid ? "设计校验通过" : result.diagnostics[0], !result.valid);
     } catch (error) { notify(error.message, true); }
@@ -546,6 +600,14 @@ export default function App() {
       const location = message.location ?? {};
       const id = location.instance ?? (location.external ? externalId(location.external) : null);
       setPendingPin(null);
+      const destination = hasSubdesign(rootDocument, location.design) ? location.design : "";
+      if (destination !== scope) {
+        setScopePath(destination ? [destination] : []);
+        setSelection(id ? { type: "node", id } : location.net ? { type: "net", id: location.net } : null);
+        setViewportRequest({ fit: true, waitFor: id });
+        setMobilePanel("inspector");
+        return;
+      }
       if (id && (Object.hasOwn(design.instances, id) || id.startsWith("@") && Object.hasOwn(design.ports, id.slice(1)))) {
         setSelection({ type: "node", id });
         flow.fitView({ nodes: [{ id }], duration: 250, maxZoom: 1.15, padding: 0.4 });
@@ -571,7 +633,7 @@ export default function App() {
     const sourceBase = editorState.current.baseDir;
     setFixing(true);
     try {
-      const result = await api("/api/semantic/fix", { design: snapshot.document ?? snapshot.design, base_dir: sourceBase, diagnostic });
+      const result = await api("/api/semantic/fix", { design: document, base_dir: sourceBase, diagnostic });
       if (editorState.current.history.current !== snapshot || editorState.current.baseDir !== sourceBase) throw new Error(t("semantic.notReady"));
       if (!result.canvas || !result.document) throw new Error(normalizeInspection(result).diagnostics[0]);
       const applied = mutate((next) => { for (const key of Object.keys(next)) delete next[key]; Object.assign(next, result.canvas); }, t("semantic.fixApplied"), false, result.document);
@@ -597,7 +659,7 @@ export default function App() {
     const current = editorState.current;
     const snapshot = current.history.current;
     if (!connectionReady || current.busy) throw new Error(t("semantic.notReady"));
-    const candidate = replaceEndpoint(snapshot.document ?? inspection.document, name, index, endpoint);
+    const candidate = replaceEndpoint(current.view.document ?? inspection.document, name, index, endpoint);
     const result = await api("/api/semantic/inspect", { design: candidate, base_dir: current.baseDir });
     if (editorState.current.history.current !== snapshot || editorState.current.baseDir !== current.baseDir) throw new Error(t("semantic.notReady"));
     if (!result.canvas || !result.document) throw new Error(normalizeInspection(result).diagnostics[0]);
@@ -616,7 +678,7 @@ export default function App() {
   const external = selectionNode?.startsWith("@") ? design.ports[selectionNode.slice(1)] : null;
   const definition = instance ? design.modules[instance.module] : null;
   const selectedNet = selection?.type === "net" ? design.nets[selection.id] : null;
-  const semanticDocument = history.current.document ?? inspection.document;
+  const semanticDocument = view.document ?? inspection.document;
   const selectedNetRecord = selectedNet && semanticDocument?.nets.find((net) => net.name === selection.id);
   const connectionPorts = [...Object.keys(design.ports).map(externalId), ...Object.entries(design.instances).flatMap(([name, item]) =>
     Object.keys(design.modules[item.module]?.ports ?? {}).map((port) => `${name}.${port}`))].map((value) => ({ ...endpointInfo(design, value, interfaces), value }));
@@ -624,7 +686,7 @@ export default function App() {
 
   const renameSelected = (name) => {
     let newId;
-    const replacement = history.current.document ? renameSemantic(history.current.document, selectionNode, name) : null;
+    const replacement = view.document ? renameSemantic(view.document, selectionNode, name) : null;
     const ok = mutate((next, nextLayout) => { newId = renameNode(next, nextLayout, selectionNode, name); }, "名称与端点引用已更新", false, replacement);
     if (ok) setSelection({ type: "node", id: newId });
     return ok;
@@ -647,7 +709,7 @@ export default function App() {
     </header>
 
     <div className="design-toolbar">
-      <div className="document-title"><Workflow size={17} /><h1>{design.name}</h1><span className={`save-state ${saved ? "" : "dirty"}`}>{saved ? "已保存" : "未保存"}</span></div>
+      <div className="document-title"><Workflow size={17} />{scope ? <nav className="hierarchy-path" aria-label={t("hierarchy.path")}><button onClick={() => { setScopePath([]); setSelection(null); setViewportRequest({ fit: true }); }}>{rootDocument.name}</button>{scopePath.map((name, index) => <React.Fragment key={`${name}-${index}`}><span>/</span><button onClick={() => { setScopePath(scopePath.slice(0, index + 1)); setSelection(null); setViewportRequest({ fit: true }); }}>{name}</button></React.Fragment>)}</nav> : <h1>{design.name}</h1>}<span className={`save-state ${saved ? "" : "dirty"}`}>{saved ? "已保存" : "未保存"}</span></div>
       <div className="design-tools">
         <IconButton icon={PanelLeft} label="模块面板" className={mobilePanel === "library" ? "active" : ""} onClick={() => setMobilePanel(mobilePanel === "library" ? null : "library")} />
         <IconButton icon={Undo2} label="撤销" onClick={undo} disabled={!history.past.length || Boolean(busy || preview)} />
@@ -677,7 +739,7 @@ export default function App() {
       </aside>
 
       <section className="center-panel">
-        <div className="canvas-heading"><div><span className="canvas-tab"><Workflow size={14} />Block Design</span><span className="canvas-meta">{Object.keys(design.instances).length} instances <span>/</span> {Object.keys(design.nets).length} nets</span></div><div><IconButton icon={LayoutGrid} label="整理布局" onClick={autoLayout} /><IconButton icon={Maximize2} label="适应画布" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div></div>
+        <div className="canvas-heading"><div><span className="canvas-tab"><Workflow size={14} />Block Design</span><span className="canvas-meta">{Object.keys(design.instances).length} instances <span>/</span> {Object.keys(design.nets).length} nets</span></div><div><IconButton icon={Blocks} label={t("hierarchy.collapse")} disabled={!connectionReady || !inspection.valid || selection?.type !== "node" || !design.instances[selection.id]} onClick={() => setModal({ kind: "hierarchy", name: uniqueName(design, "group") })} /><IconButton icon={LayoutGrid} label="整理布局" onClick={autoLayout} /><IconButton icon={Maximize2} label="适应画布" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div></div>
         <div className="canvas" aria-label="设计画布" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={dropModule}>
           <ReactFlow onlyRenderVisibleElements nodes={graph.nodes} edges={graph.edges} nodesDraggable={!preview} nodesConnectable={!preview} elementsSelectable={!preview} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={0.25} maxZoom={2} deleteKeyCode={null} connectOnClick={false} snapToGrid snapGrid={[10, 10]}
             connectionMode={ConnectionMode.Loose} connectionLineType={ConnectionLineType.Step}
@@ -778,9 +840,11 @@ export default function App() {
 
     {toast && <div className={`toast ${toast.error ? "error" : ""}`} role={toast.error ? "alert" : "status"}>{toast.error ? <CircleAlert size={17} /> : <CircleCheck size={17} />}<span>{toast.message}</span><IconButton icon={X} label="关闭通知" onClick={() => setToast(null)} /></div>}
 
-    {modal && <dialog ref={modalRef} className={`editor-dialog ${modal.kind === "module" ? "wide" : ""}`} onCancel={(event) => { event.preventDefault(); if (!busy) setModal(null); }} onClick={(event) => { if (event.target === event.currentTarget && !busy) setModal(null); }}>
-      <form onSubmit={submitModal}><div className="dialog-heading"><h2>{{ save: "保存设计", open: "打开设计", external: "添加外部端口", module: "登记 RTL 模块" }[modal.kind]}</h2><IconButton icon={X} label="关闭对话框" disabled={Boolean(busy)} onClick={() => setModal(null)} /></div>
+    {modal && <dialog ref={modalRef} aria-labelledby="editor-dialog-title" className={`editor-dialog ${modal.kind === "module" ? "wide" : ""}`} onCancel={(event) => { event.preventDefault(); if (!busy) setModal(null); }} onClick={(event) => { if (event.target === event.currentTarget && !busy) setModal(null); }}>
+      <form onSubmit={submitModal}><div className="dialog-heading"><h2 id="editor-dialog-title">{{ save: "保存设计", open: "打开设计", external: "添加外部端口", module: "登记 RTL 模块", hierarchy: t("hierarchy.collapse"), bundle: t("hierarchy.networks") }[modal.kind]}</h2><IconButton icon={X} label="关闭对话框" disabled={Boolean(busy)} onClick={() => setModal(null)} /></div>
         <div className="dialog-body">
+          {modal.kind === "bundle" && <div className="hierarchy-net-list">{modal.edges.map((edge) => <button className="small-command" type="button" key={edge.id} onClick={() => { setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setModal(null); setMobilePanel("inspector"); }}>{edge.data.net}<code>{edge.data.width}</code></button>)}</div>}
+          {modal.kind === "hierarchy" && <label className="field-label">{t("hierarchy.name")}<input autoFocus required aria-label={t("hierarchy.name")} value={modal.name} onChange={(event) => setModal({ ...modal, name: event.target.value })} /></label>}
           {modal.kind === "save" && <label className="field-label">设计文件路径<input autoFocus required aria-label="保存路径" value={modal.path} onChange={(event) => setModal({ ...modal, path: event.target.value })} /></label>}
           {modal.kind === "open" && <><label className="field-label">工作区设计<select aria-label="工作区设计" value={modal.path} onChange={(event) => setModal({ ...modal, path: event.target.value })}>{modal.paths.map((path) => <option key={path}>{path}</option>)}</select></label><label className="field-label">文件路径<input required aria-label="打开路径" value={modal.path} onChange={(event) => setModal({ ...modal, path: event.target.value })} /></label></>}
           {modal.kind === "external" && <><label className="field-label">端口名称<input autoFocus required aria-label="新端口名称" value={modal.name} onChange={(event) => setModal({ ...modal, name: event.target.value })} /></label><label className="field-label">方向<select value={modal.direction} onChange={(event) => setModal({ ...modal, direction: event.target.value })}><option value="input">Input</option><option value="output">Output</option></select></label><label className="check-field"><input type="checkbox" checked={modal.vector} onChange={(event) => setModal({ ...modal, vector: event.target.checked })} />向量端口</label>{modal.vector && <div className="range-fields"><label>Left<input required value={modal.left} onChange={(event) => setModal({ ...modal, left: event.target.value })} /></label><span>:</span><label>Right<input required value={modal.right} onChange={(event) => setModal({ ...modal, right: event.target.value })} /></label></div>}<label className="check-field"><input type="checkbox" checked={modal.signed} onChange={(event) => setModal({ ...modal, signed: event.target.checked })} />Signed</label></>}

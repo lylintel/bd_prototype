@@ -1,5 +1,5 @@
 import React, { memo } from "react";
-import { BaseEdge, StepEdge, useNodes, useStore } from "@xyflow/react";
+import { BaseEdge, StepEdge, getSmoothStepPath, useNodes, useStore } from "@xyflow/react";
 import { getSmartEdge, smartEdgePresets } from "@tisoap/react-flow-smart-edge";
 import { edgeLabelPosition, recordRender } from "./performance.js";
 
@@ -18,13 +18,19 @@ function RoutedEdge(props) {
 
 function CircuitEdge(props) {
   recordRender("edge", props.id);
-  const dense = useStore((state) => state.nodes.length > 64 || state.edges.length > 256);
+  const dense = useStore((state) => state.nodes.length > 64 || state.edges.length > 256 || state.nodes.some((node) => node.data.compact));
   const small = useStore((state) => state.transform[2] < 0.5);
   if (!dense && !small) return <RoutedEdge {...props} />;
   const emphasized = props.selected || props.className?.includes("ai-preview");
   const style = { ...props.style, strokeWidth: small ? 1 : props.data?.width > 1 ? 2.5 : 1.5,
     ...(!emphasized && small ? { stroke: "#82978b" } : {}) };
-  return <g data-routing="dense"><StepEdge {...props} label={small || dense ? undefined : props.label} style={style} /></g>;
+  if (props.data?.bundle && !small) {
+    const [path, labelX, labelY] = getSmoothStepPath({ ...props, borderRadius: 0 });
+    return <g data-routing="bundle"><BaseEdge id={props.id} path={path} style={style} interactionWidth={16}
+      label={props.label} labelX={labelX} labelY={labelY + (props.source < props.target ? -16 : 16)} labelStyle={props.labelStyle}
+      labelBgStyle={props.labelBgStyle} labelBgPadding={props.labelBgPadding} labelBgBorderRadius={props.labelBgBorderRadius} /></g>;
+  }
+  return <g data-routing="dense"><StepEdge {...props} label={small || (dense && !props.data?.bundle) ? undefined : props.label} style={style} /></g>;
 }
 
 export default memo(CircuitEdge);
