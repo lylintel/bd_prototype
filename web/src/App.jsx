@@ -18,6 +18,7 @@ import Parameters from "./semantic/Parameters.jsx";
 import Diagnostics from "./semantic/Diagnostics.jsx";
 import Connections from "./semantic/Connections.jsx";
 import ExpressionNode from "./semantic/ExpressionNode.jsx";
+import { recordRender } from "./performance.js";
 import { expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, scheduleInspection, syncDocument } from "./semantic/model.js";
 import "./semantic/semantic.css";
 
@@ -54,6 +55,7 @@ function Pin({ port, side, onPin, active, connectable }) {
 }
 
 function BlockNode({ data, selected }) {
+  recordRender("node", data.external ? `@${data.name}` : data.name);
   if (data.external) {
     const port = data.ports[0];
     return <div className={`external-node ${selected ? "is-selected" : ""} ${data.highlight ? "has-error" : ""}`}>
