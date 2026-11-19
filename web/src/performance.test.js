@@ -1,3 +1,61 @@
+import { createHistory, commitHistory, undoHistory, redoHistory, historyBytes } from "./history.js";
+
+test("patch history retains a small edit instead of a 2000-instance snapshot", () => {
+  const instances = Array.from({ length: 2000 }, (_, index) => ({ name: `unit_${index}`, params: { WIDTH: 8 } }));
+  const initial = { document: { instances }, design: { instances: Object.fromEntries(instances.map((item) => [item.name, { parameters: { WIDTH: 8 } }])) }, layout: { nodes: {} } };
+  const history = createHistory(initial);
+  const next = structuredClone(initial);
+  next.document.instances[1234].params.WIDTH = 16;
+  next.design.instances.unit_1234.parameters.WIDTH = 16;
+  const edited = commitHistory(history, next);
+  assert.equal(edited.past.length, 1);
+  assert.equal(edited.past[0].patches.length, 2);
+  assert.ok(historyBytes(edited) < 100 * 1024);
+  assert.equal(edited.current.document.instances[1233], initial.document.instances[1233]);
+  assert.deepEqual(undoHistory(edited).current, initial);
+  assert.deepEqual(redoHistory(undoHistory(edited)).current, next);
+  assert.equal(initial.document.instances[1234].params.WIDTH, 8);
+});
+
+test("patch history is bounded to 100 steps and a new edit discards redo", () => {
+  let history = createHistory({ value: 0 });
+  for (let value = 1; value <= 105; value++) history = commitHistory(history, { value });
+  assert.equal(history.past.length, 100);
+  for (let count = 0; count < 100; count++) history = undoHistory(history);
+  assert.equal(history.current.value, 5);
+  assert.equal(undoHistory(history), history);
+  const edited = commitHistory(history, { value: 900 });
+  assert.equal(edited.future.length, 0);
+  assert.equal(commitHistory(edited, { value: 900 }), edited);
+});
+
+test("patch history preserves array insertions deletions and atomic batches", () => {
+  const initial = { values: [{ id: "first" }, { id: "second" }], layout: { nodes: {} } };
+  const next = { values: [{ id: "new" }, { id: "first", value: 3 }], layout: { nodes: { new: { x: 2, y: 3 } } } };
+  const history = commitHistory(createHistory(initial), next);
+  assert.equal(history.past.length, 1);
+  assert.deepEqual(undoHistory(history).current, initial);
+  assert.deepEqual(redoHistory(undoHistory(history)).current, next);
+});
+
+test("patch history reuses a renamed fanout instead of retaining duplicate endpoints", () => {
+  const initial = { nets: { clock: Array.from({ length: 2000 }, (_, index) => `unit_${index}.clk`) } };
+  const next = { nets: { renamed: structuredClone(initial.nets.clock) } };
+  const history = commitHistory(createHistory(initial), next);
+  assert.equal(history.current.nets.renamed, initial.nets.clock);
+  assert.ok(historyBytes(history) < 100 * 1024);
+  assert.deepEqual(undoHistory(history).current, initial);
+});
+
+test("patch history supports prototype-named identifiers without unsafe paths", () => {
+  const initial = { items: JSON.parse('{"__proto__":{"value":1},"constructor":{"value":3}}') };
+  const next = structuredClone(initial);
+  next.items.__proto__.value = 2;
+  const history = commitHistory(createHistory(initial), next);
+  assert.equal(history.current.items.__proto__.value, 2);
+  assert.equal(Object.getPrototypeOf(history.current.items), Object.prototype);
+  assert.deepEqual(undoHistory(history).current, initial);
+});
 import { makeLayoutGraph, layoutPositions } from "./layout/model.js";
 import { publishPositions, requestLayout } from "./layout/client.js";
 

@@ -55,7 +55,7 @@ P4.2 完整 scripts/check.py 通过，包含 18 条既有浏览器流程；记�
 
 ## 尚待完成
 
-P4.6 补丁历史及最终门禁。
+最终联合性能复测、报告与远端 CI。
 原首屏/帧率预算未放宽，超时不视为通过，真实模型仍不调用。
 
 ## P4.3 层次化设计
@@ -125,3 +125,25 @@ node web/e2e/performance.mjs --sizes 2000 --samples 3 --output-tabs --report bui
 
 早期失败样本保留，不承诺高系统负载下始终达标。最新完整门禁通过 605 Python +72 子测试、57 前端单测、26 条浏览器流程，日志 build/phase4-p45-sharded-recheck.log。
 浏览器分片由用户批准且已验证无遗漏；中间一次既有 HTTP 测试出现 Windows 10053，单独及完整复跑通过，未修改鉴权行为。本次独立语义性能 311.788/465.027ms，按既定策略保留非阻塞警告。
+
+## P4.6 补丁历史
+
+历史改为 Immer 正反向补丁，最多 100 步；新编辑清空重做，普通编辑、布局、层次操作和 AI 接受仍原子撤销。未变子树复用，单键重命名复用原扇出端点数组，特殊标识符安全且无损。
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.gui_benchmark --output build/phase4-history-fixture --instances 2000
+node --expose-gc scripts/history_memory.mjs --control --fixture build/phase4-history-fixture
+node scripts/history_memory.mjs --fixture build/phase4-history-fixture --report build/phase4-p46-memory-verified.json
+```
+
+每类五个独立进程、每个进程八次预热；使用堆快照排除当前设计共享数据后统计历史对象及数组存储，不将噪声较大的全进程 GC 差值当作栈大小。V8 共享元数据不在此口径内；方法与失败数据见 D040。
+
+| 2000 实例单次编辑 | 历史独占数据 B | 编码增长 B | 样本 |
+|---|---:|---:|---|
+| 参数 | 944 | 362 | 5/5 通过 |
+| 节点位置 | 752 | 168 | 5/5 通过 |
+| 2000 路扇出网络重命名 | 1128 | 62210 | 5/5 通过 |
+
+整图快照阳性对照为 3543968B。上述结果不代表整个浏览器内存或任意批量操作上限；大批量变化和特殊名称父路径替换仍可能产生较大补丁。
+真实浏览器关键撤销流程通过；联合探针 build/phase4-p46-integrated 同时满足原画布、布局 50ms 和输出切换 300ms 预算。
+完整门禁通过 605 Python +72 子测试、62 前端单测、26 条浏览器流程；日志 build/phase4-p46-check.log。独立语义性能 398.144/487.108ms，按既定策略保留非阻塞警告。

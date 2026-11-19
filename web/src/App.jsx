@@ -22,6 +22,7 @@ import ExpressionNode from "./semantic/ExpressionNode.jsx";
 import { markLayout, markOutput, nodeGeometry, recordRender, sameNodeData, visibleLabelEdges } from "./performance.js";
 import { bundleHierarchyEdges, hasSubdesign, mergeScopeState, scopeState } from "./semantic/hierarchy.js";
 import { publishPositions, requestLayout } from "./layout/client.js";
+import { createHistory, commitHistory, undoHistory, redoHistory } from "./history.js";
 import { expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, scheduleInspection, syncDocument } from "./semantic/model.js";
 import "./semantic/semantic.css";
 
@@ -224,7 +225,7 @@ export default function App() {
     const versioned = [2, 3, 4].includes(result.design.schema_version);
     setScopePath([]);
     const canvas = validateDocumentShape(versioned ? result.inspection.canvas : result.design);
-    setHistory({ past: [], current: { design: canvas, document: versioned ? result.design : null, layout: { ...initialLayout, ...result.layout } }, future: [] });
+    setHistory(createHistory({ design: canvas, document: versioned ? result.design : null, layout: { ...initialLayout, ...result.layout } }));
     setBaseDir(result.base_dir);
     setDocumentPath(result.path);
     inspectedDesign.current = canvas;
@@ -311,7 +312,7 @@ export default function App() {
       if (JSON.stringify(next) === JSON.stringify(previous.current)) return true;
       if (JSON.stringify(next.design) === JSON.stringify(previousDesign)) next.design = previousDesign;
       else { setChecking(true); setInspection({ ...emptyInspection }); }
-      const nextHistory = { past: [...previous.past, previous.current].slice(-80), current: next, future: [] };
+      const nextHistory = commitHistory(previous, next);
       editorState.current = { ...current, history: nextHistory };
       setHistory(nextHistory);
       setSaved(false);
@@ -329,7 +330,7 @@ export default function App() {
     const position = currentView.layout.nodes[node.id];
     if (position?.x === node.position.x && position?.y === node.position.y) return;
     const next = mergeScopeState(before, { ...currentView, layout: { ...currentView.layout, nodes: { ...currentView.layout.nodes, [node.id]: { ...node.position } } } }, current.scope);
-    const nextHistory = { past: [...previous.past, before].slice(-80), current: next, future: [] };
+    const nextHistory = commitHistory(previous, next);
     editorState.current = { ...current, history: nextHistory };
     setHistory(nextHistory);
     setSaved(false);
@@ -382,12 +383,12 @@ export default function App() {
 
   function undo() {
     if (!history?.past.length || busy) return;
-    setHistory({ past: history.past.slice(0, -1), current: history.past.at(-1), future: [history.current, ...history.future] });
+    setHistory(undoHistory);
     setSaved(false); setSelection(null); setPendingPin(null);
   }
   function redo() {
     if (!history?.future.length || busy) return;
-    setHistory({ past: [...history.past, history.current], current: history.future[0], future: history.future.slice(1) });
+    setHistory(redoHistory);
     setSaved(false); setSelection(null); setPendingPin(null);
   }
 
@@ -575,7 +576,7 @@ export default function App() {
       }
       layoutPreview.current = null;
       const next = mergeScopeState(snapshot, { ...current.view, layout: { ...current.view.layout, nodes: { ...current.view.layout.nodes, ...positions } } }, current.scope);
-      const nextHistory = { past: [...current.history.past, snapshot].slice(-80), current: next, future: [] };
+      const nextHistory = commitHistory(current.history, next);
       editorState.current = { ...current, history: nextHistory };
       setHistory(nextHistory);
       setSaved(false);
