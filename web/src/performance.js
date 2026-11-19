@@ -10,6 +10,10 @@ export function markLayout(phase) {
   if (enabled) performance.mark(`bd-layout:${phase}`);
 }
 
+export function markOutput(phase, startTime = undefined) {
+  if (enabled) performance.mark(`bd-output:${phase}`, Number.isFinite(startTime) && startTime >= 0 && startTime <= performance.now() ? { startTime } : undefined);
+}
+
 export function visibleLabelEdges(edges, nodes, viewport, width, height) {
   if (!width || !height) return edges;
   const visible = new Set(nodes.filter((node) => {

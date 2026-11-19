@@ -4,6 +4,7 @@ import * as FlowComponents from "@xyflow/react";
 import { ArrowUpRight, Blocks, Bot, Check, CheckCheck, ChevronDown, CircleAlert, CircleCheck, CircuitBoard, Code2, Copy, Cpu, Download, FilePlus2, FolderOpen, GripVertical, LayoutGrid, ListTree, LoaderCircle, Maximize2, PanelLeft, PanelRight, Plus, Redo2, Save, Search, Settings2, ShieldCheck, Trash2, Undo2, Unplug, Workflow, X, ZoomIn, ZoomOut } from "lucide-react";
 import { addInstance, checkName, clone, connectionError, connectPorts, deleteNode, disconnectPort, endpointInfo, externalId, makeExternal, parseInteger, rangeLabel, renameNet, renameNode, uniqueName, validateDocumentShape } from "./model.js";
 import OutputWindow from "./OutputWindow.jsx";
+import OutputEditor, { prepareOutputEditor } from "./output/Loader.jsx";
 import CircuitEdge from "./CircuitEdge.jsx";
 import CopilotPanel from "./CopilotPanel.jsx";
 import AISettings from "./ai/Settings.jsx";
@@ -18,7 +19,7 @@ import Parameters from "./semantic/Parameters.jsx";
 import Diagnostics from "./semantic/Diagnostics.jsx";
 import Connections from "./semantic/Connections.jsx";
 import ExpressionNode from "./semantic/ExpressionNode.jsx";
-import { markLayout, nodeGeometry, recordRender, sameNodeData, visibleLabelEdges } from "./performance.js";
+import { markLayout, markOutput, nodeGeometry, recordRender, sameNodeData, visibleLabelEdges } from "./performance.js";
 import { bundleHierarchyEdges, hasSubdesign, mergeScopeState, scopeState } from "./semantic/hierarchy.js";
 import { publishPositions, requestLayout } from "./layout/client.js";
 import { expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, scheduleInspection, syncDocument } from "./semantic/model.js";
@@ -143,6 +144,8 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [fatal, setFatal] = useState("");
   const [jsonDraft, setJsonDraft] = useState("");
+  const jsonDocument = useRef(null);
+  const outputStates = useRef(new Map());
   const [activity, setActivity] = useState("本地工作区已就绪");
   const [zoom, setZoom] = useState(100);
   const [viewportRequest, setViewportRequest] = useState(null);
@@ -217,6 +220,7 @@ export default function App() {
   }
 
   function acceptDocument(result) {
+    outputStates.current.clear();
     const versioned = [2, 3, 4].includes(result.design.schema_version);
     setScopePath([]);
     const canvas = validateDocumentShape(versioned ? result.inspection.canvas : result.design);
@@ -258,7 +262,12 @@ export default function App() {
     );
   }, [design, document, rootDocument, scope, baseDir, token]);
 
-  useEffect(() => { if (document) setJsonDraft(JSON.stringify(document, null, 2)); }, [document]);
+  React.useLayoutEffect(() => {
+    if (document && panelOpen && tab === "json" && jsonDocument.current !== document) {
+      jsonDocument.current = document;
+      setJsonDraft(JSON.stringify(document, null, 2));
+    }
+  }, [document, panelOpen, tab]);
   useEffect(() => {
     if ((!nodesReady && nodes.length < 64) || !viewportRequest) return;
     if (viewportRequest.waitFor && !flow.getNode(viewportRequest.waitFor)) return;
@@ -688,7 +697,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event) => {
-      if (!design || busy || preview || modal || ipImportOpen || connectionOpen || aiSettingsOpen || privacy.confirming || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+      if (!design || busy || preview || modal || ipImportOpen || connectionOpen || aiSettingsOpen || privacy.confirming || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName) || event.target.closest?.(".cm-editor")) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveDialog(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
@@ -779,7 +788,7 @@ export default function App() {
   if (!design) return <div className="boot-screen"><CircuitBoard size={36} /><h1>BD Studio</h1>{fatal ? <><p role="alert">{fatal}</p><button onClick={() => location.reload()}>重新连接</button></> : <LoaderCircle className="spin" size={20} />}</div>;
 
   const moduleNames = Object.keys(design.modules).filter((name) => [name, ...Object.keys(design.modules[name].ports)].some((value) => value.toLowerCase().includes(search.toLowerCase())));
-  const filename = tab === "wrapper" ? `${design.name}_wrapper.v` : `${design.name}.v`;
+  const filename = tab === "wrapper" ? `${rootDocument.name}_wrapper.v` : `${design.name}.v`;
   const code = inspection.files[filename] ?? "";
   const selectionNode = selection?.type === "node" ? selection.id : selection?.type === "port" ? nodeId(selection.id) : null;
   const instance = selectionNode && !selectionNode.startsWith("@") ? design.instances[selectionNode] : null;
@@ -870,15 +879,20 @@ export default function App() {
         </div>
 
         <OutputWindow open={panelOpen} onOpenChange={setPanelOpen} tab={tab}
-          tabs={[ { id: "diagnostics", label: "诊断", Icon: ListTree }, { id: "bd", label: "BD Verilog", Icon: Code2 }, { id: "wrapper", label: "Wrapper", Icon: Blocks }, { id: "json", label: "设计 JSON", Icon: CircuitBoard } ].map(({ id, label, Icon }) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => { setTab(id); setPanelOpen(true); }}><Icon size={14} />{label}{id === "diagnostics" && inspection.diagnostics.length > 0 && <b>{inspection.diagnostics.length}</b>}</button>)}>
+          tabs={[ { id: "diagnostics", label: "诊断", Icon: ListTree }, { id: "bd", label: "BD Verilog", Icon: Code2 }, { id: "wrapper", label: "Wrapper", Icon: Blocks }, { id: "json", label: "设计 JSON", Icon: CircuitBoard } ].map(({ id, label, Icon }) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""}
+            onPointerEnter={() => { if (id !== "diagnostics") prepareOutputEditor().catch(() => undefined); }} onFocus={() => { if (id !== "diagnostics") prepareOutputEditor().catch(() => undefined); }}
+            onClick={(event) => { if (id !== "diagnostics") markOutput(`activate:${id}`, event.timeStamp); setTab(id); setPanelOpen(true); }}><Icon size={14} />{label}{id === "diagnostics" && inspection.diagnostics.length > 0 && <b>{inspection.diagnostics.length}</b>}</button>)}>
           {panelOpen && <div className="output-content" role="tabpanel">
             {tab === "diagnostics" ? <>
               <div className={`diagnostic-summary ${inspection.valid ? "success" : ""}`}>{checking ? <LoaderCircle size={18} className="spin" /> : inspection.valid ? <CircleCheck size={19} /> : <CircleAlert size={19} />}<div><strong>{checking ? "正在校验设计" : inspection.valid ? "所有连接检查通过" : "设计存在待修复项"}</strong><span>{inspection.valid ? `${totalPins} 个实例端口 · ${Object.keys(design.ports).length} 个外部端口 · ${Object.keys(design.nets).length} 条网络` : "DesignError"}</span></div>{inspection.valid && <span className="diagnostic-tag">VALID</span>}</div>
               {inspection.structuredDiagnostics?.length ? <Diagnostics items={inspection.structuredDiagnostics} disabled={checking || Boolean(busy) || fixing} onFocus={focusDiagnostic} onFix={applyDiagnosticFix} />
                 : inspection.diagnostics.map((message) => <button className="diagnostic-error" key={message} onClick={() => focusDiagnostic(message)}><CircleAlert size={15} /><code>{message}</code><ArrowUpRight size={14} /></button>)}
               <div className="activity-line"><CheckCheck size={14} /><span>{activity}</span></div>
-            </> : tab === "json" ? <div className="json-editor"><div className="code-toolbar"><code>{documentPath || `${design.name}.json`}</code><button className="small-command" onClick={applyJson}><Check size={13} />{t("semantic.applyJson")}</button></div><textarea spellCheck={false} aria-label={t("semantic.designJson")} value={jsonDraft} onChange={(event) => setJsonDraft(event.target.value)} /></div>
-              : <div className="code-view"><div className="code-toolbar"><code>{filename}</code><div><IconButton icon={Copy} label="复制代码" disabled={!code} onClick={() => navigator.clipboard.writeText(code).then(() => notify("代码已复制")).catch((error) => notify(error.message, true))} /><IconButton icon={Download} label="下载 Verilog" disabled={!code} onClick={() => downloadFile(filename, code)} /></div></div>{code ? <pre><code>{code.split("\n").map((line, index) => <span className="code-line" key={index}><i>{index + 1}</i>{line}</span>)}</code></pre> : <div className="empty-small">{checking ? "正在生成预览" : "设计通过校验后可预览 HDL"}</div>}</div>}
+            </> : tab === "json" ? <div className="json-editor"><div className="code-toolbar"><div className="code-file-actions"><IconButton icon={Copy} label={t("output.copyJson")} onClick={() => navigator.clipboard.writeText(jsonDraft).catch(() => notify(t("output.copyFailed"), true))} /><IconButton icon={Download} label={t("output.downloadJson")} onClick={() => downloadFile(`${design.name}.json`, jsonDraft)} /><code>{scope ? `${design.name}.json` : documentPath || `${design.name}.json`}</code></div><button className="small-command" onClick={applyJson}><Check size={13} />{t("semantic.applyJson")}</button></div>
+              <OutputEditor value={jsonDraft} language="json" readOnly={false} label={t("semantic.designJson")} cache={outputStates.current} cacheKey={`${baseDir}:${documentPath}:${scope}:json`} onChange={setJsonDraft} /></div>
+              : <div className="code-view"><div className="code-toolbar"><div className="code-file-actions"><IconButton icon={Copy} label="复制代码" disabled={!code} onClick={() => navigator.clipboard.writeText(code).then(() => notify("代码已复制")).catch((error) => notify(error.message, true))} /><IconButton icon={Download} label="下载 Verilog" disabled={!code} onClick={() => downloadFile(filename, code)} /><code>{filename}</code></div></div>{code ?
+                <OutputEditor value={code} language="verilog" readOnly label={t("output.verilog")} cache={outputStates.current} cacheKey={`${baseDir}:${documentPath}:${filename}`} />
+                : <div className="empty-small">{checking ? "正在生成预览" : "设计通过校验后可预览 HDL"}</div>}</div>}
           </div>}
         </OutputWindow>
       </section>

@@ -14,6 +14,22 @@ test("layout application yields bounded batches and stops on cancellation", asyn
   assert.equal(applied, 1);
 });
 import ELK from "elkjs/lib/elk.bundled.js";
+import { EditorState } from "@codemirror/state";
+import { createOutputState, largeDocument } from "./output/model.js";
+
+test("large output profile keeps all text and switches at 5000 lines", () => {
+  const text = Array.from({ length: 20000 }, (_, index) => `wire signal_${index};`).join("\n");
+  const large = createOutputState(text, { language: "verilog", readOnly: true, label: "Verilog" });
+  assert.equal(large.doc.lines, 20000);
+  assert.equal(large.doc.toString(), text);
+  assert.equal(large.facet(largeDocument), true);
+  assert.equal(large.facet(EditorState.readOnly), true);
+  const small = createOutputState("{}", { language: "json", readOnly: false, label: "JSON" });
+  assert.equal(small.facet(largeDocument), false);
+  const expanded = small.update({ changes: { from: 0, to: small.doc.length, insert: text } }).state;
+  assert.equal(expanded.facet(largeDocument), true);
+  assert.equal(expanded.update({ changes: { from: 0, to: expanded.doc.length, insert: "{}" } }).state.facet(largeDocument), false);
+});
 
 test("large cyclic graphs use the real ELK rectangle packer", async () => {
   const nodes = Array.from({ length: 2000 }, (_, index) => ({ id: `unit_${index}`, initialWidth: 250, initialHeight: 246 }));

@@ -38,7 +38,9 @@ def main(argv=None):
          "--ignore=tests/test_builtin_ip.py", "--ignore=tests/test_ip_parser.py"],
         [sys.executable, "-m", "pytest", "-q", "tests/ai"],
         [sys.executable, "-m", "bdstudio.ai_eval", "--client", "mock", "--report", "build/ai-eval"],
-        *[[npm, "--prefix", "web", "run", task] for task in ("lint", "typecheck", "test", "build", "test:e2e")],
+                *[[npm, "--prefix", "web", "run", task] for task in ("lint", "typecheck", "test", "build")],
+                *[[npm, "--prefix", "web", "run", "test:e2e", "--", "--fully-parallel", "--workers=1", f"--shard={shard}"]
+                    for shard in ("1/2", "2/2")],
     ]
     for command in commands:
         print(f"\n> {' '.join(command)}", flush=True)

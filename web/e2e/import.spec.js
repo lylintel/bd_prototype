@@ -100,8 +100,9 @@ test.beforeEach(async ({ page }, testInfo) => {
   const hierarchical = testInfo.title.includes("[hierarchy]");
   const dense = testInfo.title.includes("[dense]");
   const stagedLayout = testInfo.title.includes("[layout-apply]");
-  if (hierarchical || dense || stagedLayout) execFileSync(python, ["-m", "scripts.gui_benchmark", "--output", directory, "--instances", stagedLayout ? "2000" : "100", "--groups", hierarchical ? "2" : "0"], { cwd: root, timeout: 60000 });
-  const child = spawn(python, ["-u", "-m", serverModule, "--workspace", directory, "--port", "0", ...(hierarchical || dense || stagedLayout ? ["--design", "design.json"] : [])], {
+  const largeOutput = testInfo.title.includes("[large-output]");
+  if (hierarchical || dense || stagedLayout || largeOutput) execFileSync(python, ["-m", "scripts.gui_benchmark", "--output", directory, "--instances", stagedLayout || largeOutput ? "2000" : "100", "--groups", hierarchical ? "2" : "0"], { cwd: root, timeout: 60000 });
+  const child = spawn(python, ["-u", "-m", serverModule, "--workspace", directory, "--port", "0", ...(hierarchical || dense || stagedLayout || largeOutput ? ["--design", "design.json"] : [])], {
     cwd: root, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32",
   });
   const exited = new Promise((resolve) => child.once("close", resolve));
@@ -130,13 +131,80 @@ async function openEditor(page) {
   await expect(page.getByRole("heading", { name: "example_bd", level: 1, exact: true })).toBeVisible();
 }
 
+test("[large-output] virtual editor loads lazily and preserves complete code", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    const stringify = JSON.stringify;
+    window.__documentSerializations = 0;
+    JSON.stringify = (value, replacer, space) => {
+      if (space === 2 && Array.isArray(value?.instances) && value.instances.length === 2000) window.__documentSerializations++;
+      return stringify(value, replacer, space);
+    };
+  });
+  const requests = [];
+  page.on("request", (request) => requests.push(request.url()));
+  await page.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());
+  const response = page.waitForResponse((item) => item.url().endsWith("/api/state"));
+  await page.goto(server.url);
+  const state = await (await response).json();
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await page.evaluate(() => window.__documentSerializations)).toBe(0);
+  expect(requests.some((url) => /\/Editor-[^/]+\.js$/.test(url))).toBe(false);
+  const text = state.inspection.files[`${state.design.name}.v`];
+  const lines = text.split("\n").length;
+  expect(lines).toBeGreaterThanOrEqual(20000);
+  await page.getByRole("tab", { name: "BD Verilog", exact: true }).click();
+  const editor = page.getByLabel(t("output.verilog"), { exact: true });
+  await expect(editor).toBeVisible();
+  await expect(page.locator(".cm-editor")).toHaveAttribute("data-line-count", String(lines));
+  await expect(page.locator(".cm-editor")).toHaveAttribute("data-large-document", "true");
+  expect(await page.locator(".cm-line").count()).toBeLessThan(200);
+  await expect(page.locator(".cm-foldGutter")).toHaveCount(0);
+  await editor.press("Control+End");
+  await expect(page.locator(".cm-line").filter({ hasText: /^endmodule$/ }).last()).toBeVisible();
+  const scroll = await page.locator(".cm-scroller").evaluate((element) => element.scrollTop);
+  await page.getByRole("tab", { name: "Wrapper", exact: true }).click();
+  await expect(page.locator(".cm-editor")).toHaveAttribute("data-line-count", String(state.inspection.files[`${state.design.name}_wrapper.v`].split("\n").length));
+  await page.getByRole("tab", { name: "BD Verilog", exact: true }).click();
+  await expect.poll(() => page.locator(".cm-scroller").evaluate((element) => element.scrollTop)).toBeGreaterThan(scroll - 500);
+  expect(await readClipboardText(page, "复制代码")).toBe(text);
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载 Verilog", exact: true }).click();
+  expect(readFileSync(await (await download).path(), "utf8")).toBe(text);
+  await page.getByRole("button", { name: "放大代码字号", exact: true }).click();
+  await expect.poll(() => page.locator(".cm-line").first().evaluate((element) => getComputedStyle(element).fontSize)).toBe("13px");
+  await page.screenshot({ path: testInfo.outputPath("large-code-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(editor).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("large-code-mobile.png") });
+});
+
+test("JSON editor undo does not undo the authoritative canvas", async ({ page }) => {
+  await openEditor(page);
+  await page.locator('.react-flow__node[data-id="compare_0"] .block-heading').dblclick();
+  const threshold = page.getByLabel(t("semantic.parameterLabel", { instance: "compare_0", name: "THRESHOLD" }), { exact: true });
+  await threshold.fill("19");
+  await threshold.press("Tab");
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  const before = await designJson(page);
+  const editor = page.getByLabel(t("semantic.designJson"), { exact: true });
+  await editor.fill(JSON.stringify({ ...before, name: "draft_only" }, null, 2));
+  await expect(page.getByRole("heading", { name: "example_bd", level: 1, exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "BD Verilog", exact: true }).click();
+  expect((await designJson(page)).name).toBe("draft_only");
+  await editor.press("Control+z");
+  expect(await designJson(page)).toEqual(before);
+  await expect(page.getByRole("button", { name: "撤销", exact: true })).toBeEnabled();
+});
+
 test("ELK worker layout changes only coordinates and is undoable", async ({ page }) => {
   await openEditor(page);
   await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
   const counter = page.locator('.react-flow__node[data-id="counter_0"]');
   const beforePosition = await counter.getAttribute("style");
   await page.getByRole("tab", { name: "设计 JSON", exact: true }).click();
-  const beforeDocument = await page.getByLabel(t("semantic.designJson"), { exact: true }).inputValue();
+  const beforeDocument = await readJsonText(page);
   let inspections = 0, workers = 0;
   page.on("request", (request) => { if (request.url().endsWith("/api/semantic/inspect")) inspections++; });
   page.on("worker", () => workers++);
@@ -144,7 +212,7 @@ test("ELK worker layout changes only coordinates and is undoable", async ({ page
   await expect(page.getByRole("button", { name: t("layout.running"), exact: true })).toBeVisible();
   await expect(page.getByLabel("设计画布", { exact: true })).toHaveAttribute("data-layout-state", "idle");
   await expect.poll(() => counter.getAttribute("style")).not.toBe(beforePosition);
-  expect(await page.getByLabel(t("semantic.designJson"), { exact: true }).inputValue()).toBe(beforeDocument);
+  expect(await readJsonText(page)).toBe(beforeDocument);
   expect(inspections).toBe(0);
   expect(workers).toBe(1);
   await page.getByRole("button", { name: "撤销", exact: true }).click();
@@ -347,7 +415,7 @@ test("instance parameter expressions update widths and preserve versioned undo",
   await page.screenshot({ path: testInfo.outputPath("parameters-mobile.png") });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("tab", { name: "设计 JSON", exact: true }).click();
-  const document = JSON.parse(await page.getByLabel(t("semantic.designJson"), { exact: true }).inputValue());
+  const document = JSON.parse(await readJsonText(page));
   expect(document.schema_version).toBe(2);
   expect(document.instances[0].ip).toEqual({ id: "counter", version: "1.0.0" });
   expect(document.instances[0].params.WIDTH).toBe("4 * 3");
@@ -383,7 +451,7 @@ test("net diagnostics select visible invalid connections", async ({ page }, test
   await openEditor(page);
   await page.getByRole("tab", { name: "设计 JSON", exact: true }).click();
   const editor = page.getByLabel(t("semantic.designJson"), { exact: true });
-  const document = JSON.parse(await editor.inputValue());
+  const document = JSON.parse(await readJsonText(page));
   document.nets.count_bus.push("compare_0.match");
   await editor.fill(JSON.stringify(document));
   await page.getByRole("button", { name: t("semantic.applyJson"), exact: true }).click();
@@ -398,9 +466,23 @@ async function selectCountBus(page) {
   await page.locator('.react-flow__edge[data-id^="count_bus|"] .react-flow__edge-textwrapper').first().click();
 }
 
+async function readJsonText(page) {
+  await expect(page.getByLabel(t("semantic.designJson"), { exact: true })).toBeVisible();
+  return readClipboardText(page, t("output.copyJson"));
+}
+
+async function readClipboardText(page, label) {
+  await page.evaluate(() => {
+    window.__bdCopiedText = null;
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text) => { window.__bdCopiedText = text; } } });
+  });
+  await page.getByRole("button", { name: label, exact: true }).click();
+  return page.evaluate(() => window.__bdCopiedText);
+}
+
 async function designJson(page) {
   await page.getByRole("tab", { name: "设计 JSON", exact: true }).click();
-  return JSON.parse(await page.getByLabel(t("semantic.designJson"), { exact: true }).inputValue());
+  return JSON.parse(await readJsonText(page));
 }
 
 test("slice settings match the receiving width and remain undoable", async ({ page }, testInfo) => {

@@ -88,6 +88,7 @@ async function measure(directory, size, sample) {
   await control.detach();
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
+  const outputState = process.argv.includes("--output-tabs") ? page.waitForResponse((response) => response.url().endsWith("/api/state")).catch(() => null) : null;
   let workers = 0;
   page.on("worker", () => workers++);
   const errors = [];
@@ -201,6 +202,38 @@ async function measure(directory, size, sample) {
         }) };
       await page.screenshot({ path: path.join(output, `${size}-${sample}-layout.png`), timeout: ceiling });
     }
+    if (outputState) {
+      result.phase = "output";
+      const state = await (await outputState)?.json();
+      if (!state) throw new Error("missing_output_state");
+      const bd = state.inspection.files[`${state.design.name}.v`];
+      if (size === 2000 && bd.split("\n").length < 20000) throw new Error("output_fixture_too_small");
+      result.output_tabs = [];
+      for (const [tab, text, json] of [["BD Verilog", bd, false], ["Wrapper", state.inspection.files[`${state.design.name}_wrapper.v`], false],
+        ["设计 JSON", JSON.stringify(state.design, null, 2), true], ["BD Verilog", bd, false]]) {
+        const lines = text.split("\n").length;
+        const started = performance.now();
+        await deadline((async () => {
+          await page.getByRole("tab", { name: tab, exact: true }).click();
+          await page.locator(`${json ? ".json-editor" : ".code-view"} .cm-editor[data-line-count="${lines}"] .cm-line`).first().waitFor();
+          await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        })(), ceiling, "output_tab");
+        const elapsed = performance.now() - started;
+        const timing = await page.evaluate(() => {
+          const entries = performance.getEntriesByType("mark");
+          const activation = entries.filter((entry) => entry.name.startsWith("bd-output:activate:")).at(-1);
+          const painted = entries.find((entry) => entry.name === "bd-output:painted" && entry.startTime >= activation?.startTime);
+          return { activation_to_paint_ms: painted && activation ? painted.startTime - activation.startTime : null };
+        });
+        result.output_tabs.push({ tab, lines, elapsed_ms: elapsed, rendered_lines: await page.locator(".cm-line").count(),
+          ...timing,
+          ...(result.output_tabs.length === 0 ? await page.evaluate(() => ({
+            marks: performance.getEntriesByType("mark").filter((entry) => entry.name.startsWith("bd-output:")).map((entry) => ({ name: entry.name, start: entry.startTime })),
+            resources: performance.getEntriesByType("resource").filter((entry) => /\/Editor-[^/]+\.js$/.test(entry.name)).map((entry) => ({ start: entry.startTime, duration: entry.duration })),
+          })) : {}) });
+      }
+      await page.screenshot({ path: path.join(output, `${size}-${sample}-output.png`), timeout: ceiling });
+    }
     result.status = "measured";
   } catch (error) {
     result.status = result.load_ms === null ? error.name === "TimeoutError" ? "load_timeout" : "load_failed" : "interaction_failed";
@@ -220,10 +253,13 @@ async function measure(directory, size, sample) {
   const budget = size === 2000 ? { load: 4000, pan: 30, drag: 20 } : { load: 2000, pan: 45, drag: 30 };
   result.budget_passed = result.status === "measured" && result.load_ms < budget.load && Math.min(result.pan.fps, result.zoom.fps) >= budget.pan && result.drag.fps >= budget.drag && result.drag_rendered_nodes < 10;
   if (process.argv.includes("--layout")) result.budget_passed &&= result.layout?.workers === 1 && result.layout?.max_main_thread_long_task_ms < 50 && result.layout?.mounted_nodes > 0;
+  if (process.argv.includes("--output-tabs")) result.budget_passed &&= result.output_tabs?.length === 4 && result.output_tabs.every((tab) =>
+    Number.isFinite(tab.activation_to_paint_ms) && tab.activation_to_paint_ms >= 0 && tab.activation_to_paint_ms < 300 && tab.rendered_lines < 200);
   return result;
 }
 
 const report = { schema_version: 1, created: new Date().toISOString(), viewport: { width: 1440, height: 900 }, seed: 20261117,
+  output_timing_version: process.argv.includes("--output-tabs") ? 2 : undefined,
   machine: { platform: os.platform(), release: os.release(), cpu: os.cpus()[0].model, cores: os.cpus().length, node: process.version },
   source_sha256: createHash("sha256").update(readFileSync(path.join(root, "web/src/App.jsx"))).update(readFileSync(path.join(root, "web/src/CircuitEdge.jsx"))).digest("hex"),
   benchmark_sha256: createHash("sha256").update(readFileSync(fileURLToPath(import.meta.url))).digest("hex"),
