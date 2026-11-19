@@ -69,7 +69,7 @@ test("hierarchy folds selection edits a child and restores root with undo", asyn
 });
 import { test, expect } from "@playwright/test";
 import { spawn, execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -130,6 +130,43 @@ async function openEditor(page) {
   await page.goto(server.url);
   await expect(page.getByRole("heading", { name: "example_bd", level: 1, exact: true })).toBeVisible();
 }
+
+test("legacy single-file projects migrate and a node move only changes layout", async ({ page }) => {
+  const legacy = { schema_version: 1, design: JSON.parse(readFileSync(path.join(server.directory, "examples/counter_compare.json"), "utf8")),
+    layout: { nodes: { counter_0: { x: 240, y: 140 }, compare_0: { x: 590, y: 140 } }, viewport: { x: 0, y: 0, zoom: 0.75 } } };
+  const originalPath = path.join(server.directory, "examples/combined.json");
+  writeFileSync(originalPath, JSON.stringify(legacy));
+  const original = readFileSync(originalPath);
+  await openEditor(page);
+  await page.getByRole("button", { name: "打开设计", exact: true }).click();
+  const open = page.getByRole("dialog", { name: "打开设计", exact: true });
+  await open.getByLabel("打开路径", { exact: true }).fill("examples/combined.json");
+  await open.getByRole("button", { name: "打开", exact: true }).click();
+  await expect(open).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  expect((await designJson(page)).schema_version).toBe(4);
+  await page.getByRole("button", { name: "保存设计", exact: true }).click();
+  const save = page.getByRole("dialog", { name: "保存设计", exact: true });
+  await save.getByLabel("保存路径", { exact: true }).fill("designs/migrated.json");
+  await save.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(save).not.toBeVisible();
+  const logicPath = path.join(server.directory, "designs/migrated.json");
+  const layoutPath = path.join(server.directory, "designs/migrated.layout.json");
+  const logic = readFileSync(logicPath);
+  const layout = readFileSync(layoutPath);
+  const header = page.locator('.react-flow__node[data-id="counter_0"] .block-heading');
+  const bounds = await header.boundingBox();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 + 60, bounds.y + bounds.height / 2 + 30, { steps: 4 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "保存设计", exact: true }).click();
+  await save.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(save).not.toBeVisible();
+  expect(readFileSync(logicPath)).toEqual(logic);
+  expect(readFileSync(layoutPath)).not.toEqual(layout);
+  expect(readFileSync(originalPath)).toEqual(original);
+});
 
 test("[large-output] virtual editor loads lazily and preserves complete code", async ({ page }, testInfo) => {
   await page.addInitScript(() => {

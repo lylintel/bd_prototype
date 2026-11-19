@@ -5,6 +5,7 @@ from io import BytesIO
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 from threading import Thread
 import unittest
@@ -76,6 +77,139 @@ class EditorTests(unittest.TestCase):
         with self.assertRaisesRegex(bdtool.DesignError, "required input is unconnected"):
             self.workspace.generate({"design": self.data, "base_dir": "examples"})
         self.assertFalse((self.root / "build").exists())
+
+    def test_versioned_save_has_canonical_key_and_entity_order(self):
+        document = self.workspace.semantic_inspect(self.data, "examples")["document"]
+        document["instances"].reverse()
+        document["nets"].reverse()
+        original = copy.deepcopy(document)
+        saved = self.workspace.save({"design": document, "base_dir": "examples", "path": "designs/stable.json"})
+        self.assertEqual(document, original)
+        for section in ("instances", "nets"):
+            names = [item["name"] for item in saved["design"][section]]
+            self.assertEqual(names, sorted(names))
+        expected = (json.dumps(saved["design"], sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+        self.assertEqual((self.root / "designs/stable.json").read_bytes(), expected)
+        reordered = copy.deepcopy(saved["design"])
+        reordered["instances"].reverse()
+        reordered["nets"].reverse()
+        reordered["project_ips"].reverse()
+        self.workspace.save({"design": reordered, "base_dir": "designs", "path": "designs/stable.json"})
+        self.assertEqual((self.root / "designs/stable.json").read_bytes(), expected)
+
+    def test_moving_one_node_writes_only_layout(self):
+        for versioned in (False, True):
+            with self.subTest(versioned=versioned):
+                document = self.workspace.semantic_inspect(self.data, "examples")["document"] if versioned else self.data
+                path = f"designs/move_{versioned}.json"
+                saved = self.workspace.save({"design": document, "base_dir": "examples", "path": path})
+                before = (self.root / path).read_bytes()
+                layout = {**saved["layout"], "nodes": {"counter_0": {"x": 200, "y": 100}}}
+                with patch("bdtool._write_outputs", wraps=bdtool._write_outputs) as writer:
+                    self.workspace.save({"design": saved["design"], "layout": layout, "base_dir": "designs", "path": path})
+                self.assertEqual(set(writer.call_args.args[0]), {Path(path).with_suffix(".layout.json").name})
+                self.assertEqual((self.root / path).read_bytes(), before)
+
+    def test_inline_layout_migrates_all_historical_design_versions_without_writes(self):
+        from bdip import IpMetadata
+        from core.design import migrate
+
+        inspection = self.workspace.semantic_inspect(self.data, "examples")
+        library = tuple(IpMetadata.from_dict(item) for item in inspection["metadata"])
+        layout = {"nodes": {"counter_0": {"x": 150, "y": 120}}}
+        for version in (None, 1, 2, 3, 4):
+            with self.subTest(version=version):
+                document = copy.deepcopy(self.data) if version in (None, 1) else migrate(inspection["document"], library, target_version=version)
+                if version == 1:
+                    document["schema_version"] = 1
+                document["layout"] = layout
+                path = self.root / "examples" / f"combined_{version}.json"
+                path.write_text(json.dumps(document), encoding="utf-8")
+                before = path.read_bytes()
+                loaded = self.workspace.load(self.workspace.relative(path))
+                self.assertEqual(loaded["design"]["schema_version"], 4)
+                self.assertNotIn("layout", loaded["design"])
+                self.assertEqual(loaded["layout"]["schema_version"], 1)
+                self.assertEqual(loaded["layout"]["nodes"], layout["nodes"])
+                self.assertTrue(loaded["inspection"]["valid"], loaded["inspection"]["diagnostics"])
+                self.assertEqual(path.read_bytes(), before)
+                self.assertFalse(path.with_suffix(".layout.json").exists())
+                saved = self.workspace.save({"design": loaded["design"], "layout": loaded["layout"], "base_dir": "examples", "path": f"designs/migrated_{version}.json"})
+                self.assertTrue(saved["inspection"]["valid"])
+                self.assertTrue((self.root / f"designs/migrated_{version}.layout.json").is_file())
+
+    def test_legacy_project_envelope_and_conflicting_layout(self):
+        from core.design import DesignFormatError
+
+        path = self.root / "examples" / "combined.json"
+        layout = {"nodes": {"counter_0": {"x": 10, "y": 20}}}
+        path.write_text(json.dumps({"schema_version": 1, "design": self.data, "layout": layout}), encoding="utf-8")
+        self.assertTrue(self.workspace.load("examples/combined.json")["inspection"]["valid"])
+        path.with_suffix(".layout.json").write_text(json.dumps({"nodes": {"counter_0": {"x": 99, "y": 20}}}), encoding="utf-8")
+        with self.assertRaises(DesignFormatError) as caught:
+            self.workspace.load("examples/combined.json")
+        self.assertEqual(caught.exception.diagnostic.params["reason"], "migration_layout_conflict")
+
+    def test_independent_instance_edits_merge_without_conflict(self):
+        document = self.workspace.semantic_inspect(self.data, "examples")["document"]
+        saved = self.workspace.save({"design": document, "base_dir": "examples", "path": "designs/base.json"})
+        ours, theirs = copy.deepcopy(saved["design"]), copy.deepcopy(saved["design"])
+        next(item for item in ours["instances"] if item["name"] == "counter_0")["params"]["WIDTH"] = 12
+        next(item for item in theirs["instances"] if item["name"] == "compare_0")["params"]["WIDTH"] = 12
+        for name, branch in (("ours", ours), ("theirs", theirs)):
+            self.workspace.save({"design": branch, "base_dir": "designs", "path": f"designs/{name}.json"})
+        merged = subprocess.run(["git", "merge-file", "-p", str(self.root / "designs/ours.json"), str(self.root / "designs/base.json"), str(self.root / "designs/theirs.json")],
+                                capture_output=True, encoding="utf-8", timeout=30)
+        self.assertEqual(merged.returncode, 0, merged.stdout + merged.stderr)
+        result = json.loads(merged.stdout)
+        self.assertTrue(all(item["params"]["WIDTH"] == 12 for item in result["instances"]))
+        self.assertTrue(self.workspace.semantic_inspect(result, "designs")["valid"])
+
+    def test_null_sidecar_is_not_silently_treated_as_missing(self):
+        path = self.root / "examples" / "counter_compare.layout.json"
+        path.write_text("null\n", encoding="utf-8")
+        with self.assertRaises(bdtool.DesignError):
+            self.workspace.load("examples/counter_compare.json")
+
+    def test_every_historical_example_can_migrate_from_inline_layout(self):
+        shutil.copytree(ROOT / "src", self.root / "src")
+        shutil.copytree(ROOT / "ip_library/builtin", self.root / "ip_library/builtin")
+        examples = [path for path in (self.root / "examples").rglob("*.json") if not path.name.endswith(".layout.json")]
+        examples.append(self.root / "src/ip_catalog.json")
+        for path in examples:
+            with self.subTest(example=self.workspace.relative(path)):
+                document = json.loads(path.read_text(encoding="utf-8"))
+                document["layout"] = {"nodes": {}}
+                path.write_text(json.dumps(document), encoding="utf-8")
+                before = path.read_bytes()
+                loaded = self.workspace.load(self.workspace.relative(path))
+                self.assertEqual(loaded["design"]["schema_version"], 4)
+                self.assertTrue(loaded["inspection"]["valid"], loaded["inspection"]["diagnostics"])
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_canonical_save_keeps_hierarchy_and_concat_member_order(self):
+        loaded = self.workspace.load("examples/hierarchy/counter.json")
+        document = loaded["design"]
+        child = document["subdesigns"]["counter_group"]
+        child["instances"].reverse()
+        child["nets"].reverse()
+        net = next(item for item in child["nets"] if item["name"] == "count_bus")
+        members = [{"inst": "counter_0", "port": "count", "slice": [31, 16]}, {"inst": "counter_0", "port": "count", "slice": [15, 0]}]
+        net["endpoints"][0] = {"concat": copy.deepcopy(members)}
+        before = copy.deepcopy(net["endpoints"])
+        saved = self.workspace.save({"design": document, "base_dir": "examples/hierarchy", "path": "designs/hierarchical.json"})
+        self.assertTrue(saved["inspection"]["valid"], saved["inspection"]["diagnostics"])
+        result = saved["design"]["subdesigns"]["counter_group"]
+        self.assertEqual([item["name"] for item in result["instances"]], ["compare_0", "counter_0"])
+        self.assertEqual(next(item for item in result["nets"] if item["name"] == "count_bus")["endpoints"], before)
+
+    def test_unchanged_project_still_rejects_protected_output(self):
+        from core.persistence import write_project
+
+        saved = self.workspace.save({"design": self.data, "base_dir": "examples", "path": "designs/protected.json"})
+        target = self.root / "designs/protected.json"
+        with self.assertRaisesRegex(bdtool.DesignError, "overwrite an input"):
+            write_project(saved["design"], saved["layout"], target, {target.resolve()}, self.root)
 
     def test_generation_changes_parameters_without_touching_example(self):
         self.data["instances"]["compare_0"]["parameters"]["THRESHOLD"] = 19
@@ -267,13 +401,16 @@ class EditorTests(unittest.TestCase):
         for name in ("web_demo.json", "web_demo.layout.json"):
             shutil.copy2(ROOT / "designs" / name, self.root / "designs" / name)
 
-        def canonical(document, base):
+        def canonical(document, base=None):
             result = copy.deepcopy(document)
-            for metadata in result.get("project_ips", []):
-                for source in [metadata["source"], *metadata.get("additional_sources", [])]:
-                    source["path"] = str((base / source["path"]).resolve())
+            if base is not None:
+                for metadata in result.get("project_ips", []):
+                    for source in [metadata["source"], *metadata.get("additional_sources", [])]:
+                        source["path"] = str((base / source["path"]).resolve())
+            for section in ("instances", "nets"):
+                result[section].sort(key=lambda item: item["name"])
             result["project_ips"] = sorted(result.get("project_ips", []), key=lambda item: (item["id"], item["version"]))
-            return result
+            return json.loads(json.dumps(result, sort_keys=True))
 
         fixtures = ("examples/counter_compare.json", "examples/uart_loopback.json", "examples/builtin_counter.json",
                     "src/ip_catalog.json", "designs/web_demo.json", "examples/semantic/connections.json")
@@ -290,13 +427,14 @@ class EditorTests(unittest.TestCase):
                     fixture = base / f"roundtrip_{index}_v{version}.json"
                     fixture.write_text(json.dumps(document), encoding="utf-8")
                     source = self.workspace.load(self.workspace.relative(fixture))
+                    expected = self.workspace.semantic_inspect(canonical(document), source["base_dir"])
                     saved = self.workspace.save({"design": source["design"], "base_dir": source["base_dir"],
                                                  "path": f"designs/roundtrip/{index}_v{version}.json", "layout": loaded["layout"]})
                     reopened = self.workspace.load(saved["path"])
                     self.assertEqual(canonical(document, base), canonical(reopened["design"], self.root / reopened["base_dir"]))
                     self.assertEqual(reopened["layout"], loaded["layout"])
                     for field in ("valid", "diagnostics", "files", "interfaces", "parameters"):
-                        self.assertEqual(source["inspection"][field], reopened["inspection"][field], field)
+                        self.assertEqual(expected[field], reopened["inspection"][field], field)
                     saved_again = self.workspace.save({"design": reopened["design"], "base_dir": reopened["base_dir"],
                                                       "path": f"designs/roundtrip/deeper/{index}_v{version}.json", "layout": reopened["layout"]})
                     self.assertEqual(canonical(document, base), canonical(saved_again["design"], self.root / saved_again["base_dir"]))
@@ -341,7 +479,7 @@ class EditorTests(unittest.TestCase):
         self.assertIn("counter_0.count", result["canvas"]["nets"]["count_bus"])
         self.assertEqual(result["connections"][2]["endpoints"][0]["width"], 8)
         saved = self.workspace.save({"design": document, "base_dir": "examples", "path": "designs/expressions.json"})
-        self.assertEqual(saved["design"]["nets"][2]["endpoints"][0], expression)
+        self.assertEqual(next(net for net in saved["design"]["nets"] if net["name"] == "count_bus")["endpoints"][0], expression)
         self.assertTrue(saved["inspection"]["valid"], saved["inspection"]["diagnostics"])
 
     def test_rejects_paths_outside_workspace_and_invalid_layout(self):

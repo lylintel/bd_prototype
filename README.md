@@ -40,6 +40,9 @@ P1.1 新增 [ip.schema.json](ip.schema.json)，定义带版本、源码哈希、
 
 ## 版本化设计语义
 
+保存采用 UTF-8/LF、两空格缩进和末尾换行，键顺序稳定，实例/网络按名称排序；端点、切片和拼接成员的顺序不变。仅字节变化的文件会写入，因此纯节点移动不重写逻辑文件。
+旧的内嵌 `layout` 文件和 v1 `design`/`layout` 项目容器可在打开时内存迁移为设计 v4、布局 v1，只有显式保存才写成双文件。两份布局冲突会报错，不自动覆盖。普通旧 CLI 文件仍保留兼容入口，迁移实现见 [migrations/__init__.py](migrations/__init__.py)。
+
 GUI 与新语义 API 支持明确的 IP 版本引用、参数表达式、可定位诊断和显式修复。v3 端点支持切片、定宽常量和拼接，
 可从连线属性编辑；示例见 [examples/semantic/connections.json](examples/semantic/connections.json)。旧示例、旧 CLI/API 和原 HDL golden 保持兼容。
 格式、限制与迁移见 [docs/design-semantics.md](docs/design-semantics.md)。v2/v3/v4 不能直接交给只接受旧格式的 CLI。

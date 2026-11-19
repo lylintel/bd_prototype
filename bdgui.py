@@ -257,6 +257,9 @@ class Workspace:
             raise bdtool.DesignError("path: expected a JSON design")
         raw = path.read_bytes()
         data = json.loads(raw.decode("utf-8"), object_pairs_hook=bdtool._unique_keys)
+        from migrations import merge_layout, split_project, upgrade_design
+
+        data, embedded_layout, combined = split_project(data)
         versioned = isinstance(data, dict) and "schema_version" in data
         if versioned:
             from core.design import check_document
@@ -273,12 +276,20 @@ class Workspace:
             self.sources(data, path.parent)
         layout_path = path.with_suffix(".layout.json")
         self.path(self.relative(layout_path))
-        layout = json.loads(layout_path.read_text(encoding="utf-8")) if layout_path.is_file() else {}
+        sidecar = check_layout(json.loads(layout_path.read_text(encoding="utf-8"), object_pairs_hook=bdtool._unique_keys)) if layout_path.is_file() else None
+        if combined:
+            from bdsemantic import prepare
+
+            layout = merge_layout(embedded_layout, sidecar)
+            prepared, library = prepare(self, data, self.relative(path.parent) or ".")
+            data = upgrade_design(prepared, library)
+        else:
+            layout = sidecar if sidecar is not None else check_layout({})
         return {
             "design": data,
             "path": self.relative(path),
             "base_dir": self.relative(path.parent) or ".",
-            "layout": check_layout(layout),
+            "layout": layout,
             "inspection": self.semantic_inspect(data, self.relative(path.parent) or "."),
         }
 
@@ -308,10 +319,9 @@ class Workspace:
             definition["sources"] = [Path(os.path.relpath((base / name).resolve(), target.parent)).as_posix() for name in definition["sources"]]
         layout_path = target.with_suffix(".layout.json")
         self.path(self.relative(layout_path))
-        bdtool._write_outputs({
-            target.name: json.dumps(data, indent=2, ensure_ascii=False) + "\n",
-            layout_path.name: json.dumps(layout, indent=2) + "\n",
-        }, target.parent, sources)
+        from core.persistence import write_project
+
+        write_project(data, layout, target, sources, self.root)
         return self.load(self.relative(target))
 
     def generate(self, payload: dict) -> dict:

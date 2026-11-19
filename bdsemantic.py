@@ -1,6 +1,5 @@
 from copy import deepcopy
 import hashlib
-import json
 import os
 from pathlib import Path
 
@@ -8,6 +7,7 @@ import bdtool
 from bdip import IpMetadata, migrate_legacy_modules
 from core.design import DesignFormatError, check_document, migrate
 from core.diagnostics import issue
+from core.persistence import write_project
 from core.resolve import ParameterError, parameters
 from core.semantic import inspect_design
 
@@ -189,8 +189,7 @@ def save_document(workspace, payload):
     document["project_ips"] = snapshots
     check_document(document)
     layout = check_layout(payload.get("layout", {}))
-    bdtool._write_outputs({target.name: json.dumps(document, indent=2, ensure_ascii=False) + "\n",
-                           target.with_suffix(".layout.json").name: json.dumps(layout, indent=2) + "\n"}, target.parent, sources)
+    write_project(document, layout, target, sources, workspace.root)
     return workspace.load(workspace.relative(target))
 
 

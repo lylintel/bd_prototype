@@ -52,9 +52,11 @@ def test_connection_expressions_compile_with_icarus(bundle, tmp_path, kind):
     loaded = workspace.load(workspace.design_path)
     saved = workspace.save({"design": loaded["design"], "base_dir": loaded["base_dir"], "path": f"designs/{kind}.json"})
     reopened = workspace.load(saved["path"])
-    assert reopened["design"]["nets"] == document["nets"]
-    assert reopened["design"]["instances"] == document["instances"]
-    assert reopened["inspection"]["files"] == result["files"]
+    expected = json.loads(json.dumps(document, sort_keys=True))
+    for section in ("nets", "instances"):
+        expected[section].sort(key=lambda item: item["name"])
+        assert reopened["design"][section] == expected[section]
+    assert reopened["inspection"]["files"] == inspect_design(expected, library)["files"]
 
 
 @pytest.mark.parametrize("bounds", [[-1, 0], [8, 0], [0, 3], [True, 0], ["7", 0], [3], [3, 0, 0]])

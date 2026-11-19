@@ -1,3 +1,4 @@
+from copy import deepcopy
 import json
 from unittest.mock import patch
 
@@ -54,7 +55,11 @@ def test_hierarchy_workspace_roundtrip_and_generated_sources(tmp_path):
     assert inspection["canvas"]["instances"]["pair"]["module"] == "pair"
     saved = save_document(workspace, {"design": folded, "base_dir": ".", "path": "designs/folded.json", "layout": layout})
     assert saved["inspection"]["valid"]
-    assert saved["design"]["subdesigns"] == folded["subdesigns"]
+    expected = deepcopy(folded["subdesigns"])
+    for child in expected.values():
+        for section in ("instances", "nets"):
+            child[section].sort(key=lambda item: item["name"])
+    assert saved["design"]["subdesigns"] == expected
     assert all(item["id"] != "pair" for item in saved["design"]["project_ips"])
     generated = generate_document(workspace, {"design": saved["design"], "base_dir": "designs"})
     assert "pair.v" in generated["files"]
