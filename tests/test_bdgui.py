@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 from threading import Thread
 import unittest
@@ -217,6 +218,17 @@ class EditorTests(unittest.TestCase):
         self.assertIn(".THRESHOLD(19)", generated["files"]["example_bd.v"])
         self.assertEqual(generated["paths"], ["build/gui/example_bd.v", "build/gui/example_bd_wrapper.v"])
         self.assertEqual(self.workspace.load(self.workspace.design_path)["design"]["instances"]["compare_0"]["parameters"]["THRESHOLD"], 9)
+
+    def test_engineered_generation_is_explicit_and_keeps_legacy_bytes(self):
+        legacy = self.workspace.generate({"design": self.data, "base_dir": "examples"})
+        generated = self.workspace.generate({"design": self.data, "base_dir": "examples", "quality": True, "out_dir": "build/quality"})
+        self.assertTrue(all(text.startswith("// AUTO-GENERATED - DO NOT EDIT\n") for text in generated["files"].values()))
+        self.assertTrue(all(path.startswith("build/quality/") for path in generated["paths"]))
+        self.assertEqual(self.workspace.generate({"design": self.data, "base_dir": "examples"})["files"], legacy["files"])
+        result = subprocess.run([sys.executable, "-m", "bdstudio", "generate", "examples/counter_compare.json", "--workspace", str(self.root), "--out-dir", "build/cli-quality"],
+                                cwd=ROOT, capture_output=True, encoding="utf-8", timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.root / "build/cli-quality/example_bd.v").read_text(encoding="utf-8"), generated["files"]["example_bd.v"])
 
     def test_port_conflict_remains_an_os_error(self):
         with patch("http.server.HTTPServer.server_bind", side_effect=OSError("port already in use")):

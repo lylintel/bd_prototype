@@ -455,3 +455,10 @@ P2.6 的 main 合并提交 5cc18aa 已通过本地完整门禁与 [CI 4381558451
 - 旧往返测试的数组插入顺序和输出排列假设与本任务的名称排序冲突，调整为独立规范化后的完整文档/接口/诊断/HDL 比较；仍保留实际 Icarus 编译、所有 AST 内容、源文件原字节和历史 golden 检查。
 - 自动化真实 git merge-file 验证两个分支分别改变不同实例参数后无冲突，合并结果通过语义校验。真实浏览器验证旧单文件打开、双文件保存和拖动后仅布局内容改变。
 - Phase 5 本轮先执行 P5.1-P5.4；计划标注后续的 P5.5 暂不展开。Phase 4 最终联合性能仍待低负载复验，已有 CI 六项成功已补录，不把它混同为性能通过。
+
+## D042：P5.2 工程化生成与真实 HDL 检查
+
+- 新 core/generation.py 复用语义检查和模板，先规范顺序再添加 AUTO-GENERATED - DO NOT EDIT 与设计 schema 版本。GUI 显式发送 quality=true；新 bdstudio generate 同样启用，旧 bdtool CLI、旧 API 默认和历史 golden 不改字节。生成物只读，不支持修改 HDL 后反向恢复图。
+- bdcheck.py 只运行固定的 Verilator/Yosys 参数，源文件复制到独立临时目录，异常源文件名替换为受控名称，不使用 shell。每工具 30 秒、日志读取上限 1 MiB；缺失、超时、日志溢出和错误均不得视为通过。工具路径只来自本机 PATH/环境变量，不接受模型或 HTTP 传入命令。
+- Verilator 使用 --lint-only -Wall -Wno-fatal，后一个选项仅区分 warning 与 error，不隐藏警告；旧 RTL 的位宽等警告完整记录。Yosys 使用 read_verilog 和 hierarchy -check -top，优先本机配置，缺失时复用固定 YoWASP 版本。没有更改旧 RTL 来掩盖警告。
+- scripts/check_hdl.py 覆盖 5 个示例、项目 IP 目录和 17 个内置 IP，生成工程化封装后分别运行两个工具。已实测 23/23 对象零 error，警告共 83 条，报告 build/hdl-checks.json；本地总门禁和 CI 使用同一入口，CI 上传报告。工具 missing 在此必需门禁中失败，后续 UI 中提供安装提示。

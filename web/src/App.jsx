@@ -676,7 +676,7 @@ export default function App() {
   async function generate() {
     try {
       setBusy("生成中");
-      const result = await api("/api/generate", { design: rootDocument, base_dir: baseDir });
+      const result = await api("/api/generate", { design: rootDocument, base_dir: baseDir, quality: true });
       setInspection((previous) => ({ ...previous, files: result.files }));
       setTab("bd"); setPanelOpen(true);
       setActivity(`已生成 ${result.paths.join(" / ")}`); notify("两层 Verilog 已写入 build/gui/");

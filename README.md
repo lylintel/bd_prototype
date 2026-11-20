@@ -59,6 +59,10 @@ CI 五次测量与条件非阻塞策略、历史归因数据见 [docs/DECISIONS.
 
 ## 开发检查
 
+工程化生成入口：`python -m bdstudio generate examples/counter_compare.json --out-dir build/project`。GUI 的“生成 HDL”也启用确定顺序、设计版本和只读文件头；旧 `bdtool` CLI 保持历史字节兼容。生成 HDL 不作为可回读到图的编辑源，请修改设计 JSON 或画布后重新生成。
+
+`python -m scripts.check_hdl` 对全部示例和内置 IP 运行 Verilator `--lint-only -Wall` 与 Yosys 层次检查，结果写入 build/hdl-checks.json。警告保留且不作为 error，工具缺失/超时/真正错误会阻止门禁。可用 `BD_VERILATOR`、`BD_YOSYS` 指定本机可执行文件；无原生 Yosys 时使用开发依赖中的固定 YoWASP 版本。
+
 输出面板使用按需加载的 CodeMirror 6，保留页签滚动位置、完整复制/下载和独立 JSON 草稿撤销。超过 5000 行时关闭折叠、括号匹配、活动行和匹配选区等附加功能；语法高亮与虚拟化保留。JSON 文本在首次打开页签时才序列化，未应用草稿不会因页签往返丢失。
 
 画布撤销/重做使用 Immer 正反向补丁，最多 100 步，不再保留整图历史快照。普通编辑、拖动、布局和 AI 批量接受各自保持原子撤销。内存测量方法、批量操作的体积限制见 [Phase 4 报告](docs/reports/phase-4.md)。

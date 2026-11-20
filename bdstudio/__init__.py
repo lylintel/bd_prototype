@@ -6,7 +6,7 @@ from core.expr import MESSAGES
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="bdstudio", description=MESSAGES["IP_CLI_DESCRIPTION"])
+    parser = argparse.ArgumentParser(prog="bdstudio", description=MESSAGES["PROJECT_CLI_DESCRIPTION"])
     commands = parser.add_subparsers(dest="command", required=True)
     ip = commands.add_parser("ip")
     actions = ip.add_subparsers(dest="action", required=True)
@@ -17,8 +17,19 @@ def main(argv=None):
     importer.add_argument("--license", default="NOASSERTION")
     importer.add_argument("--version")
     importer.add_argument("--dry-run", action="store_true")
+    generator = commands.add_parser("generate", help=MESSAGES["PROJECT_GENERATE_HELP"])
+    generator.add_argument("design", type=Path)
+    generator.add_argument("--workspace", type=Path, default=Path.cwd())
+    generator.add_argument("--out-dir", "-o", type=Path, default=Path("build/gui"))
     args = parser.parse_args(argv)
     try:
+        if args.command == "generate":
+            from bdgui import Workspace
+            workspace = Workspace(args.workspace, str(args.design))
+            loaded = workspace.load(str(args.design))
+            result = workspace.generate({"design": loaded["design"], "base_dir": loaded["base_dir"], "quality": True, "out_dir": str(args.out_dir)})
+            print(json.dumps({"type": "generated", "paths": result["paths"]}, ensure_ascii=False))
+            return 0
         from ip_import.library import IpLibrary
         failed = False
         for event in IpLibrary(args.workspace).import_paths(args.paths, recursive=args.recursive, dry_run=args.dry_run,

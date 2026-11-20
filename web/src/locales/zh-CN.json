@@ -1,4 +1,5 @@
 {
+  "semantic.reason.generation_options": "生成选项类型无效",
   "semantic.reason.migration_envelope": "旧项目容器格式或版本无效",
   "semantic.reason.migration_layout_conflict": "内嵌布局与独立布局文件冲突，请先明确保留哪一份",
   "semantic.reason.project_output_path": "保存目标必须位于当前工作区内",

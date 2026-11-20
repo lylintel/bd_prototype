@@ -66,6 +66,13 @@ jobs:
           if-no-files-found: warn
       - name: Run the same local checks
         run: python scripts/check.py
+      - name: Publish external HDL checks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hdl-checks-python-${{ matrix.python }}
+          path: build/hdl-checks.json
+          if-no-files-found: warn
       - name: Publish offline AI evaluation
         if: always()
         uses: actions/upload-artifact@v4

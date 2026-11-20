@@ -194,12 +194,19 @@ def save_document(workspace, payload):
 
 
 def generate_document(workspace, payload):
+    if type(payload.get("quality", False)) is not bool:
+        raise DesignFormatError(issue("D005", {}, reason="generation_options"))
     document, library = prepare(workspace, payload.get("design"), payload.get("base_dir", "."))
-    result = inspect_design(document, library)
-    if not result["valid"]:
-        raise bdtool.DesignError(result["diagnostics"][0]["message"])
+    if payload.get("quality", False):
+        from core.generation import generate_files
+        files = generate_files(document, library)
+    else:
+        result = inspect_design(document, library)
+        if not result["valid"]:
+            raise bdtool.DesignError(result["diagnostics"][0]["message"])
+        files = result["files"]
     base = workspace.path(payload.get("base_dir", "."))
     sources = {(base / source.path).resolve() for metadata in library for source in (metadata.source, *metadata.additional_sources)}
-    output = workspace.path("build/gui")
-    bdtool._write_outputs(result["files"], output, sources)
-    return {"files": result["files"], "paths": [workspace.relative(output / name) for name in result["files"]]}
+    output = workspace.path(payload.get("out_dir", "build/gui"))
+    bdtool._write_outputs(files, output, sources)
+    return {"files": files, "paths": [workspace.relative(output / name) for name in files]}

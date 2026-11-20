@@ -131,6 +131,19 @@ async function openEditor(page) {
   await expect(page.getByRole("heading", { name: "example_bd", level: 1, exact: true })).toBeVisible();
 }
 
+test("engineering generation writes versioned readonly output without changing the diagram", async ({ page }) => {
+  await openEditor(page);
+  await expect(page.getByRole("button", { name: "生成 HDL", exact: true })).toBeEnabled();
+  const original = readFileSync(path.join(server.directory, "examples/counter_compare.json"));
+  await page.getByRole("button", { name: "生成 HDL", exact: true }).click();
+  const editor = page.getByLabel(t("output.verilog"), { exact: true });
+  await expect(editor).toContainText("AUTO-GENERATED - DO NOT EDIT");
+  await expect(editor).toHaveAttribute("aria-readonly", "true");
+  const generated = readFileSync(path.join(server.directory, "build/gui/example_bd.v"), "utf8");
+  expect(generated).toContain("schema_version: 2");
+  expect(readFileSync(path.join(server.directory, "examples/counter_compare.json"))).toEqual(original);
+});
+
 test("legacy single-file projects migrate and a node move only changes layout", async ({ page }) => {
   const legacy = { schema_version: 1, design: JSON.parse(readFileSync(path.join(server.directory, "examples/counter_compare.json"), "utf8")),
     layout: { nodes: { counter_0: { x: 240, y: 140 }, compare_0: { x: 590, y: 140 } }, viewport: { x: 0, y: 0, zoom: 0.75 } } };
