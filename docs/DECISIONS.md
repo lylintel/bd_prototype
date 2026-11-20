@@ -462,3 +462,10 @@ P2.6 的 main 合并提交 5cc18aa 已通过本地完整门禁与 [CI 4381558451
 - bdcheck.py 只运行固定的 Verilator/Yosys 参数，源文件复制到独立临时目录，异常源文件名替换为受控名称，不使用 shell。每工具 30 秒、日志读取上限 1 MiB；缺失、超时、日志溢出和错误均不得视为通过。工具路径只来自本机 PATH/环境变量，不接受模型或 HTTP 传入命令。
 - Verilator 使用 --lint-only -Wall -Wno-fatal，后一个选项仅区分 warning 与 error，不隐藏警告；旧 RTL 的位宽等警告完整记录。Yosys 使用 read_verilog 和 hierarchy -check -top，优先本机配置，缺失时复用固定 YoWASP 版本。没有更改旧 RTL 来掩盖警告。
 - scripts/check_hdl.py 覆盖 5 个示例、项目 IP 目录和 17 个内置 IP，生成工程化封装后分别运行两个工具。已实测 23/23 对象零 error，警告共 83 条，报告 build/hdl-checks.json；本地总门禁和 CI 使用同一入口，CI 上传报告。工具 missing 在此必需门禁中失败，后续 UI 中提供安装提示。
+
+## D043：P5.3 检查按钮与生成行映射
+
+- 工程化生成附带 schema_version=1 的 source map，包含各 HDL 文件 SHA-256 和 1-based 行范围到实例/net 的映射；保存为设计名.source-map.json。映射基于本工具生成的受控模板，不解析任意用户 Verilog 来恢复图。旧默认生成接口不新增映射文件。
+- POST /api/check-hdl 沿用 Host/Origin/令牌保护，重新校验设计和源码后，在临时目录运行同一工具适配，不写项目产物。生成行告警按最窄范围定位；原始 RTL 文件仅在来源实例唯一时补上图位置，歧义保留文件/行号而不猜测。
+- 输出面板提供检查按钮和独立工具结果区，不混同结构校验与外部工具结论。工具缺失显示安装/配置提示；用户显式选择的工具路径无效时不静默换另一版本。检查期间编辑允许继续，回包须匹配根文档引用和源目录，否则丢弃。
+- 自动化用定宽常量替换计数器到比较器的连接，制造生成文件中的 PINCONNECTEMPTY 告警；真实 Verilator 行号成功定位 counter_0。另验证过期结果不覆盖新编辑、source map 落盘一致、桌面/移动端显示，原设计字节不变。

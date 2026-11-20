@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 import hashlib
 import os
 from pathlib import Path
@@ -193,13 +194,45 @@ def save_document(workspace, payload):
     return workspace.load(workspace.relative(target))
 
 
+def check_generated(workspace, payload):
+    from bdcheck import run_checks
+    from core.generation import generate_artifacts
+
+    document, library = prepare(workspace, payload.get("design"), payload.get("base_dir", "."))
+    artifacts = generate_artifacts(document, library)
+    base = workspace.path(payload.get("base_dir", "."))
+    sources = sorted({(base / source.path).resolve() for item in library for source in (item.source, *item.additional_sources)})
+    result = run_checks(artifacts["files"], sources, f"{document['name']}_wrapper")
+    source_instances = {}
+    index = {(item.id, item.version): item for item in library}
+    for scope in [document, *document.get("subdesigns", {}).values()]:
+        for instance in scope["instances"]:
+            metadata = index.get((instance["ip"]["id"], instance["ip"]["version"]))
+            if metadata is not None:
+                for source in (metadata.source, *metadata.additional_sources):
+                    source_instances.setdefault(str((base / source.path).resolve()), []).append({"design": scope["name"], "instance": instance["name"]})
+    for diagnostic in result["diagnostics"]:
+        location = diagnostic["location"]
+        filename, line = location.get("file"), location.get("line", 0)
+        ranges = artifacts["source_map"]["files"].get(filename, {}).get("ranges", [])
+        matches = [item for item in ranges if item["start_line"] <= line <= item["end_line"]]
+        if matches:
+            target = min(matches, key=lambda item: item["end_line"] - item["start_line"])["location"]
+            location.update(target)
+        elif len(source_instances.get(filename, [])) == 1:
+            location.update(source_instances[filename][0])
+    return {**artifacts, **result}
+
+
 def generate_document(workspace, payload):
     if type(payload.get("quality", False)) is not bool:
         raise DesignFormatError(issue("D005", {}, reason="generation_options"))
     document, library = prepare(workspace, payload.get("design"), payload.get("base_dir", "."))
+    source_map = None
     if payload.get("quality", False):
-        from core.generation import generate_files
-        files = generate_files(document, library)
+        from core.generation import generate_artifacts
+        artifacts = generate_artifacts(document, library)
+        files, source_map = artifacts["files"], artifacts["source_map"]
     else:
         result = inspect_design(document, library)
         if not result["valid"]:
@@ -208,5 +241,10 @@ def generate_document(workspace, payload):
     base = workspace.path(payload.get("base_dir", "."))
     sources = {(base / source.path).resolve() for metadata in library for source in (metadata.source, *metadata.additional_sources)}
     output = workspace.path(payload.get("out_dir", "build/gui"))
-    bdtool._write_outputs(files, output, sources)
-    return {"files": files, "paths": [workspace.relative(output / name) for name in files]}
+    outputs = dict(files)
+    if source_map is not None:
+        outputs[f"{document['name']}.source-map.json"] = json.dumps(source_map, indent=2, ensure_ascii=False) + "\n"
+    if payload.get("design_path"):
+        sources.add(workspace.path(payload["design_path"]))
+    bdtool._write_outputs(outputs, output, sources)
+    return {"files": files, "paths": [workspace.relative(output / name) for name in outputs], **({"source_map": source_map} if source_map is not None else {})}

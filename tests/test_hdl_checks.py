@@ -69,3 +69,9 @@ def test_tool_log_overflow_is_not_a_success(monkeypatch):
     result = bdcheck.run_checks({'demo.v': 'module demo; endmodule\n'}, [], 'demo')
     assert not result['valid']
     assert any(item['code'] == 'HDL_TOOL_LOG_LIMIT' for item in result['diagnostics'])
+
+
+def test_explicit_missing_tool_does_not_silently_use_another_version(monkeypatch):
+    monkeypatch.setenv('BD_VERILATOR', 'missing-selected-verilator')
+    monkeypatch.setattr(bdcheck.shutil, 'which', lambda name: '/fallback/verilator_bin' if name == 'verilator_bin' else None)
+    assert bdcheck.tool_commands()['verilator'] is None

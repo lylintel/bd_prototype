@@ -27,7 +27,7 @@ def main(argv=None):
             from bdgui import Workspace
             workspace = Workspace(args.workspace, str(args.design))
             loaded = workspace.load(str(args.design))
-            result = workspace.generate({"design": loaded["design"], "base_dir": loaded["base_dir"], "quality": True, "out_dir": str(args.out_dir)})
+            result = workspace.generate({"design": loaded["design"], "base_dir": loaded["base_dir"], "design_path": loaded["path"], "quality": True, "out_dir": str(args.out_dir)})
             print(json.dumps({"type": "generated", "paths": result["paths"]}, ensure_ascii=False))
             return 0
         from ip_import.library import IpLibrary

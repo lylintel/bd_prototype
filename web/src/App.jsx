@@ -124,6 +124,8 @@ export default function App() {
   const [inspection, setInspection] = useState(emptyInspection);
   const [checking, setChecking] = useState(false);
   const [fixing, setFixing] = useState(false);
+  const [hdlRunning, setHdlRunning] = useState(false);
+  const [hdlResult, setHdlResult] = useState(null);
   const [busy, setBusy] = useState("");
   const [saved, setSaved] = useState(true);
   const [selection, setSelection] = useState(null);
@@ -172,6 +174,7 @@ export default function App() {
   useEffect(() => { pinAction.current = pickPin; layoutAction.current = moveNode; connectionAction.current = connect; connectionEndAction.current = endConnection; });
   const editorState = useRef(null);
   const rootDocument = history?.current.document ?? history?.current.design;
+  const currentHdlResult = hdlResult?.document === rootDocument && hdlResult?.baseDir === baseDir ? hdlResult.result : null;
   const scope = hasSubdesign(rootDocument, scopePath.at(-1)) ? scopePath.at(-1) : "";
   const toggleGroupPins = useCallback((name) => setExpandedGroups((current) => current.includes(`${scope}:${name}`) ? current.filter((item) => item !== `${scope}:${name}`) : [...current, `${scope}:${name}`]), [scope]);
   const logicalView = useMemo(() => scopeState(history?.current, scope), [history?.current.design, history?.current.document, scope]);
@@ -676,7 +679,7 @@ export default function App() {
   async function generate() {
     try {
       setBusy("生成中");
-      const result = await api("/api/generate", { design: rootDocument, base_dir: baseDir, quality: true });
+      const result = await api("/api/generate", { design: rootDocument, base_dir: baseDir, design_path: documentPath, quality: true });
       setInspection((previous) => ({ ...previous, files: result.files }));
       setTab("bd"); setPanelOpen(true);
       setActivity(`已生成 ${result.paths.join(" / ")}`); notify("两层 Verilog 已写入 build/gui/");
@@ -694,6 +697,24 @@ export default function App() {
       notify(result.valid ? "设计校验通过" : result.diagnostics[0], !result.valid);
     } catch (error) { notify(error.message, true); }
     finally { setChecking(false); }
+  }
+
+  async function checkHdl() {
+    if (hdlRunning || checking || busy || preview || !inspection.valid) return;
+    const snapshot = rootDocument, sourceBase = baseDir;
+    setHdlRunning(true);
+    try {
+      const result = await api("/api/check-hdl", { design: snapshot, base_dir: sourceBase });
+      const latest = editorState.current;
+      if ((latest.history.current.document ?? latest.history.current.design) !== snapshot || latest.baseDir !== sourceBase) {
+        notify(t("hdl.stale"));
+        return;
+      }
+      setHdlResult({ document: snapshot, baseDir: sourceBase, result });
+      setInspection((previous) => ({ ...previous, files: result.files }));
+      setTab("diagnostics"); setPanelOpen(true);
+    } catch (error) { notify(error.message, true); }
+    finally { setHdlRunning(false); }
   }
 
   useEffect(() => {
@@ -882,12 +903,15 @@ export default function App() {
         <OutputWindow open={panelOpen} onOpenChange={setPanelOpen} tab={tab}
           tabs={[ { id: "diagnostics", label: "诊断", Icon: ListTree }, { id: "bd", label: "BD Verilog", Icon: Code2 }, { id: "wrapper", label: "Wrapper", Icon: Blocks }, { id: "json", label: "设计 JSON", Icon: CircuitBoard } ].map(({ id, label, Icon }) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""}
             onPointerEnter={() => { if (id !== "diagnostics") prepareOutputEditor().catch(() => undefined); }} onFocus={() => { if (id !== "diagnostics") prepareOutputEditor().catch(() => undefined); }}
-            onClick={(event) => { if (id !== "diagnostics") markOutput(`activate:${id}`, event.timeStamp); setTab(id); setPanelOpen(true); }}><Icon size={14} />{label}{id === "diagnostics" && inspection.diagnostics.length > 0 && <b>{inspection.diagnostics.length}</b>}</button>)}>
+            onClick={(event) => { if (id !== "diagnostics") markOutput(`activate:${id}`, event.timeStamp); setTab(id); setPanelOpen(true); }}><Icon size={14} />{label}{id === "diagnostics" && inspection.diagnostics.length > 0 && <b>{inspection.diagnostics.length}</b>}</button>).concat([<IconButton key="hdl-check" icon={hdlRunning ? LoaderCircle : ShieldCheck} label={t(hdlRunning ? "hdl.running" : "hdl.check")} disabled={hdlRunning || checking || Boolean(busy || preview) || !inspection.valid} onClick={checkHdl} />])}>
           {panelOpen && <div className="output-content" role="tabpanel">
             {tab === "diagnostics" ? <>
               <div className={`diagnostic-summary ${inspection.valid ? "success" : ""}`}>{checking ? <LoaderCircle size={18} className="spin" /> : inspection.valid ? <CircleCheck size={19} /> : <CircleAlert size={19} />}<div><strong>{checking ? "正在校验设计" : inspection.valid ? "所有连接检查通过" : "设计存在待修复项"}</strong><span>{inspection.valid ? `${totalPins} 个实例端口 · ${Object.keys(design.ports).length} 个外部端口 · ${Object.keys(design.nets).length} 条网络` : "DesignError"}</span></div>{inspection.valid && <span className="diagnostic-tag">VALID</span>}</div>
               {inspection.structuredDiagnostics?.length ? <Diagnostics items={inspection.structuredDiagnostics} disabled={checking || Boolean(busy) || fixing} onFocus={focusDiagnostic} onFix={applyDiagnosticFix} />
                 : inspection.diagnostics.map((message) => <button className="diagnostic-error" key={message} onClick={() => focusDiagnostic(message)}><CircleAlert size={15} /><code>{message}</code><ArrowUpRight size={14} /></button>)}
+              {currentHdlResult && <section aria-label={t("hdl.results")}><div className="activity-line"><ShieldCheck size={14} /><span>{t(currentHdlResult.valid ? "hdl.passed" : "hdl.failed")}</span></div>
+                <div className="activity-line">{currentHdlResult.tools.map((tool) => <span key={tool.name}>{tool.name}: {t(`hdl.status.${tool.status}`)}</span>)}</div>
+                <Diagnostics items={currentHdlResult.diagnostics} disabled onFocus={focusDiagnostic} onFix={applyDiagnosticFix} /></section>}
               <div className="activity-line"><CheckCheck size={14} /><span>{activity}</span></div>
             </> : tab === "json" ? <div className="json-editor"><div className="code-toolbar"><div className="code-file-actions"><IconButton icon={Copy} label={t("output.copyJson")} onClick={() => navigator.clipboard.writeText(jsonDraft).catch(() => notify(t("output.copyFailed"), true))} /><IconButton icon={Download} label={t("output.downloadJson")} onClick={() => downloadFile(`${design.name}.json`, jsonDraft)} /><code>{scope ? `${design.name}.json` : documentPath || `${design.name}.json`}</code></div><button className="small-command" onClick={applyJson}><Check size={13} />{t("semantic.applyJson")}</button></div>
               <OutputEditor value={jsonDraft} language="json" readOnly={false} label={t("semantic.designJson")} cache={outputStates.current} cacheKey={`${baseDir}:${documentPath}:${scope}:json`} onChange={setJsonDraft} /></div>

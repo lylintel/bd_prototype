@@ -540,6 +540,9 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(workspace.save(payload))
             elif self.path == "/api/generate":
                 self.json_response(workspace.generate(payload))
+            elif self.path == "/api/check-hdl":
+                from bdsemantic import check_generated
+                self.json_response(check_generated(workspace, payload))
             elif self.path == "/api/ip/import":
                 self.stream_import(payload)
             else:

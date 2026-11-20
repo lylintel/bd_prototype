@@ -15,7 +15,9 @@ MAX_LOG_BYTES = 1024 * 1024
 
 
 def tool_commands():
-    verilator = shutil.which(os.environ.get("BD_VERILATOR", "verilator")) or shutil.which("verilator_bin")
+    verilator = shutil.which(os.environ.get("BD_VERILATOR", "verilator"))
+    if not verilator and not os.environ.get("BD_VERILATOR"):
+        verilator = shutil.which("verilator_bin")
     yosys = shutil.which(os.environ.get("BD_YOSYS", "yosys"))
     if not yosys and not os.environ.get("BD_YOSYS"):
         portable = Path(sysconfig.get_path("scripts")) / ("yowasp-yosys.exe" if os.name == "nt" else "yowasp-yosys")

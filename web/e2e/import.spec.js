@@ -144,6 +144,55 @@ test("engineering generation writes versioned readonly output without changing t
   expect(readFileSync(path.join(server.directory, "examples/counter_compare.json"))).toEqual(original);
 });
 
+test("HDL check maps a real generated warning to its canvas instance", async ({ page }, testInfo) => {
+  await openEditor(page);
+  await page.locator('.react-flow__node[data-id="compare_0"]').dblclick();
+  const threshold = page.getByLabel(t("semantic.parameterLabel", { instance: "compare_0", name: "THRESHOLD" }), { exact: true });
+  await threshold.fill("19"); await threshold.press("Tab");
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  const document = await designJson(page);
+  document.schema_version = 3;
+  document.nets.find((net) => net.name === "count_bus").endpoints = [{ const: "8'd9" }, { inst: "compare_0", port: "value" }];
+  await page.getByLabel(t("semantic.designJson"), { exact: true }).fill(JSON.stringify(document, null, 2));
+  await page.getByRole("button", { name: t("semantic.applyJson"), exact: true }).click();
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  await page.getByRole("button", { name: t("hdl.check"), exact: true }).click();
+  const result = page.getByRole("region", { name: t("hdl.results"), exact: true });
+  await expect(result).toContainText(t("hdl.passed"));
+  const warning = result.locator('[data-code="HDL_TOOL_WARNING"][data-instance="counter_0"]');
+  await expect(warning.first()).toContainText("example_bd.v:");
+  await warning.first().getByRole("button").click();
+  await expect(page.getByLabel("实例名称", { exact: true })).toHaveValue("counter_0");
+  await page.screenshot({ path: testInfo.outputPath("hdl-warning-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "属性面板", exact: true }).click();
+  await page.getByRole("button", { name: t("hdl.check"), exact: true }).scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("hdl-warning-mobile.png") });
+  expect(existsSync(path.join(server.directory, "build/gui"))).toBe(false);
+});
+
+test("HDL check does not publish results over a newer design", async ({ page }) => {
+  await openEditor(page);
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route("**/api/check-hdl", async (route) => {
+    const response = await route.fetch();
+    await held;
+    await route.fulfill({ response });
+  });
+  try {
+    await page.getByRole("button", { name: t("hdl.check"), exact: true }).click();
+    await expect(page.getByRole("button", { name: t("hdl.running"), exact: true })).toBeVisible();
+    await page.locator('.react-flow__node[data-id="compare_0"]').dblclick();
+    const threshold = page.getByLabel(t("semantic.parameterLabel", { instance: "compare_0", name: "THRESHOLD" }), { exact: true });
+    await threshold.fill("19"); await threshold.press("Tab");
+    release();
+    await expect(page.getByText(t("hdl.stale"), { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: t("hdl.results"), exact: true })).toHaveCount(0);
+  } finally { release(); }
+});
+
 test("legacy single-file projects migrate and a node move only changes layout", async ({ page }) => {
   const legacy = { schema_version: 1, design: JSON.parse(readFileSync(path.join(server.directory, "examples/counter_compare.json"), "utf8")),
     layout: { nodes: { counter_0: { x: 240, y: 140 }, compare_0: { x: 590, y: 140 } }, viewport: { x: 0, y: 0, zoom: 0.75 } } };

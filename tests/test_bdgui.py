@@ -224,6 +224,9 @@ class EditorTests(unittest.TestCase):
         generated = self.workspace.generate({"design": self.data, "base_dir": "examples", "quality": True, "out_dir": "build/quality"})
         self.assertTrue(all(text.startswith("// AUTO-GENERATED - DO NOT EDIT\n") for text in generated["files"].values()))
         self.assertTrue(all(path.startswith("build/quality/") for path in generated["paths"]))
+        saved_map = json.loads((self.root / "build/quality/example_bd.source-map.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved_map, generated["source_map"])
+        self.assertEqual(saved_map["schema_version"], 1)
         self.assertEqual(self.workspace.generate({"design": self.data, "base_dir": "examples"})["files"], legacy["files"])
         result = subprocess.run([sys.executable, "-m", "bdstudio", "generate", "examples/counter_compare.json", "--workspace", str(self.root), "--out-dir", "build/cli-quality"],
                                 cwd=ROOT, capture_output=True, encoding="utf-8", timeout=30)
