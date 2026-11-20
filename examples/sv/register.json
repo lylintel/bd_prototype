@@ -1,0 +1,126 @@
+{
+  "schema_version": 2,
+  "name": "sv_demo",
+  "ports": {
+    "clk": {
+      "direction": "input"
+    },
+    "data": {
+      "direction": "input",
+      "range": [
+        7,
+        0
+      ]
+    },
+    "result": {
+      "direction": "output",
+      "range": [
+        7,
+        0
+      ]
+    }
+  },
+  "instances": [
+    {
+      "name": "register_0",
+      "ip": {
+        "id": "sv_register",
+        "version": "1.0.0"
+      },
+      "params": {
+        "WIDTH": 8
+      }
+    }
+  ],
+  "nets": [
+    {
+      "name": "clk_net",
+      "endpoints": [
+        {
+          "ext": "clk"
+        },
+        {
+          "inst": "register_0",
+          "port": "clk"
+        }
+      ]
+    },
+    {
+      "name": "data_net",
+      "endpoints": [
+        {
+          "ext": "data"
+        },
+        {
+          "inst": "register_0",
+          "port": "data"
+        }
+      ]
+    },
+    {
+      "name": "result_net",
+      "endpoints": [
+        {
+          "ext": "result"
+        },
+        {
+          "inst": "register_0",
+          "port": "result"
+        }
+      ]
+    }
+  ],
+  "project_ips": [
+    {
+      "schema_version": 1,
+      "id": "sv_register",
+      "version": "1.0.0",
+      "display_name": "sv_register",
+      "description": "",
+      "tags": [],
+      "source": {
+        "kind": "verilog",
+        "path": "rtl/sv_register.sv",
+        "sha256": "419752efe27ef7bb9a6656576e6a1fbf61771eb12c139d45583cab7bd2c7a603",
+        "license": "NOASSERTION"
+      },
+      "language": "systemverilog",
+      "parameters": [
+        {
+          "name": "WIDTH",
+          "type": "int",
+          "default": "8"
+        }
+      ],
+      "ports": [
+        {
+          "name": "clk",
+          "dir": "in",
+          "width": "1",
+          "signed": false
+        },
+        {
+          "name": "data",
+          "dir": "in",
+          "width": "(((WIDTH - 1)) >= (0) ? ((WIDTH - 1)) - (0) + 1 : (0) - ((WIDTH - 1)) + 1)",
+          "signed": false,
+          "range": [
+            "(WIDTH - 1)",
+            0
+          ]
+        },
+        {
+          "name": "result",
+          "dir": "out",
+          "width": "(((WIDTH - 1)) >= (0) ? ((WIDTH - 1)) - (0) + 1 : (0) - ((WIDTH - 1)) + 1)",
+          "signed": false,
+          "range": [
+            "(WIDTH - 1)",
+            0
+          ]
+        }
+      ],
+      "interfaces": []
+    }
+  ]
+}

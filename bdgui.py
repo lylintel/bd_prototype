@@ -325,11 +325,13 @@ class Workspace:
         return self.load(self.relative(target))
 
     def generate(self, payload: dict) -> dict:
+        if payload.get("lang", "v") not in ("v", "sv"):
+            raise bdtool.DesignError(MESSAGES["HDL_LANGUAGE"])
         if type(payload.get("quality", False)) is not bool:
             from core.design import DesignFormatError
             from core.diagnostics import issue
             raise DesignFormatError(issue("D005", {}, reason="generation_options"))
-        if payload.get("quality", False) or isinstance(payload.get("design"), dict) and "schema_version" in payload["design"]:
+        if payload.get("quality", False) or payload.get("lang", "v") == "sv" or isinstance(payload.get("design"), dict) and "schema_version" in payload["design"]:
             from bdsemantic import generate_document
 
             return generate_document(self, payload)

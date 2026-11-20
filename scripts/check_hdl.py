@@ -29,7 +29,8 @@ def main():
     output.parent.mkdir(parents=True, exist_ok=True)
     for name, raw, base_dir in cases:
         document, library = prepare(workspace, raw, base_dir)
-        files = generate_files(document, library)
+        language = "sv" if any(item.language == "systemverilog" for item in library) else "v"
+        files = generate_files(document, library, language=language)
         base = workspace.path(base_dir)
         sources = sorted({(base / source.path).resolve() for item in library for source in (item.source, *item.additional_sources)})
         result = run_checks(files, sources, f"{document['name']}_wrapper")

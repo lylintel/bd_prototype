@@ -16,7 +16,7 @@ Phase 4 的联合性能复验仍独立待办，2B、P1.8 和真实模型调用�
 
 ## 尚待完成
 
-P5.4 SystemVerilog；最终 CI 与报告。
+最终 CI 与报告。P5.5、Phase 4 低负载性能复验及真实模型评测仍不在本轮范围。
 
 ## P5.2 工程化生成与工具检查
 
@@ -30,3 +30,11 @@ P5.4 SystemVerilog；最终 CI 与报告。
 工程化输出附带哈希与行范围 source map，并保存独立映射文件。受令牌保护的检查 API 使用临时产物，输出面板显示工具状态及可点击诊断，源码来源不唯一时不猜实例。
 真实工具产生的 PINCONNECTEMPTY 已从生成行定位到 counter_0；浏览器验证了告警点击、移动端显示、检查过程中修改设计后丢弃旧回包，且不写项目文件。映射落盘一致性与显式缺失工具不回退也已验证。详见 D043。
 完整门禁通过：629 Python +85 子测试、62 前端单测、30 条浏览器流程，日志 build/phase5-p53-recheck.log。独立语义性能 407.121/551.127ms，按既定政策记录非阻塞警告。
+
+## P5.4 SystemVerilog
+
+新增 CLI --lang sv 与 GUI 语言菜单，生成 logic 声明、.sv 文件和匹配的 source map，不使用 .*。默认 Verilog 与旧 golden 保持。语言变化会让旧工具检查结果失效。
+真实 logic/parameter int/always_ff IP 已通过库导入、连接、生成、Verilator/Yosys、CLI 和 GUI 全链路；桌面和移动端截图已检查。新示例位于 examples/sv/register.json，元数据由真实解析器生成。
+工具全库检查现覆盖 24 个对象，全部零 error、83 条 warning 保留，新 SV 示例零 warning。支持范围与旧解析器限制、旧输出文件保留规则见 D044。
+最终完整门禁通过：632 Python +86 子测试、62 前端单测、31 条浏览器流程，日志 build/phase5-p54-final-check.log。独立语义性能 415.843/505.060ms，按既定策略记录非阻塞警告。
+中间一次既有 AI 预览可见性失败单独及完整复跑通过；JSON 应用期间检查旧状态的时序缺口已用受控延迟复现并修复，未放宽断言或超时。

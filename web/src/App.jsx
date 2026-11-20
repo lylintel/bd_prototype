@@ -126,6 +126,9 @@ export default function App() {
   const [fixing, setFixing] = useState(false);
   const [hdlRunning, setHdlRunning] = useState(false);
   const [hdlResult, setHdlResult] = useState(null);
+  const [hdlLanguage, setHdlLanguage] = useState("v");
+  const hdlLanguageRef = useRef(hdlLanguage);
+  hdlLanguageRef.current = hdlLanguage;
   const [busy, setBusy] = useState("");
   const [saved, setSaved] = useState(true);
   const [selection, setSelection] = useState(null);
@@ -174,7 +177,7 @@ export default function App() {
   useEffect(() => { pinAction.current = pickPin; layoutAction.current = moveNode; connectionAction.current = connect; connectionEndAction.current = endConnection; });
   const editorState = useRef(null);
   const rootDocument = history?.current.document ?? history?.current.design;
-  const currentHdlResult = hdlResult?.document === rootDocument && hdlResult?.baseDir === baseDir ? hdlResult.result : null;
+  const currentHdlResult = hdlResult?.document === rootDocument && hdlResult?.baseDir === baseDir && hdlResult?.language === hdlLanguage ? hdlResult.result : null;
   const scope = hasSubdesign(rootDocument, scopePath.at(-1)) ? scopePath.at(-1) : "";
   const toggleGroupPins = useCallback((name) => setExpandedGroups((current) => current.includes(`${scope}:${name}`) ? current.filter((item) => item !== `${scope}:${name}`) : [...current, `${scope}:${name}`]), [scope]);
   const logicalView = useMemo(() => scopeState(history?.current, scope), [history?.current.design, history?.current.document, scope]);
@@ -679,10 +682,10 @@ export default function App() {
   async function generate() {
     try {
       setBusy("生成中");
-      const result = await api("/api/generate", { design: rootDocument, base_dir: baseDir, design_path: documentPath, quality: true });
+      const result = await api("/api/generate", { design: rootDocument, base_dir: baseDir, design_path: documentPath, quality: true, lang: hdlLanguage });
       setInspection((previous) => ({ ...previous, files: result.files }));
       setTab("bd"); setPanelOpen(true);
-      setActivity(`已生成 ${result.paths.join(" / ")}`); notify("两层 Verilog 已写入 build/gui/");
+      setActivity(`已生成 ${result.paths.join(" / ")}`); notify(t("hdl.generated", { language: t(hdlLanguage === "sv" ? "hdl.systemVerilog" : "hdl.verilog") }));
     } catch (error) { notify(error.message, true); }
     finally { setBusy(""); }
   }
@@ -701,16 +704,16 @@ export default function App() {
 
   async function checkHdl() {
     if (hdlRunning || checking || busy || preview || !inspection.valid) return;
-    const snapshot = rootDocument, sourceBase = baseDir;
+    const snapshot = rootDocument, sourceBase = baseDir, language = hdlLanguage;
     setHdlRunning(true);
     try {
-      const result = await api("/api/check-hdl", { design: snapshot, base_dir: sourceBase });
+      const result = await api("/api/check-hdl", { design: snapshot, base_dir: sourceBase, lang: language });
       const latest = editorState.current;
-      if ((latest.history.current.document ?? latest.history.current.design) !== snapshot || latest.baseDir !== sourceBase) {
+      if ((latest.history.current.document ?? latest.history.current.design) !== snapshot || latest.baseDir !== sourceBase || hdlLanguageRef.current !== language) {
         notify(t("hdl.stale"));
         return;
       }
-      setHdlResult({ document: snapshot, baseDir: sourceBase, result });
+      setHdlResult({ document: snapshot, baseDir: sourceBase, language, result });
       setInspection((previous) => ({ ...previous, files: result.files }));
       setTab("diagnostics"); setPanelOpen(true);
     } catch (error) { notify(error.message, true); }
@@ -781,6 +784,7 @@ export default function App() {
   async function applyJson() {
     try {
       const parsed = JSON.parse(jsonDraft);
+      setChecking(true);
       const snapshot = editorState.current.history.current;
       const result = await api("/api/semantic/inspect", { design: parsed, base_dir: baseDir });
       if (editorState.current.history.current !== snapshot) throw new Error(t("semantic.notReady"));
@@ -788,6 +792,7 @@ export default function App() {
       validateDocumentShape(result.canvas);
       mutate((next) => { for (const key of Object.keys(next)) delete next[key]; Object.assign(next, result.canvas); }, t("semantic.jsonApplied"), false, result.document);
     } catch (error) { notify(error.message, true); }
+    finally { setChecking(false); }
   }
 
   async function applyConnection(name, index, endpoint) {
@@ -810,7 +815,9 @@ export default function App() {
   if (!design) return <div className="boot-screen"><CircuitBoard size={36} /><h1>BD Studio</h1>{fatal ? <><p role="alert">{fatal}</p><button onClick={() => location.reload()}>重新连接</button></> : <LoaderCircle className="spin" size={20} />}</div>;
 
   const moduleNames = Object.keys(design.modules).filter((name) => [name, ...Object.keys(design.modules[name].ports)].some((value) => value.toLowerCase().includes(search.toLowerCase())));
-  const filename = tab === "wrapper" ? `${rootDocument.name}_wrapper.v` : `${design.name}.v`;
+  const moduleFilename = tab === "wrapper" ? `${rootDocument.name}_wrapper` : design.name;
+  const requestedFilename = `${moduleFilename}.${hdlLanguage === "sv" ? "sv" : "v"}`;
+  const filename = Object.hasOwn(inspection.files, requestedFilename) ? requestedFilename : `${moduleFilename}.v`;
   const code = inspection.files[filename] ?? "";
   const selectionNode = selection?.type === "node" ? selection.id : selection?.type === "port" ? nodeId(selection.id) : null;
   const instance = selectionNode && !selectionNode.startsWith("@") ? design.instances[selectionNode] : null;
@@ -903,7 +910,7 @@ export default function App() {
         <OutputWindow open={panelOpen} onOpenChange={setPanelOpen} tab={tab}
           tabs={[ { id: "diagnostics", label: "诊断", Icon: ListTree }, { id: "bd", label: "BD Verilog", Icon: Code2 }, { id: "wrapper", label: "Wrapper", Icon: Blocks }, { id: "json", label: "设计 JSON", Icon: CircuitBoard } ].map(({ id, label, Icon }) => <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""}
             onPointerEnter={() => { if (id !== "diagnostics") prepareOutputEditor().catch(() => undefined); }} onFocus={() => { if (id !== "diagnostics") prepareOutputEditor().catch(() => undefined); }}
-            onClick={(event) => { if (id !== "diagnostics") markOutput(`activate:${id}`, event.timeStamp); setTab(id); setPanelOpen(true); }}><Icon size={14} />{label}{id === "diagnostics" && inspection.diagnostics.length > 0 && <b>{inspection.diagnostics.length}</b>}</button>).concat([<IconButton key="hdl-check" icon={hdlRunning ? LoaderCircle : ShieldCheck} label={t(hdlRunning ? "hdl.running" : "hdl.check")} disabled={hdlRunning || checking || Boolean(busy || preview) || !inspection.valid} onClick={checkHdl} />])}>
+            onClick={(event) => { if (id !== "diagnostics") markOutput(`activate:${id}`, event.timeStamp); setTab(id); setPanelOpen(true); }}><Icon size={14} />{label}{id === "diagnostics" && inspection.diagnostics.length > 0 && <b>{inspection.diagnostics.length}</b>}</button>).concat([<select key="hdl-language" className="output-language" aria-label={t("hdl.language")} title={t("hdl.language")} value={hdlLanguage} disabled={Boolean(busy)} onChange={(event) => setHdlLanguage(event.target.value)}><option value="v">{t("hdl.verilog")}</option><option value="sv">{t("hdl.systemVerilog")}</option></select>, <IconButton key="hdl-check" icon={hdlRunning ? LoaderCircle : ShieldCheck} label={t(hdlRunning ? "hdl.running" : "hdl.check")} disabled={hdlRunning || checking || Boolean(busy || preview) || !inspection.valid} onClick={checkHdl} />])}>
           {panelOpen && <div className="output-content" role="tabpanel">
             {tab === "diagnostics" ? <>
               <div className={`diagnostic-summary ${inspection.valid ? "success" : ""}`}>{checking ? <LoaderCircle size={18} className="spin" /> : inspection.valid ? <CircleCheck size={19} /> : <CircleAlert size={19} />}<div><strong>{checking ? "正在校验设计" : inspection.valid ? "所有连接检查通过" : "设计存在待修复项"}</strong><span>{inspection.valid ? `${totalPins} 个实例端口 · ${Object.keys(design.ports).length} 个外部端口 · ${Object.keys(design.nets).length} 条网络` : "DesignError"}</span></div>{inspection.valid && <span className="diagnostic-tag">VALID</span>}</div>
@@ -916,7 +923,7 @@ export default function App() {
             </> : tab === "json" ? <div className="json-editor"><div className="code-toolbar"><div className="code-file-actions"><IconButton icon={Copy} label={t("output.copyJson")} onClick={() => navigator.clipboard.writeText(jsonDraft).catch(() => notify(t("output.copyFailed"), true))} /><IconButton icon={Download} label={t("output.downloadJson")} onClick={() => downloadFile(`${design.name}.json`, jsonDraft)} /><code>{scope ? `${design.name}.json` : documentPath || `${design.name}.json`}</code></div><button className="small-command" onClick={applyJson}><Check size={13} />{t("semantic.applyJson")}</button></div>
               <OutputEditor value={jsonDraft} language="json" readOnly={false} label={t("semantic.designJson")} cache={outputStates.current} cacheKey={`${baseDir}:${documentPath}:${scope}:json`} onChange={setJsonDraft} /></div>
               : <div className="code-view"><div className="code-toolbar"><div className="code-file-actions"><IconButton icon={Copy} label="复制代码" disabled={!code} onClick={() => navigator.clipboard.writeText(code).then(() => notify("代码已复制")).catch((error) => notify(error.message, true))} /><IconButton icon={Download} label="下载 Verilog" disabled={!code} onClick={() => downloadFile(filename, code)} /><code>{filename}</code></div></div>{code ?
-                <OutputEditor value={code} language="verilog" readOnly label={t("output.verilog")} cache={outputStates.current} cacheKey={`${baseDir}:${documentPath}:${filename}`} />
+                <OutputEditor value={code} language={filename.endsWith(".sv") ? "systemverilog" : "verilog"} readOnly label={t(filename.endsWith(".sv") ? "output.systemVerilog" : "output.verilog")} cache={outputStates.current} cacheKey={`${baseDir}:${documentPath}:${filename}`} />
                 : <div className="empty-small">{checking ? "正在生成预览" : "设计通过校验后可预览 HDL"}</div>}</div>}
           </div>}
         </OutputWindow>
@@ -958,17 +965,17 @@ export default function App() {
             <Connections document={semanticDocument} name={selection.id} ports={connectionPorts} resolved={inspection.connections?.find((net) => net.name === selection.id)}
               disabled={!connectionReady} onApply={applyConnection} onOpenChange={setConnectionOpen} />
           </> : <>
-            <div className="inspector-object"><div className="inspector-symbol teal"><Workflow size={25} strokeWidth={1.5} /></div><span>BLOCK DESIGN</span><h2>{design.name}</h2><code>Verilog-2005</code></div>
+            <div className="inspector-object"><div className="inspector-symbol teal"><Workflow size={25} strokeWidth={1.5} /></div><span>BLOCK DESIGN</span><h2>{design.name}</h2><code>{t(hdlLanguage === "sv" ? "hdl.systemVerilog" : "hdl.verilog2005")}</code></div>
             <section className="property-section"><h3>设计</h3><label className="field-label">模块名称<CommitInput label="设计名称" value={design.name} onCommit={(value) => mutate((next) => { checkName({ instances: {}, ports: {}, nets: {} }, value); next.name = value; })} /></label><div className="source-path"><span>Design file</span><code>{documentPath || "未保存"}</code><span>Source base</span><code>{baseDir}/</code></div></section>
             <section className="property-section"><h3>概览</h3><dl className="design-stats"><div><dt>模块实例</dt><dd>{Object.keys(design.instances).length}</dd></div><div><dt>信号网络</dt><dd>{Object.keys(design.nets).length}</dd></div><div><dt>外部端口</dt><dd>{Object.keys(design.ports).length}</dd></div><div><dt>输出文件</dt><dd>2</dd></div></dl></section>
-            <section className="property-section"><h3>生成目标</h3><div className="output-file"><Code2 size={16} /><code>{design.name}.v</code></div><div className="output-file"><Blocks size={16} /><code>{design.name}_wrapper.v</code></div><span className="directory-label">build/gui/</span></section>
+            <section className="property-section"><h3>生成目标</h3><div className="output-file"><Code2 size={16} /><code>{`${design.name}.${hdlLanguage}`}</code></div><div className="output-file"><Blocks size={16} /><code>{`${rootDocument.name}_wrapper.${hdlLanguage}`}</code></div><span className="directory-label">build/gui/</span></section>
           </>}
         </div>
         <div className="inspector-footer"><ShieldCheck size={14} />{inspection.valid && !checking ? "Design validated" : "Draft design"}<span>v0.1</span></div>
       </aside>
     </main>
     {privacy.view}
-    <footer className="status-bar"><span><span className="session-dot" />{busy || "本地连接"}</span><span className="status-path">{documentPath || "Untitled"}</span><span>JSON <span className="status-divider">|</span> Verilog-2005</span></footer>
+    <footer className="status-bar"><span><span className="session-dot" />{busy || "本地连接"}</span><span className="status-path">{documentPath || "Untitled"}</span><span>JSON <span className="status-divider">|</span> {t(hdlLanguage === "sv" ? "hdl.systemVerilog" : "hdl.verilog2005")}</span></footer>
 
     <CopilotPanel open={copilotOpen} onClose={() => setCopilotOpen(false)} api={api} token={token} design={document} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} onAuthorize={privacy.authorize} />
     <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} api={api} />

@@ -1,4 +1,5 @@
 {
+  "HDL_LANGUAGE": "生成语言只支持 v（Verilog）或 sv（SystemVerilog）。",
   "HDL_TOOL_WARNING": "{tool} 警告：{detail}",
   "HDL_TOOL_ERROR": "{tool} 错误：{detail}",
   "HDL_TOOL_MISSING": "未找到 {tool}；请安装工具或配置 BD_VERILATOR / BD_YOSYS。",

@@ -199,7 +199,7 @@ def check_generated(workspace, payload):
     from core.generation import generate_artifacts
 
     document, library = prepare(workspace, payload.get("design"), payload.get("base_dir", "."))
-    artifacts = generate_artifacts(document, library)
+    artifacts = generate_artifacts(document, library, language=payload.get("lang", "v"))
     base = workspace.path(payload.get("base_dir", "."))
     sources = sorted({(base / source.path).resolve() for item in library for source in (item.source, *item.additional_sources)})
     result = run_checks(artifacts["files"], sources, f"{document['name']}_wrapper")
@@ -229,9 +229,9 @@ def generate_document(workspace, payload):
         raise DesignFormatError(issue("D005", {}, reason="generation_options"))
     document, library = prepare(workspace, payload.get("design"), payload.get("base_dir", "."))
     source_map = None
-    if payload.get("quality", False):
+    if payload.get("quality", False) or payload.get("lang", "v") == "sv":
         from core.generation import generate_artifacts
-        artifacts = generate_artifacts(document, library)
+        artifacts = generate_artifacts(document, library, language=payload.get("lang", "v"))
         files, source_map = artifacts["files"], artifacts["source_map"]
     else:
         result = inspect_design(document, library)

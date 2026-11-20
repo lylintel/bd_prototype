@@ -2,6 +2,8 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 
 import pytest
 
@@ -73,3 +75,63 @@ def test_real_tool_warning_maps_to_generated_instance(bundle, tmp_path):
     assert warnings and warnings[0]["location"]["instance"] == "counter_0"
     assert warnings[0]["location"]["file"] == "example_bd.v"
     assert document == before and not (tmp_path / "build").exists()
+
+
+def sv_document():
+    return {"schema_version": 2, "name": "sv_demo", "ports": {
+        "clk": {"direction": "input"}, "data": {"direction": "input", "range": [7, 0]},
+        "result": {"direction": "output", "range": [7, 0]}},
+        "instances": [{"name": "register_0", "ip": {"id": "sv_register", "version": "1.0.0"}, "params": {"WIDTH": 8}}],
+        "nets": [{"name": f"{name}_net", "endpoints": [{"ext": name}, {"inst": "register_0", "port": name}]} for name in ("clk", "data", "result")]}
+
+
+def test_sv_generation_is_explicit_and_keeps_verilog_unchanged(bundle):
+    document, library = bundle
+    before = generate_files(document, library)
+    result = generate_artifacts(document, library, language="sv")
+    assert set(result["files"]) == {"example_bd.sv", "example_bd_wrapper.sv"}
+    assert "input logic clk" in result["files"]["example_bd.sv"]
+    assert "wire " not in result["files"]["example_bd.sv"]
+    assert all(".*" not in text for text in result["files"].values())
+    assert generate_files(document, library) == before
+    with pytest.raises(ValueError):
+        generate_files(document, library, language="vhdl")
+
+
+def test_sv_ip_import_connect_generate_lint_and_cli(tmp_path):
+    from bdgui import Workspace
+    from bdsemantic import check_generated
+    from ip_import.library import IpLibrary, Upload
+
+    root = Path(__file__).resolve().parents[2]
+    source = root / "examples/sv/rtl/sv_register.sv"
+    events = list(IpLibrary(tmp_path).import_sources([Upload(source.name, source.read_bytes())]))
+    assert events[-1]["counts"]["imported"] == 1
+    metadata = IpLibrary(tmp_path).metadata_snapshot(None, base_dir=tmp_path)[0]
+    assert metadata.language == "systemverilog"
+    assert metadata.parameters[0].name == "WIDTH" and metadata.parameters[0].type == "int"
+    document = sv_document()
+    workspace = Workspace(tmp_path, "design.json")
+    result = check_generated(workspace, {"design": document, "base_dir": ".", "lang": "sv"})
+    assert result["valid"], result["diagnostics"]
+    assert "sv_demo.sv" in result["files"] and "input logic" in result["files"]["sv_demo.sv"]
+    (tmp_path / "design.json").write_text(json.dumps(document), encoding="utf-8")
+    command = subprocess.run([sys.executable, "-m", "bdstudio", "generate", "design.json", "--workspace", str(tmp_path), "--lang", "sv"],
+                             cwd=root, capture_output=True, encoding="utf-8", timeout=30)
+    assert command.returncode == 0, command.stdout + command.stderr
+    assert (tmp_path / "build/gui/sv_demo.sv").read_text(encoding="utf-8") == result["files"]["sv_demo.sv"]
+
+
+if __name__ == "__main__":
+    from ip_import.parser import parse_file
+
+    if sys.argv[1:] != ["--write-sv-example"]:
+        raise SystemExit("Use --write-sv-example to regenerate the SV example only")
+    root = Path(__file__).resolve().parents[2]
+    source = root / "examples/sv/rtl/sv_register.sv"
+    parsed = parse_file(source)
+    assert len(parsed.modules) == 1 and not any(item.severity == "error" for item in parsed.diagnostics)
+    metadata = parsed.modules[0].to_dict()
+    metadata["source"]["path"] = "rtl/sv_register.sv"
+    document = {**sv_document(), "project_ips": [metadata]}
+    (root / "examples/sv/register.json").write_bytes((json.dumps(document, indent=2) + "\n").encode("utf-8"))

@@ -1,5 +1,5 @@
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 import shutil
 import subprocess
@@ -45,6 +45,8 @@ def parse_diagnostics(tool, text, paths):
             filename, row, severity, detail = match.groups()
             column, rule = None, ""
         severity = "warning" if severity.lower() == "warning" else "error"
+        if filename:
+            filename = PureWindowsPath(filename).as_posix()
         location = {"file": paths.get(filename, filename), "line": int(row), "column": int(column or 1)} if filename and row else {}
         result.append(_diagnostic(tool, "HDL_TOOL_WARNING" if severity == "warning" else "HDL_TOOL_ERROR", severity, location, detail, rule or ""))
     return result
@@ -66,7 +68,8 @@ def run_checks(files, sources, top):
             staged.append(name)
             paths[name] = name
         for index, source in enumerate(dict.fromkeys(Path(item) for item in sources)):
-            basename = source.name if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*\.(?:v|sv)", source.name) else f"source_{index}.v"
+            extension = ".sv" if source.suffix.lower() == ".sv" else ".v"
+            basename = source.name if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*\.(?:v|sv)", source.name, re.IGNORECASE) else f"source_{index}{extension}"
             name = f"sources/{index}/{basename}"
             (directory / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, directory / name)
@@ -81,7 +84,7 @@ def run_checks(files, sources, top):
             if tool == "verilator":
                 command = [*program, "--lint-only", "-Wall", "-Wno-fatal", "--top-module", top, *staged]
             else:
-                language = "-sv " if any(name.endswith(".sv") for name in staged) else ""
+                language = "-sv " if any(name.lower().endswith(".sv") for name in staged) else ""
                 script = "read_verilog " + language + " ".join(f'"{name}"' for name in staged) + f"; hierarchy -check -top {top}"
                 command = [*program, "-Q", "-T", "-p", script]
             with tempfile.TemporaryFile() as log:

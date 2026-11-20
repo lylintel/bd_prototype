@@ -65,6 +65,8 @@ CI 五次测量与条件非阻塞策略、历史归因数据见 [docs/DECISIONS.
 
 输出面板的“运行 HDL 检查”只使用临时产物，结果含文件行号并可定位到实例或网络；缺失工具会给出安装提示。工程化生成同时输出 `.source-map.json`，检查回包过期时不会覆盖新编辑。结构校验通过不等于外部工具检查通过，也不代表硬件签核。
 
+SystemVerilog 示例：[examples/sv/register.json](examples/sv/register.json)。`python -m bdstudio generate examples/sv/register.json --lang sv --out-dir build/sv` 生成 `logic` 声明和显式连接的 `.sv` 文件；GUI 可在输出面板选择语言。导入保留 `.sv` 的语言信息，支持现有解析器的 `logic`/`parameter int` 等子集，不代表完整 SV 支持。切换语言不会删除旧文件，请使用独立目录或按返回的文件列表编译，避免混入同名旧 `.v`。
+
 输出面板使用按需加载的 CodeMirror 6，保留页签滚动位置、完整复制/下载和独立 JSON 草稿撤销。超过 5000 行时关闭折叠、括号匹配、活动行和匹配选区等附加功能；语法高亮与虚拟化保留。JSON 文本在首次打开页签时才序列化，未应用草稿不会因页签往返丢失。
 
 画布撤销/重做使用 Immer 正反向补丁，最多 100 步，不再保留整图历史快照。普通编辑、拖动、布局和 AI 批量接受各自保持原子撤销。内存测量方法、批量操作的体积限制见 [Phase 4 报告](docs/reports/phase-4.md)。

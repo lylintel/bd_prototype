@@ -75,3 +75,8 @@ def test_explicit_missing_tool_does_not_silently_use_another_version(monkeypatch
     monkeypatch.setenv('BD_VERILATOR', 'missing-selected-verilator')
     monkeypatch.setattr(bdcheck.shutil, 'which', lambda name: '/fallback/verilator_bin' if name == 'verilator_bin' else None)
     assert bdcheck.tool_commands()['verilator'] is None
+
+
+def test_windows_mixed_tool_paths_restore_the_original_source():
+    result = bdcheck.parse_diagnostics('verilator', '%Warning-WIDTH: sources/0\\unit.sv:7:3: width\n', {'sources/0/unit.sv': 'rtl/unit.sv'})
+    assert result[0]['location'] == {'file': 'rtl/unit.sv', 'line': 7, 'column': 3}

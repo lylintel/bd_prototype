@@ -21,13 +21,14 @@ def main(argv=None):
     generator.add_argument("design", type=Path)
     generator.add_argument("--workspace", type=Path, default=Path.cwd())
     generator.add_argument("--out-dir", "-o", type=Path, default=Path("build/gui"))
+    generator.add_argument("--lang", choices=("v", "sv"), default="v")
     args = parser.parse_args(argv)
     try:
         if args.command == "generate":
             from bdgui import Workspace
             workspace = Workspace(args.workspace, str(args.design))
             loaded = workspace.load(str(args.design))
-            result = workspace.generate({"design": loaded["design"], "base_dir": loaded["base_dir"], "design_path": loaded["path"], "quality": True, "out_dir": str(args.out_dir)})
+            result = workspace.generate({"design": loaded["design"], "base_dir": loaded["base_dir"], "design_path": loaded["path"], "quality": True, "lang": args.lang, "out_dir": str(args.out_dir)})
             print(json.dumps({"type": "generated", "paths": result["paths"]}, ensure_ascii=False))
             return 0
         from ip_import.library import IpLibrary

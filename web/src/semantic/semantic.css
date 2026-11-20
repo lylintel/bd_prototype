@@ -1,4 +1,5 @@
 .diagnostic-location { display: block; overflow-wrap: anywhere; white-space: normal; font-size: 11px; color: #667885; }
+.output-language { width: 130px; min-width: 130px; flex-shrink: 0; margin: 4px; border: 1px solid #d7e0e6; border-radius: 4px; background: white; font: inherit; font-size: 12px; color: #3f5968; }
 .semantic-parameters .parameter-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(64px, 86px) 28px; gap: 6px; }
 .semantic-parameters .parameter-field input { width: 100%; min-width: 0; }
 .semantic-parameters .parameter-field small { overflow-wrap: anywhere; }

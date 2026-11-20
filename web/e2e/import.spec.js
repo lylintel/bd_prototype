@@ -144,6 +144,37 @@ test("engineering generation writes versioned readonly output without changing t
   expect(readFileSync(path.join(server.directory, "examples/counter_compare.json"))).toEqual(original);
 });
 
+test("SystemVerilog import wiring generation and checks use explicit language", async ({ page }, testInfo) => {
+  await openEditor(page);
+  await page.getByRole("button", { name: t("ip.import"), exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: t("ip.importTitle"), exact: true });
+  await dialog.getByLabel(t("ip.files"), { exact: true }).setInputFiles(path.join(root, "examples/sv/rtl/sv_register.sv"));
+  await dialog.getByRole("button", { name: t("ip.confirmImport", { count: 1 }), exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const document = JSON.parse(readFileSync(path.join(root, "examples/sv/register.json"), "utf8"));
+  delete document.project_ips;
+  await page.getByRole("tab", { name: "设计 JSON", exact: true }).click();
+  await page.getByLabel(t("semantic.designJson"), { exact: true }).fill(JSON.stringify(document, null, 2));
+  await page.getByRole("button", { name: t("semantic.applyJson"), exact: true }).click();
+  await expect(page.getByRole("heading", { name: "sv_demo", level: 1, exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
+  await page.getByLabel(t("hdl.language"), { exact: true }).selectOption("sv");
+  await page.getByRole("button", { name: "生成 HDL", exact: true }).click();
+  const editor = page.getByLabel(t("output.systemVerilog"), { exact: true });
+  await expect(editor).toContainText("input logic");
+  const generated = readFileSync(path.join(server.directory, "build/gui/sv_demo.sv"), "utf8");
+  expect(generated).not.toContain(".*");
+  expect(existsSync(path.join(server.directory, "build/gui/sv_demo.source-map.json"))).toBe(true);
+  await page.getByRole("button", { name: t("hdl.check"), exact: true }).click();
+  await expect(page.getByRole("region", { name: t("hdl.results"), exact: true })).toContainText(t("hdl.passed"));
+  await page.getByRole("tab", { name: "BD Verilog", exact: true }).click();
+  await page.screenshot({ path: testInfo.outputPath("sv-generation-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByLabel(t("hdl.language"), { exact: true }).scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("sv-generation-mobile.png") });
+});
+
 test("HDL check maps a real generated warning to its canvas instance", async ({ page }, testInfo) => {
   await openEditor(page);
   await page.locator('.react-flow__node[data-id="compare_0"]').dblclick();
@@ -154,7 +185,18 @@ test("HDL check maps a real generated warning to its canvas instance", async ({ 
   document.schema_version = 3;
   document.nets.find((net) => net.name === "count_bus").endpoints = [{ const: "8'd9" }, { inst: "compare_0", port: "value" }];
   await page.getByLabel(t("semantic.designJson"), { exact: true }).fill(JSON.stringify(document, null, 2));
-  await page.getByRole("button", { name: t("semantic.applyJson"), exact: true }).click();
+  let release, entered;
+  const held = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { entered = resolve; });
+  await page.route("**/api/semantic/inspect", async (route) => {
+    if (route.request().postDataJSON().design.schema_version === 3) { entered(); await held; }
+    await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: t("semantic.applyJson"), exact: true }).click();
+    await started;
+    await expect(page.getByRole("button", { name: t("hdl.check"), exact: true })).toBeDisabled();
+  } finally { release(); }
   await expect(page.getByRole("button", { name: "校验设计", exact: true })).toContainText("校验通过");
   await page.getByRole("button", { name: t("hdl.check"), exact: true }).click();
   const result = page.getByRole("region", { name: t("hdl.results"), exact: true });
