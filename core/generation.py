@@ -19,7 +19,8 @@ def generate_files(document, library, *, language="v"):
         diagnostic = next(item for item in result["diagnostics"] if item["severity"] == "error")
         raise DesignFormatError(Diagnostic(**diagnostic))
     header = ("// AUTO-GENERATED - DO NOT EDIT\n"
-              f"// Design: {ordered['name']}; schema_version: {ordered['schema_version']}\n\n")
+              f"// Design: {ordered['name']}; schema_version: {ordered['schema_version']}\n"
+              "`timescale 1ns/1ps\n\n")
     files = {name: header + result["files"][name] for name in sorted(result["files"])}
     if language == "sv":
         return {name.removesuffix(".v") + ".sv": re.sub(r"^(\s*(?:(?:input|output)\s+)?)wire\b", r"\1logic", text, flags=re.MULTILINE)

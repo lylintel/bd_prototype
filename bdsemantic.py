@@ -202,7 +202,7 @@ def check_generated(workspace, payload):
     artifacts = generate_artifacts(document, library, language=payload.get("lang", "v"))
     base = workspace.path(payload.get("base_dir", "."))
     sources = sorted({(base / source.path).resolve() for item in library for source in (item.source, *item.additional_sources)})
-    result = run_checks(artifacts["files"], sources, f"{document['name']}_wrapper")
+    result = run_checks(artifacts["files"], sources, f"{document['name']}_wrapper", workspace_root=workspace.root)
     source_instances = {}
     index = {(item.id, item.version): item for item in library}
     for scope in [document, *document.get("subdesigns", {}).values()]:

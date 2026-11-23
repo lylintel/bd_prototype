@@ -171,6 +171,9 @@ test("SystemVerilog import wiring generation and checks use explicit language", 
   expect(existsSync(path.join(server.directory, "build/gui/sv_demo.source-map.json"))).toBe(true);
   await page.getByRole("button", { name: t("hdl.check"), exact: true }).click();
   await expect(page.getByRole("region", { name: t("hdl.results"), exact: true })).toContainText(t("hdl.passed"));
+  await expect(page.getByRole("region", { name: t("hdl.results"), exact: true })).toContainText(`verilator ${t("hdl.stage.lint")}`);
+  await expect(page.getByRole("region", { name: t("hdl.results"), exact: true })).toContainText(`yosys ${t("hdl.stage.synthesis")}`);
+  await expect(page.getByRole("region", { name: t("hdl.results"), exact: true })).toContainText(t("hdl.cells", { count: 8 }));
   await page.getByRole("tab", { name: "BD Verilog", exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath("sv-generation-desktop.png") });
   await page.setViewportSize({ width: 390, height: 844 });

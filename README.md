@@ -61,9 +61,9 @@ CI 五次测量与条件非阻塞策略、历史归因数据见 [docs/DECISIONS.
 
 工程化生成入口：`python -m bdstudio generate examples/counter_compare.json --out-dir build/project`。GUI 的“生成 HDL”也启用确定顺序、设计版本和只读文件头；旧 `bdtool` CLI 保持历史字节兼容。生成 HDL 不作为可回读到图的编辑源，请修改设计 JSON 或画布后重新生成。
 
-`python -m scripts.check_hdl` 对全部示例和内置 IP 运行 Verilator `--lint-only -Wall` 与 Yosys 层次检查，结果写入 build/hdl-checks.json。警告保留且不作为 error，工具缺失/超时/真正错误会阻止门禁。可用 `BD_VERILATOR`、`BD_YOSYS` 指定本机可执行文件；无原生 Yosys 时使用开发依赖中的固定 YoWASP 版本。
+`python -m scripts.check_hdl` 对全部示例和内置 IP 运行 Verilator `--lint-only -Wall` 与 Yosys `synth -top ... -flatten; check -assert`，记录通用单元数（不含 `$scopeinfo`），结果写入 build/hdl-checks.json。Lint 与综合状态分开，二者都通过才算检查成功；这不代表时序、CDC、协议或目标器件签核。生成 BD/wrapper 的非豁免警告阻止门禁；IP/用户设计警告仍完整显示，逐类处置见 [docs/hdl-warnings.md](docs/hdl-warnings.md)。
 
-输出面板的“运行 HDL 检查”只使用临时产物，结果含文件行号并可定位到实例或网络；缺失工具会给出安装提示。工程化生成同时输出 `.source-map.json`，检查回包过期时不会覆盖新编辑。结构校验通过不等于外部工具检查通过，也不代表硬件签核。
+输出面板的“运行 HDL 检查”只使用临时产物，分别显示 lint/综合与单元数，结果含文件行号并可定位到实例或网络；没有精确源行的综合错误明确回退到顶层 source map。工具缺失或版本不匹配均不通过。工程化生成同时输出 `.source-map.json`，检查回包过期时不会覆盖新编辑。include 在启动工具前检查工作区边界，再复制依赖到临时目录；宏 include、token 拼接和续行等未支持预处理形式保守拒绝，具体限制见警告报告。
 
 SystemVerilog 示例：[examples/sv/register.json](examples/sv/register.json)。`python -m bdstudio generate examples/sv/register.json --lang sv --out-dir build/sv` 生成 `logic` 声明和显式连接的 `.sv` 文件；GUI 可在输出面板选择语言。导入保留 `.sv` 的语言信息，支持现有解析器的 `logic`/`parameter int` 等子集，不代表完整 SV 支持。切换语言不会删除旧文件，请使用独立目录或按返回的文件列表编译，避免混入同名旧 `.v`。
 
@@ -79,7 +79,7 @@ CI 与本地共用 [scripts/check.py](scripts/check.py)，依次执行 Ruff、�
 追加 `--strict-perf` 可将预算超限设为失败。CI 在固定 Ubuntu runner 类别上先采集五次（每次 11 样本），
 逐次数据写 job summary 并归档；任一次超限时仅性能预算步骤自动非阻塞，功能检查始终阻塞。
 
-准备 Python 3.10+、Node.js 24、Icarus Verilog 和 Verilator（`iverilog`、`vvp`、`verilator` 须在 PATH；Ubuntu 可用 `sudo apt-get install iverilog verilator`）。Windows 可用 OSS CAD Suite 便携包；直接使用 `verilator_bin.exe` 时，设置 `BD_VERILATOR` 为可执行文件路径、`VERILATOR_ROOT` 为包内 `share/verilator` 目录。已有虚拟环境后安装依赖：
+准备 Python 3.10+、Node.js 24、Icarus Verilog（`iverilog`、`vvp` 在 PATH）。Verilator 使用 OSS CAD Suite **2026-11-17** 的 **5.055 / v5.054-302-g2d6aba6ed**；Yosys 使用开发依赖固定的 **YoWASP 0.70.0.0.post1259 / Yosys 0.70 / 28ba3cb92**。Ubuntu 的任意 apt Verilator 不视为同版本。`BD_VERILATOR`、`BD_YOSYS` 可指定可执行文件，但不绕过版本校验；Windows 直接使用 `verilator_bin.exe` 时还需设 `VERILATOR_ROOT` 为包内 `share/verilator`。已有虚拟环境后安装依赖：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
@@ -90,6 +90,7 @@ npm.cmd --prefix web ci
 一键运行与 CI 相同的检查：
 
 ```powershell
+$env:BD_YOSYS = Join-Path $PWD '.venv/Scripts/yowasp-yosys.exe'
 .\.venv\Scripts\python.exe scripts/check.py
 ```
 

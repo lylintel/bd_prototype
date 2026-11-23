@@ -38,16 +38,25 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Install HDL tools
+      - name: Install Icarus
         run: |
-          sudo apt-get update && sudo apt-get install -y iverilog verilator
+          sudo apt-get update && sudo apt-get install -y iverilog
           command -v iverilog
           command -v vvp
-          command -v verilator
+      - name: Install fixed Verilator distribution
+        uses: YosysHQ/setup-oss-cad-suite@v3
+        with:
+          version: "2026-11-17"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install development dependencies
         run: |
           python -m pip install -r requirements-dev.txt
           npm --prefix web ci
+          echo "BD_YOSYS=$(command -v yowasp-yosys)" >> "$GITHUB_ENV"
+      - name: Record pinned HDL tool versions
+        run: |
+          verilator --version
+          "$BD_YOSYS" -V
       - name: Install browser for offline UI tests
         working-directory: web
         run: npx playwright install --with-deps chromium

@@ -24,6 +24,7 @@ def test_engineered_outputs_have_versioned_readonly_header(bundle):
     for name, text in result.items():
         assert text.startswith("// AUTO-GENERATED - DO NOT EDIT\n")
         assert "schema_version: 2" in text.splitlines()[1]
+        assert "`timescale 1ns/1ps\n" in text
         assert text.endswith(legacy[name])
 
 
@@ -83,6 +84,23 @@ def sv_document():
         "result": {"direction": "output", "range": [7, 0]}},
         "instances": [{"name": "register_0", "ip": {"id": "sv_register", "version": "1.0.0"}, "params": {"WIDTH": 8}}],
         "nets": [{"name": f"{name}_net", "endpoints": [{"ext": name}, {"inst": "register_0", "port": name}]} for name in ("clk", "data", "result")]}
+
+
+def test_synthesis_failure_has_root_source_map_location(tmp_path):
+    from bdgui import Workspace
+    from bdsemantic import check_generated
+    from ip_import.library import IpLibrary, Upload
+
+    source = b'module sv_register #(parameter integer WIDTH=8)(input clk, input [WIDTH-1:0] data, output reg [WIDTH-1:0] result); always @(posedge clk or posedge data[0]) result <= data; endmodule\n'
+    events = list(IpLibrary(tmp_path).import_sources([Upload('sv_register.v', source)]))
+    assert events[-1]['counts']['imported'] == 1
+    result = check_generated(Workspace(tmp_path, 'unused.json'), {'design': sv_document(), 'base_dir': '.'})
+    assert not result['valid'] and result['tools'][0]['status'] == 'passed'
+    error = next(item for item in result['diagnostics'] if item['severity'] == 'error' and item['params']['tool'] == 'yosys')
+    assert error['location']['design'] == 'sv_demo'
+    assert error['location']['file'] in result['source_map']['files']
+    assert error['params']['location_precision'] == 'top_level_fallback'
+    assert not (tmp_path / 'build').exists()
 
 
 def test_sv_generation_is_explicit_and_keeps_verilog_unchanged(bundle):

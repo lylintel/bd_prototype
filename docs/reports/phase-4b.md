@@ -13,9 +13,11 @@
 | 布局自适应批大小 | `2bef67a` 固定 8 | 8 起步、1..64 有界反馈，快增慢减；完整坐标、取消、原子历史不变，单测通过 |
 | 性能负载预检 | 原脚本没有 | 每样本前后 CPU/内存采样；拒测及后检不合格不可算通过，固定六样本有四次拒测 |
 
-本次六项实现属于同一个 A 提交。为避免自引用提交哈希，使用 `git log -1 -- docs/reports/phase-4b.md` 查本报告所属提交，交付回复列出实际哈希。历史 Phase 4 各任务提交与完整数据见 [phase-4.md](phase-4.md)。
+本次六项实现属于同一个 A 提交：`b8d2cbd`。历史 Phase 4 各任务提交与完整数据见 [phase-4.md](phase-4.md)。以下远端数据在 B 文档收尾时补记，不改变 A 的实现提交。
 
 历史验证：[Phase 4 CI 44462278106](https://github.com/lylintel/bd_prototype/actions/runs/44462278106) 六项成功；[Phase 5 修复 CI 45111520234](https://github.com/lylintel/bd_prototype/actions/runs/45111520234) 六项成功。A 的新 CI 必须在推送后以对应 SHA 确认，不能将历史 CI 当作本次结果。
+
+已核实 A 的 [CI 45120062098](https://github.com/lylintel/bd_prototype/actions/runs/45120062098)：SHA `b8d2cbdef42d72479dd9199509b0f15af7a4b82c`，七项任务成功。下载 `browser-performance-500` 原始 artifact 至 `build/phase4b-ci-browser`，三个样本前后检均合格，导航 333.847/350.709/397.652ms，冷启动总 1477.747/896.760/930.460ms；平移/缩放/拖动约 59.7-60.3fps，三次预算均通过。该 CI 收集不含布局/输出页签，也不是本机 2000 联合复验。
 
 ## 10053 证据与限制
 
