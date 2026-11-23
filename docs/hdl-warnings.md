@@ -91,3 +91,5 @@ A 已独立提交 `b8d2cbd`；[A CI 45120062098](https://github.com/lylintel/bd_
 B 初始提交 `daaa95d` 的 [CI 45124319354](https://github.com/lylintel/bd_prototype/actions/runs/45124319354) 四项解析矩阵及性能收集成功，两项主门禁失败。固定版本校验、全部 24 对象 lint/综合均通过；唯一失败是合法 include 用例：Linux YoWASP 无法打开写入 RTL 的宿主 `/tmp/...` 绝对路径。不是版本错配，也没有通过重跑掩盖。
 
 补充跨平台契约断言后在 Windows 稳定复现“写入绝对路径”缺陷。修复只将已验证和复制的 include 改为临时 cwd 下的 `includes/...` 相对引用；仍先检查原始解析路径的工作区边界，未向 WASI 开放项目外目录。相对路径、真实工具读取、外部 sentinel 不回显三项聚焦测试通过。补充修复完整门禁通过：644 Python +90 子测试、65 Node、31 E2E，24 对象 lint/综合通过；日志 `build/phase4b-hdl-portable-check.log`，语义性能 417.549/620.703ms 保留非阻塞告警。原失败 CI 保留，不将其重写为通过。
+
+修复提交 `d54fe06` 的 [CI 45129258459](https://github.com/lylintel/bd_prototype/actions/runs/45129258459) 七项任务全部成功，包含 Linux Python 3.10/3.14 的真实 include 回归与固定版本综合。该远端结果在 C 的文档提交中补记；B 的实现仍为 `daaa95d` + `d54fe06` 两个可追溯提交。
