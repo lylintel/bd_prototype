@@ -2,7 +2,7 @@ import json
 import hashlib
 import re
 
-from core.design import DesignFormatError, check_document
+from core.design import DesignFormatError, check_document, v4_projection
 from core.diagnostics import Diagnostic
 from core.persistence import canonical_document
 from core.semantic import inspect_design
@@ -13,7 +13,7 @@ def generate_files(document, library, *, language="v"):
     if language not in ("v", "sv"):
         raise ValueError(MESSAGES["HDL_LANGUAGE"])
     check_document(document)
-    ordered = json.loads(json.dumps(canonical_document(document), sort_keys=True, ensure_ascii=False, allow_nan=False))
+    ordered = json.loads(json.dumps(canonical_document(v4_projection(document)), sort_keys=True, ensure_ascii=False, allow_nan=False))
     result = inspect_design(ordered, library)
     if not result["valid"]:
         diagnostic = next(item for item in result["diagnostics"] if item["severity"] == "error")

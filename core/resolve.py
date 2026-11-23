@@ -8,6 +8,7 @@ from typing import NamedTuple
 
 import bdtool
 from bdip import IpMetadata, IpRole
+from core.design import DesignFormatError, v4_projection
 from core.diagnostics import Diagnostic, issue
 from core.expr import ExpressionError, evaluate
 
@@ -246,6 +247,11 @@ def _endpoint(raw, ports, instances, budget, depth=0, index=0):
 
 
 def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) -> Resolution:
+    if isinstance(document, dict) and document.get("schema_version") == 5:
+        try:
+            return resolve(v4_projection(document), library)
+        except DesignFormatError as error:
+            return Resolution({}, {}, {}, (), (error.diagnostic,))
     if isinstance(document, dict) and document.get("schema_version") == 4:
         from core.hierarchy import resolve_hierarchy
         return resolve_hierarchy(document, library)

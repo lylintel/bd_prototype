@@ -69,11 +69,27 @@ def load_document(text: str) -> dict:
         raise _invalid("$", "json") from error
 
 
+def v4_projection(document: dict) -> dict:
+    if document.get("schema_version") != 5:
+        return document
+    check_document(document)
+    result = deepcopy(document)
+    for scope in [result, *result["subdesigns"].values()]:
+        if scope["interfaces"] or scope["interface_connections"]:
+            raise _invalid("$.interface_connections", "interface_expansion_required")
+        scope.pop("interfaces")
+        scope.pop("interface_connections")
+        scope["schema_version"] = 4 if scope is result else 3
+    return result
+
+
 def migrate(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata], *, target_version: int | None = None) -> dict:
     if not isinstance(document, dict):
         raise _invalid("$", "object")
-    if target_version not in (None, 2, 3, 4):
+    if target_version not in (None, 2, 3, 4, 5):
         raise _invalid("$.schema_version", "version")
+    if target_version == 5 and "schema_version" not in document:
+        return migrate(migrate(document, library, target_version=4), library, target_version=5)
     if "schema_version" in document:
         check_document(document)
         if target_version is not None and target_version < document["schema_version"]:
@@ -81,8 +97,14 @@ def migrate(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata], 
         result = deepcopy(document)
         if target_version is not None:
             result["schema_version"] = target_version
-        if result["schema_version"] == 4:
+        if result["schema_version"] in (4, 5):
             result.setdefault("subdesigns", {})
+        if result["schema_version"] == 5:
+            for scope in [result, *result["subdesigns"].values()]:
+                scope["schema_version"] = 5
+                scope.setdefault("interfaces", [])
+                scope.setdefault("interface_connections", [])
+            check_document(result)
         return result
     if set(document) != {"name", "modules", "ports", "instances", "nets"}:
         raise _invalid("$", "fields")

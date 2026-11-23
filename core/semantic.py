@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import json
 
 import bdtool
-from core.design import DesignFormatError
+from core.design import DesignFormatError, v4_projection
 from core.diagnostics import Diagnostic, issue
 from core.resolve import endpoint_text, resolve
 from core.rules import e001, e002, e003, e004, e005, e006, e007, e008, w010
@@ -79,7 +79,7 @@ def _findings(resolved):
 
 def validate(document, library, *, changes: ValidationChanges | None = None):
     """Validate fully; change hints reserve the Phase 4 incremental boundary."""
-    if isinstance(document, dict) and document.get("schema_version") == 4:
+    if isinstance(document, dict) and document.get("schema_version") in (4, 5):
         return [Diagnostic(**item) for item in inspect_design(document, library)["diagnostics"]]
     return _findings(resolve(document, library))
 
@@ -110,6 +110,12 @@ def apply_fix(document, library, diagnostic):
 
 
 def inspect_design(document, library):
+    if isinstance(document, dict) and document.get("schema_version") == 5:
+        try:
+            return inspect_design(v4_projection(document), library)
+        except DesignFormatError as error:
+            return {"valid": False, "diagnostics": [error.diagnostic.to_dict()], "files": {}, "parameters": {},
+                    "interfaces": {"ports": {}, "instances": {}}, "connections": []}
     if isinstance(document, dict) and document.get("schema_version") == 4:
         from core.hierarchy import inspect_hierarchy
         return inspect_hierarchy(document, library)
