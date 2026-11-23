@@ -85,3 +85,9 @@ UI“运行 HDL 检查”与完整门禁/CI 共用此流程，分别显示 lint�
 聚焦测试：检查器 16 项、真实综合失败 source map、版本错配、内外 include 与原生成器回归通过。完整 `scripts/check.py` 通过：644 Python、90 子测试、65 Node、31 浏览器流程，Ruff/ESLint/typecheck/build 全绿；24 对象 lint/综合零 error、77 警告，生成物仅一条精确设计豁免。日志 `build/phase4b-hdl-check.log`，语义性能 451.091/678.380ms 按既定政策保留非阻塞告警。另行两条浏览器截图流程通过，桌面/390px 手机可视检查通过。Pylance 核对 11 个调用点兼容，旧 golden/内置/上游 RTL 的 Git 差异为空。工具原始记录位于 `build/hdl-checks.json`，采用报告 schema 2，旧报告不覆盖解释为新语义。
 
 A 已独立提交 `b8d2cbd`；[A CI 45120062098](https://github.com/lylintel/bd_prototype/actions/runs/45120062098) 七项成功，500 三样本预算均通过。详见 [Phase 4B 报告](reports/phase-4b.md)。B 完成后才写 C 设计文档，不实现接口功能。
+
+### B 远端可移植性修复
+
+B 初始提交 `daaa95d` 的 [CI 45124319354](https://github.com/lylintel/bd_prototype/actions/runs/45124319354) 四项解析矩阵及性能收集成功，两项主门禁失败。固定版本校验、全部 24 对象 lint/综合均通过；唯一失败是合法 include 用例：Linux YoWASP 无法打开写入 RTL 的宿主 `/tmp/...` 绝对路径。不是版本错配，也没有通过重跑掩盖。
+
+补充跨平台契约断言后在 Windows 稳定复现“写入绝对路径”缺陷。修复只将已验证和复制的 include 改为临时 cwd 下的 `includes/...` 相对引用；仍先检查原始解析路径的工作区边界，未向 WASI 开放项目外目录。相对路径、真实工具读取、外部 sentinel 不回显三项聚焦测试通过。补充修复完整门禁通过：644 Python +90 子测试、65 Node、31 E2E，24 对象 lint/综合通过；日志 `build/phase4b-hdl-portable-check.log`，语义性能 417.549/620.703ms 保留非阻塞告警。原失败 CI 保留，不将其重写为通过。

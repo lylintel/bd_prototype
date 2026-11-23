@@ -54,6 +54,9 @@ def test_literal_workspace_include_is_staged_with_relative_dependency(tmp_path, 
     def run(command, **kwargs):
         staged = list(Path(kwargs['cwd']).rglob('*.vh'))
         assert len(staged) == 1 and staged[0].read_text() == '`define VALUE 1\n'
+        rewritten = (Path(kwargs['cwd']) / 'sources/0/unit.v').read_text()
+        assert '`include "includes/' in rewritten
+        assert Path(kwargs['cwd']).as_posix() not in rewritten
         return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(bdcheck.subprocess, 'run', run)

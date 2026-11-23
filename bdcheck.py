@@ -66,7 +66,7 @@ def stage_source(source, target, directory, workspace_root, paths, active=()):
             raise UnsafeInclude("include_not_found", source, line)
         name = f"includes/{len(paths)}/dependency.vh"
         stage_source(dependency, name, directory, workspace_root, paths, (*active, source))
-        return f'`include "{(directory / name).as_posix()}"'
+        return f'`include "{name}"'
 
     pattern = r'`include\b(?:\s*"[^"\r\n]*")?'
     text = re.sub(pattern, replace_include, text)
