@@ -15,6 +15,10 @@ test("hierarchy folds selection edits a child and restores root with undo", asyn
   await expect(page.locator('.react-flow__node[data-id="counter_0"]')).toHaveCount(0);
   await group.locator(".block-heading").dblclick();
   await expect(page.getByRole("navigation", { name: t("hierarchy.path") })).toBeVisible();
+  const aiButtons = page.getByRole("button", { name: t("ai.rootOnly"), exact: true });
+  await expect(aiButtons).toHaveCount(2);
+  await expect(aiButtons.nth(0)).toBeDisabled();
+  await expect(aiButtons.nth(1)).toBeDisabled();
   await expect(page.locator('.react-flow__node[data-id="counter_0"]')).toBeVisible();
   await expect(badge).toContainText("校验通过");
   await page.locator('.react-flow__node[data-id="compare_0"] .block-heading').dblclick();

@@ -1,4 +1,13 @@
 import { createHistory, commitHistory, undoHistory, redoHistory, historyBytes } from "./history.js";
+import { assessLoad } from "../e2e/benchmark-load.mjs";
+
+test("benchmark preflight rejects busy low-memory and unavailable measurements", () => {
+  const before = { total: 1000, idle: 500 };
+  assert.equal(assessLoad(before, { total: 2000, idle: 1300 }, 4 * 1024 ** 3, 16 * 1024 ** 3).qualified, true);
+  assert.equal(assessLoad(before, { total: 2000, idle: 600 }, 4 * 1024 ** 3, 16 * 1024 ** 3).qualified, false);
+  assert.equal(assessLoad(before, { total: 2000, idle: 1300 }, 1024 ** 3, 16 * 1024 ** 3).qualified, false);
+  assert.equal(assessLoad(before, before, 4 * 1024 ** 3, 16 * 1024 ** 3).qualified, false);
+});
 
 test("patch history retains a small edit instead of a 2000-instance snapshot", () => {
   const instances = Array.from({ length: 2000 }, (_, index) => ({ name: `unit_${index}`, params: { WIDTH: 8 } }));
@@ -63,13 +72,26 @@ test("layout application yields bounded batches and stops on cancellation", asyn
   const positions = Object.fromEntries(Array.from({ length: 2000 }, (_, index) => [`unit_${index}`, { x: index, y: 0 }]));
   const batches = [];
   await publishPositions(positions, (batch) => batches.push(batch), { nextFrame: () => Promise.resolve() });
-  assert.ok(batches.every((batch) => Object.keys(batch).length <= 8));
+  assert.ok(batches.every((batch) => Object.keys(batch).length <= 64));
   assert.deepEqual(Object.assign({}, ...batches), positions);
   const controller = new AbortController();
   let applied = 0;
   await assert.rejects(publishPositions(positions, () => { applied++; controller.abort(); },
     { signal: controller.signal, nextFrame: () => Promise.resolve() }), { name: "AbortError" });
   assert.equal(applied, 1);
+});
+
+test("layout batch size adapts to observed work and frame delay", async () => {
+  const positions = Object.fromEntries(Array.from({ length: 240 }, (_, index) => [`unit_${index}`, { x: index, y: 0 }]));
+  let clock = 0;
+  const sizes = [];
+  await publishPositions(positions, (batch) => {
+    sizes.push(Object.keys(batch).length);
+    clock += sizes.length < 5 ? 1 : 20;
+  }, { now: () => clock, nextFrame: async () => { clock += sizes.length < 5 ? 32 : 65; } });
+  assert.ok(Math.max(...sizes) > 8);
+  assert.ok(sizes.slice(5).some((size) => size < sizes[4]));
+  assert.equal(sizes.reduce((total, size) => total + size, 0), 240);
 });
 import ELK from "elkjs/lib/elk.bundled.js";
 import { EditorState } from "@codemirror/state";

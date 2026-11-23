@@ -1,12 +1,23 @@
 import { t } from "../i18n.js";
 
 export async function publishPositions(positions, applyBatch, { signal = undefined,
+  now = () => performance.now(),
   nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))) } = {}) {
   const entries = Object.entries(positions);
-  for (let offset = 0; offset < entries.length; offset += 8) {
+  let batchSize = 8, offset = 0, previousStart = null, previousWork = 0;
+  while (offset < entries.length) {
     await nextFrame();
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    applyBatch(Object.fromEntries(entries.slice(offset, offset + 8)));
+    const started = now();
+    if (previousStart !== null) {
+      const elapsed = started - previousStart;
+      if (previousWork > 8 || elapsed > 48) batchSize = Math.max(1, Math.floor(batchSize / 2));
+      else if (previousWork < 4 && elapsed < 38) batchSize = Math.min(64, batchSize + 2);
+    }
+    applyBatch(Object.fromEntries(entries.slice(offset, offset + batchSize)));
+    offset += batchSize;
+    previousWork = now() - started;
+    previousStart = started;
   }
   await nextFrame();
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");

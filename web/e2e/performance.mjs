@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { sampleLoad } from "./benchmark-load.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const argument = (name, fallback) => { const index = process.argv.indexOf(name); return index < 0 ? fallback : process.argv[index + 1]; };
@@ -34,6 +35,7 @@ function killTree(child) {
 }
 
 async function serverFor(directory) {
+  const started = performance.now();
   const child = spawn(python, ["-u", "-m", "bdgui", "--workspace", directory, "--design", "design.json", "--port", "0"], {
     cwd: root, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32",
   });
@@ -54,7 +56,7 @@ async function serverFor(directory) {
       child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`server_exit_${code}`)); });
       child.stderr.on("data", () => {});
     });
-    return { url, stop };
+    return { url, stop, startup_ms: performance.now() - started };
   } catch (error) { await stop(); throw error; }
 }
 
@@ -79,9 +81,12 @@ async function measure(directory, size, sample) {
   const firstNode = `.react-flow__node[data-id="${document.instances[0].name}"]`;
   const secondNode = `.react-flow__node[data-id="${document.instances[1].name}"]`;
   console.log(JSON.stringify({ instances: size, sample, phase: "server_start" }));
+  const coldStarted = performance.now();
   const server = await serverFor(directory);
   console.log(JSON.stringify({ instances: size, sample, phase: "browser_start" }));
+  const browserStarted = performance.now();
   const browser = await chromium.launch({ headless: true });
+  const browserStartup = performance.now() - browserStarted;
   const control = await browser.newBrowserCDPSession();
   const processes = await control.send("SystemInfo.getProcessInfo");
   const browserPid = processes.processInfo.find((process) => process.type === "browser").id;
@@ -110,6 +115,9 @@ async function measure(directory, size, sample) {
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     })(), ceiling, "load");
     result.load_ms = performance.now() - started;
+    result.cold_start = { backend_spawn_to_ready_ms: server.startup_ms, browser_launch_ms: browserStartup,
+      browser_setup_ms: started - browserStarted - browserStartup, navigation_to_interactive_ms: result.load_ms,
+      total_ms: performance.now() - coldStarted, os_cache_flushed: false };
     result.status = "loaded";
     Object.assign(result, await deadline(page.evaluate(() => {
       const request = performance.getEntriesByType("resource").find((entry) => entry.name.endsWith("/api/state"));
@@ -258,22 +266,33 @@ async function measure(directory, size, sample) {
   return result;
 }
 
-const report = { schema_version: 1, created: new Date().toISOString(), viewport: { width: 1440, height: 900 }, seed: 20261117,
+const report = { schema_version: 2, created: new Date().toISOString(), viewport: { width: 1440, height: 900 }, seed: 20261117,
   output_timing_version: process.argv.includes("--output-tabs") ? 2 : undefined,
   machine: { platform: os.platform(), release: os.release(), cpu: os.cpus()[0].model, cores: os.cpus().length, node: process.version },
   source_sha256: createHash("sha256").update(readFileSync(path.join(root, "web/src/App.jsx"))).update(readFileSync(path.join(root, "web/src/CircuitEdge.jsx"))).digest("hex"),
   benchmark_sha256: createHash("sha256").update(readFileSync(fileURLToPath(import.meta.url))).digest("hex"),
-  methodology: "Navigation to validated interactive first node; RAF cadence during real pointer/wheel input; fresh browser per sample; no external requests; timeouts are not FPS measurements", results: [] };
+  methodology: "Navigation to validated interactive first node; RAF cadence during real pointer/wheel input; fresh backend and browser per sample, no OS cache flushing; fixture and preflight excluded from cold_start; CPU/memory pre/postflight qualification; no external requests; timeouts are not FPS measurements", results: [] };
 for (const size of sizes) {
   const directory = mkdtempSync(path.join(os.tmpdir(), "bd-gui-benchmark-"));
   try {
+    const fixtureStarted = performance.now();
     if (fixture) cpSync(path.resolve(fixture), directory, { recursive: true });
     else {
       const generated = spawnSync(python, ["-m", "scripts.gui_benchmark", "--output", directory, "--instances", String(size)], { cwd: root, encoding: "utf8", timeout: 60000 });
       if (generated.status !== 0) throw new Error(`fixture_generation_failed: ${generated.stderr}`);
     }
+    const fixtureMs = performance.now() - fixtureStarted;
     for (let sample = 1; sample <= samples; sample++) {
-      const result = await measure(directory, size, sample);
+      const preflight = await sampleLoad();
+      const result = preflight.qualified ? await measure(directory, size, sample) :
+        { instances: size, sample, status: "load_preflight_rejected", budget_passed: false };
+      result.preflight = preflight;
+      result.fixture_ms = fixtureMs;
+      if (preflight.qualified) {
+        result.postflight = await sampleLoad();
+        result.measurement_qualified = result.postflight.qualified;
+        result.budget_passed &&= result.measurement_qualified;
+      } else result.measurement_qualified = false;
       report.results.push(result);
       writeFileSync(path.join(output, "report.json"), JSON.stringify(report, null, 2) + "\n");
       console.log(JSON.stringify(result));

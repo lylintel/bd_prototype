@@ -158,6 +158,7 @@
   "ai.accept": "接受",
   "ai.discard": "放弃",
   "ai.accepted": "已接受修改，可撤销",
+  "ai.rootOnly": "请返回根设计使用 AI 助手",
   "ai.discarded": "已放弃提案",
   "ai.acceptFailed": "提案未应用",
   "ai.legacyBlocked": "旧式自动更新已被阻止，必须通过提案确认",

@@ -81,6 +81,45 @@ jobs:
           path: build/ai-eval/
           if-no-files-found: warn
 
+  browser-performance:
+    name: Browser 500 / non-blocking collection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install and build
+        run: |
+          python -m pip install -r requirements-dev.txt
+          npm --prefix web ci
+          npm --prefix web exec playwright install --with-deps chromium
+          npm --prefix web run build
+      - name: Collect all three fixed samples without retries
+        run: node web/e2e/performance.mjs --sizes 500 --samples 3 --strict --report build/browser-performance-ci
+      - name: Summarize measured results
+        if: always()
+        run: |
+          if test -f build/browser-performance-ci/report.md; then
+            cat build/browser-performance-ci/report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Collection unavailable; not a performance pass." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Publish raw samples and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-performance-500
+          path: build/browser-performance-ci/
+          if-no-files-found: warn
+
   pyslang-spike:
     name: Parser / ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}

@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 from queue import Empty
 import secrets
+import time
 from urllib.parse import parse_qs, unquote, urlsplit
 import webbrowser
 
@@ -490,9 +491,37 @@ class EditorHandler(BaseHTTPRequestHandler):
             events.close()
             self.close_connection = True
 
+    def discard_rejected_body(self) -> None:
+        try:
+            remaining = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return
+        if not 0 < remaining <= MAX_BODY or self.headers.get("Transfer-Encoding"):
+            return
+        previous_timeout = self.connection.gettimeout()
+        deadline = time.monotonic() + 1
+        try:
+            while remaining > 0:
+                timeout = deadline - time.monotonic()
+                if timeout <= 0:
+                    break
+                self.connection.settimeout(timeout)
+                chunk = self.rfile.read1(min(remaining, 65536))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except OSError:
+            pass
+        finally:
+            self.connection.settimeout(previous_timeout)
+
     def do_POST(self) -> None:
         try:
-            self.guard(write=True)
+            try:
+                self.guard(write=True)
+            except PermissionError:
+                self.discard_rejected_body()
+                raise
             if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                 self.json_response({"error": "Content-Type must be application/json"}, 415)
                 return

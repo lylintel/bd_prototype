@@ -335,6 +335,7 @@ export default function App() {
 
   async function applyCopilotProposal(proposal, selected) {
     const current = editorState.current;
+    if (current.scope) throw new Error(t("ai.rootOnly"));
     if (!current.history || current.busy) throw new Error(t("semantic.notReady"));
     const original = current.view.document ?? current.view.design;
     const result = await api("/api/ops/accept", { proposal_id: proposal.id, selected, confirmed: true, design: original, base_dir: current.baseDir });
@@ -356,6 +357,7 @@ export default function App() {
 
   async function generateProposal(prompt, allowRemovals) {
     const current = editorState.current;
+    if (current.scope) throw new Error(t("ai.rootOnly"));
     const original = current.view.document ?? current.view.design;
     const selectedInstances = selection?.type === "node" && !selection.id.startsWith("@") ? [selection.id] : [];
     const result = await api("/api/ai/propose", { design: original, base_dir: current.baseDir, prompt, allow_removals: allowRemovals, selected_instances: selectedInstances });
@@ -849,8 +851,8 @@ export default function App() {
       <div className="brand"><span className="brand-symbol"><CircuitBoard size={22} strokeWidth={1.6} /></span><span>BD <strong>Studio</strong></span><span className="local-badge">LOCAL</span></div>
       <div className="header-center"><span className="session-dot" />RTL WORKSPACE</div>
       <div className="header-actions">
-        <IconButton icon={Bot} label="Copilot 助手" aria-pressed={copilotOpen} disabled={Boolean(preview)} onClick={() => setCopilotOpen(!copilotOpen)} />
-        <IconButton icon={Sparkles} label={t("ai.assistant")} onClick={() => { setCopilotOpen(false); setAssistantOpen(true); }} />
+        <IconButton icon={Bot} label={scope ? t("ai.rootOnly") : "Copilot 助手"} aria-pressed={copilotOpen} disabled={Boolean(preview || scope)} onClick={() => setCopilotOpen(!copilotOpen)} />
+        <IconButton icon={Sparkles} label={t(scope ? "ai.rootOnly" : "ai.assistant")} disabled={Boolean(scope)} onClick={() => { setCopilotOpen(false); setAssistantOpen(true); }} />
         <IconButton icon={Settings2} label={t("ai.settings")} onClick={() => setAiSettingsOpen(true)} disabled={Boolean(busy)} />
         <IconButton icon={FilePlus2} label="新建设计" onClick={newDocument} disabled={Boolean(busy || preview)} />
         <IconButton icon={FolderOpen} label="打开设计" onClick={openDialog} disabled={Boolean(busy || preview)} />
@@ -985,9 +987,9 @@ export default function App() {
     {privacy.view}
     <footer className="status-bar"><span><span className="session-dot" />{busy || "本地连接"}</span><span className="status-path">{documentPath || "Untitled"}</span><span>JSON <span className="status-divider">|</span> {t(hdlLanguage === "sv" ? "hdl.systemVerilog" : "hdl.verilog2005")}</span></footer>
 
-    <CopilotPanel open={copilotOpen} onClose={() => setCopilotOpen(false)} api={api} token={token} design={document} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} onAuthorize={privacy.authorize} />
+    <CopilotPanel open={copilotOpen && !scope} onClose={() => setCopilotOpen(false)} api={api} token={token} design={document} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} onAuthorize={privacy.authorize} />
     <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} api={api} />
-    <AIAssistant open={assistantOpen} onClose={() => setAssistantOpen(false)} onSettings={() => setAiSettingsOpen(true)} api={api}
+    <AIAssistant open={assistantOpen && !scope} onClose={() => setAssistantOpen(false)} onSettings={() => setAiSettingsOpen(true)} api={api}
       onGenerate={generateProposal} onAccept={applyCopilotProposal} onSelect={selectProposal} onPreview={setPreview} />
 
     {toast && <div className={`toast ${toast.error ? "error" : ""}`} role={toast.error ? "alert" : "status"}>{toast.error ? <CircleAlert size={17} /> : <CircleCheck size={17} />}<span>{toast.message}</span><IconButton icon={X} label="关闭通知" onClick={() => setToast(null)} /></div>}

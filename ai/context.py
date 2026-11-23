@@ -7,13 +7,15 @@ from pathlib import Path
 import unicodedata
 
 from ai.client import LLMError
+from core.hierarchy import resolve_hierarchy
 from core.resolve import resolve
 
 
 def compact_design(document, library):
-    resolved = resolve(document, library)
+    resolved = resolve_hierarchy(document, library) if document.get("schema_version") == 4 else resolve(document, library)
     return {"name": document["name"], "ports": {name: shape.to_dict() for name, shape in resolved.ports.items()},
             "instances": [{"name": item["name"], "ip": item["ip"], "params": item.get("params", {}),
+                           **({"hierarchical": True} if item["ip"]["id"] in document.get("subdesigns", {}) else {}),
                            "resolved_params": resolved.instances[item["name"]].parameters if item["name"] in resolved.instances else {},
                            "ports": {name: shape.to_dict() for name, shape in resolved.instances[item["name"]].ports.items()}
                            if item["name"] in resolved.instances else {}} for item in document["instances"]],

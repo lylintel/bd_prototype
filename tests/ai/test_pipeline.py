@@ -7,6 +7,46 @@ import pytest
 
 from ai.client import LLMError, ReplayClient
 from ai.pipeline import run_pipeline
+from core.hierarchy import collapse_design
+
+
+def test_hierarchy_mock_edits_current_level_leaf_and_keeps_definitions(bundle):
+    document, library = bundle
+    document = collapse_design(document, library, ["counter_0"], "counter_group")
+    before = deepcopy(document)
+    client = ReplayClient([response([parameter("compare_0", "THRESHOLD", 19)])])
+    result = run_pipeline(document, library, "修改当前层比较器阈值", client)
+    assert result["validation"]["valid"]
+    assert result["document"]["subdesigns"] == before["subdesigns"]
+    context = json.loads(client.requests[0]["messages"][2]["content"].split("\n", 1)[1].rsplit("\n", 1)[0])
+    macro = next(item for item in context["netlist"]["instances"] if item["name"] == "counter_group")
+    assert macro["hierarchical"] is True and macro["ports"]
+    assert "subdesigns" not in context["netlist"]
+    assert document == before
+
+
+def test_hierarchy_mock_connects_only_exported_boundary(bundle):
+    document, library = bundle
+    document = collapse_design(document, library, ["counter_0"], "counter_group")
+    target = {"type": "port", "inst": "counter_group", "port": "boundary_clk_net"}
+    operations = [{"op": "disconnect", "from": {"type": "port", "ext": "clk"}, "to": target},
+                  {"op": "connect", "from": {"type": "const", "const": "1'b0"}, "to": target}]
+    result = run_pipeline(document, library, "对当前层边界做结构连接测试", ReplayClient([response(operations)]))
+    assert result["validation"]["valid"]
+    assert result["document"]["schema_version"] == 4
+    assert result["document"]["subdesigns"] == document["subdesigns"]
+
+
+def test_hierarchy_mock_cannot_traverse_to_hidden_child(bundle):
+    document, library = bundle
+    document = collapse_design(document, library, ["counter_0"], "counter_group")
+    before = deepcopy(document)
+    operations = [parameter("counter_group.counter_0", "WIDTH", 16)]
+    client = ReplayClient([response(operations)] * 3)
+    result = run_pipeline(document, library, "修改未展开的内部参数", client)
+    assert not result["validation"]["valid"]
+    assert result["document"] == before and document == before
+    assert len(client.requests) == 3
 
 
 def response(ops, **extra):

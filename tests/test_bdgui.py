@@ -10,7 +10,7 @@ import sys
 import tempfile
 from threading import Thread
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import bdtool
 from bdgui import EditorHandler, EditorServer, Workspace
@@ -508,6 +508,32 @@ class EditorTests(unittest.TestCase):
         preview = self.workspace.inspect(self.data, "examples")
         self.assertFalse(preview["valid"])
         self.assertIn("inside the workspace", preview["diagnostics"][0])
+
+    def test_rejected_post_drains_bounded_body_before_403_without_parsing(self):
+        for length, expected in ((15, 15), (65551, 65551), (2 * 1024 * 1024 + 1, 0), (-1, 0)):
+            with self.subTest(length=length):
+                handler = object.__new__(EditorHandler)
+                handler.headers = {"Content-Length": str(length)}
+                handler.rfile = BytesIO(b"x" * max(0, length))
+                handler.connection = Mock()
+                handler.guard = Mock(side_effect=PermissionError("denied"))
+                observed = []
+                handler.json_response = lambda value, status: observed.append((status, handler.rfile.tell()))
+                handler.do_POST()
+                self.assertEqual(observed, [(403, expected)])
+
+    def test_rejected_body_drain_has_total_deadline_and_restores_timeout(self):
+        handler = object.__new__(EditorHandler)
+        handler.headers = {"Content-Length": "100"}
+        handler.connection = Mock()
+        handler.connection.gettimeout.return_value = None
+        handler.rfile = Mock()
+        handler.rfile.read1.return_value = b"x"
+        with patch("bdgui.time.monotonic", side_effect=[0, 0.25, 1.01]):
+            handler.discard_rejected_body()
+        handler.rfile.read1.assert_called_once_with(100)
+        self.assertEqual(handler.connection.settimeout.call_args_list[0].args, (0.75,))
+        handler.connection.settimeout.assert_called_with(None)
 
     def test_http_requires_same_origin_and_session_token(self):
         server = EditorServer(("127.0.0.1", 0), self.workspace)
