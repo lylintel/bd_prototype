@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, BackgroundVariant, ConnectionLineType, ConnectionMode, Position, ReactFlow, applyNodeChanges, useNodesInitialized, useReactFlow, useStore, useViewport } from "@xyflow/react";
+import { Background, BackgroundVariant, ConnectionLineType, ConnectionMode, Position, ReactFlow, applyNodeChanges, getNodesBounds, getViewportForBounds, useReactFlow, useStore, useViewport } from "@xyflow/react";
 import * as FlowComponents from "@xyflow/react";
 import { ArrowUpRight, Blocks, Bot, Check, CheckCheck, ChevronDown, CircleAlert, CircleCheck, CircuitBoard, Code2, Copy, Cpu, Download, FilePlus2, FolderOpen, GripVertical, LayoutGrid, ListTree, LoaderCircle, Maximize2, PanelLeft, PanelRight, Plus, Redo2, Save, Search, Settings2, ShieldCheck, Trash2, Undo2, Unplug, Workflow, X, ZoomIn, ZoomOut } from "lucide-react";
 import { addInstance, checkName, clone, connectionError, connectPorts, deleteNode, disconnectPort, endpointInfo, externalId, makeExternal, parseInteger, rangeLabel, renameNet, renameNode, uniqueName, validateDocumentShape } from "./model.js";
@@ -114,7 +114,6 @@ export default function App() {
   const viewport = useViewport();
   const canvasWidth = useStore((state) => state.width);
   const canvasHeight = useStore((state) => state.height);
-  const nodesReady = useNodesInitialized();
   const [history, setHistory] = useState(null);
   const [scopePath, setScopePath] = useState([]);
   const [expandedGroups, setExpandedGroups] = useState([]);
@@ -275,15 +274,6 @@ export default function App() {
       setJsonDraft(JSON.stringify(document, null, 2));
     }
   }, [document, panelOpen, tab]);
-  useEffect(() => {
-    if ((!nodesReady && nodes.length < 64) || !viewportRequest) return;
-    if (viewportRequest.waitFor && !flow.getNode(viewportRequest.waitFor)) return;
-    if (viewportRequest.positions && nodes.some((node) => viewportRequest.positions[node.id] &&
-      (node.position.x !== viewportRequest.positions[node.id].x || node.position.y !== viewportRequest.positions[node.id].y))) return;
-    if (viewportRequest.fit) flow.fitView({ padding: 0.16, maxZoom: 1 });
-    else flow.setViewport(viewportRequest.viewport);
-    setViewportRequest(null);
-  }, [nodesReady, nodes, viewportRequest, flow]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 5000); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => {
     const handler = (event) => { if (!saved) { event.preventDefault(); event.returnValue = ""; } };
@@ -498,12 +488,30 @@ export default function App() {
     labelBgStyle: { fill: "#f8fafb", fillOpacity: 0.95 }, labelBgPadding: [7, 3], labelBgBorderRadius: 3,
   }))) : [], [design, interfaces, inspection.structuredDiagnostics, selectedNetId, selectedSink, expressionGraph]);
 
-  const candidate = preview ? candidateGraph(preview, layout.nodes, defaultPosition) : null;
+  const candidate = useMemo(() => preview ? candidateGraph(preview, layout.nodes, defaultPosition) : null, [preview, layout?.nodes]);
   const bundledEdges = useMemo(() => bundleHierarchyEdges(edges, nodes), [edges, nodes]);
   const labeledEdges = useMemo(() => bundledEdges.length > 256 ? bundledEdges.map((edge) => ({ ...edge, data: { ...edge.data, labelMode: true } })) : bundledEdges, [bundledEdges]);
   const displayedEdges = useMemo(() => labeledEdges.length > 256 ? visibleLabelEdges(labeledEdges, nodes, viewport, canvasWidth, canvasHeight) : labeledEdges,
     [labeledEdges, nodes, viewport, canvasWidth, canvasHeight]);
-  const graph = candidate ? mergePreview(nodes, edges, candidate.nodes, candidate.edges, designChanges(design, preview.canvas)) : { nodes, edges: displayedEdges };
+  const previewGraph = useMemo(() => candidate ? mergePreview(nodes, edges, candidate.nodes, candidate.edges, designChanges(design, preview.canvas)) : null,
+    [candidate, nodes, edges, design, preview?.canvas]);
+  const graph = previewGraph ?? { nodes, edges: displayedEdges };
+
+  useEffect(() => {
+    if (!viewportRequest || !canvasWidth || !canvasHeight || !flow.viewportInitialized) return;
+    if (!preview) {
+      const expected = new Set([...Object.keys(design?.instances ?? {}), ...Object.keys(design?.ports ?? {}).map(externalId), ...expressionGraph.nodes.map((node) => node.id)]);
+      if (nodes.length !== expected.size || nodes.some((node) => !expected.has(node.id))) return;
+    }
+    if (viewportRequest.waitFor && !graph.nodes.some((node) => node.id === viewportRequest.waitFor)) return;
+    if (viewportRequest.positions && graph.nodes.some((node) => viewportRequest.positions[node.id] &&
+      (node.position.x !== viewportRequest.positions[node.id].x || node.position.y !== viewportRequest.positions[node.id].y))) return;
+    if (viewportRequest.fit && graph.nodes.length) {
+      const bounds = getNodesBounds(graph.nodes);
+      flow.setViewport(getViewportForBounds(bounds, canvasWidth, canvasHeight, 0.25, 1, 0.16));
+    } else if (!viewportRequest.fit) flow.setViewport(viewportRequest.viewport);
+    setViewportRequest(null);
+  }, [viewportRequest, graph.nodes, nodes, design, expressionGraph.nodes, preview, canvasWidth, canvasHeight, flow]);
 
   function insertModule(module, position) {
     let id;

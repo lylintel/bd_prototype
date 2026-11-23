@@ -1,7 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { operationText, designChanges, mergePreview } from "./model.js";
+import { operationText, designChanges, mergePreview, candidateGraph } from "./model.js";
 import { updateCopilotMessages } from "../copilot.js";
+
+test("preview nodes retain initial dimensions before React Flow measures them", () => {
+  const view = { canvas: { name: "demo", modules: { unit: { ports: {} } }, instances: { kept: { module: "unit" } }, ports: { out: { direction: "output", range: [7, 0] } }, nets: {} },
+    connections: [{ name: "literal", endpoints: [
+      { index: 0, raw: { const: "8'd1" }, expression: true, drives: true, width: 8, text: "8'd1", references: [] },
+      { index: 1, raw: { ext: "out" }, expression: false, drives: false, width: 8, text: "@out", references: [{ key: "@out", width: 8, bounds: [7, 0] }] },
+    ] }] };
+  const candidate = candidateGraph(view, {}, () => ({ x: 0, y: 0 }));
+  const result = mergePreview([], [], candidate.nodes, candidate.edges, { nodes: {}, nets: {} });
+  assert.ok(result.nodes.every((node) => node.initialWidth > 0 && node.initialHeight > 0));
+  const expression = result.nodes.find((node) => node.type === "expression");
+  assert.equal(expression.initialWidth, 230);
+  assert.equal(expression.initialHeight, 86);
+});
 
 test("operation summaries retain versions and expression endpoints", () => {
   assert.equal(operationText({ op: "set_param", inst: "unit", name: "WIDTH", value: "4 * 3" }), "unit.WIDTH = 4 * 3");

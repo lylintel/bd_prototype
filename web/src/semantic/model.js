@@ -135,7 +135,12 @@ export function projectConnections(connections, positions) {
       if (endpoint.raw.const === undefined && !endpoint.raw.concat) continue;
       const id = expressionId(connection.name, endpoint.index);
       const height = 86 + endpoint.references.length * 20;
-      nodes.push({ id, type: "expression", position: positions[id] ?? { x: endpoint.drives ? -260 : 1250, y: endpoint.drives ? sourceY : sinkY },
+      const handle = (name, source, top) => ({ id: name, type: source ? "source" : "target", position: source ? "right" : "left",
+        x: source ? 229.5 : -8.5, y: top, width: 9, height: 9 });
+      const handles = [handle("aggregate", endpoint.drives, height / 2 - 4.5),
+        ...endpoint.references.map((reference, index) => handle(`member-${index}`, !endpoint.drives, 76.5 + index * 20))];
+      nodes.push({ id, type: "expression", initialWidth: 230, initialHeight: height, handles,
+        position: positions[id] ?? { x: endpoint.drives ? -260 : 1250, y: endpoint.drives ? sourceY : sinkY },
         data: { ...endpoint, net: connection.name, height, kind: endpoint.raw.const !== undefined ? "constant" : "concat" } });
       if (endpoint.drives) sourceY += height + 50; else sinkY += height + 50;
       endpoint.references.forEach((reference, index) => {

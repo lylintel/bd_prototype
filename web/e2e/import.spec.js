@@ -843,6 +843,8 @@ test("[mock-sdk] deletion preview can be discarded without changing the design",
   await openEditor(page);
   const before = await designJson(page);
   const proposal = await aiRequest(page, "删除 counter_0 并给 compare_0 设置常量", true);
+  await page.getByRole("tab", { name: "BD Verilog", exact: true }).click();
+  await page.getByRole("tab", { name: "诊断", exact: true }).click();
   await expect(page.locator('.react-flow__node.ai-preview-deleted[data-id="counter_0"]')).toBeVisible();
   await expect(page.locator('.react-flow__node.ai-preview-added').first()).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("proposal-diff-desktop.png") });

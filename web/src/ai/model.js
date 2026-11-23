@@ -2,6 +2,9 @@ import { formatEndpoint } from "../semantic/model.js";
 import { projectConnections } from "../semantic/model.js";
 import { endpointInfo, externalId } from "../model.js";
 import { canonicalDesign } from "../copilot.js";
+import { nodeGeometry } from "../performance.js";
+
+const ignorePin = () => {};
 
 export function operationText(operation) {
   switch (operation.op) {
@@ -62,7 +65,7 @@ export function candidateGraph(view, positions, positionFor) {
         target: target.node, targetHandle: target.handle, label: net.name, data: { net: net.name, sink: target.handle, width: driver.width } });
     }
   }
-  return { nodes, edges };
+  return { nodes: nodes.map((node) => node.type === "block" ? { ...node, ...nodeGeometry(node.data) } : node), edges };
 }
 
 export function mergePreview(baseNodes, baseEdges, nextNodes, nextEdges, changes) {
@@ -76,7 +79,7 @@ export function mergePreview(baseNodes, baseEdges, nextNodes, nextEdges, changes
     const state = changes.nodes[node.id] ?? (!nextIds.has(node.id) ? "deleted" : !baseIds.has(node.id) ? "added" : "unchanged");
     const position = basePositions.get(node.id) ?? (baseNodes.length ? { x: addedLeft, y: addedIndex++ * 260 } : node.position);
     return { ...node, position, className: `ai-preview-${state}`, draggable: false, connectable: false,
-      data: { ...node.data, onPin: () => {}, connectable: false, highlight: false } };
+      data: { ...node.data, onPin: ignorePin, connectable: false, highlight: false } };
   });
   const nextEdgeIds = new Set(nextEdges.map((edge) => edge.id));
   const baseEdgeIds = new Set(baseEdges.map((edge) => edge.id));
