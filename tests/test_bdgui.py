@@ -535,6 +535,19 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(handler.connection.settimeout.call_args_list[0].args, (0.75,))
         handler.connection.settimeout.assert_called_with(None)
 
+    def test_http_rejection_matrix_is_small_complete_and_has_no_retries(self):
+        from scripts.http_rejections import rejection_matrix
+
+        report = rejection_matrix(self.workspace, samples=1)
+        self.assertEqual(report["fixed_samples"], 24)
+        self.assertEqual(report["automatic_retries"], 0)
+        self.assertEqual(len(report["results"]), 24)
+        self.assertEqual(report["failures"], 0, report["results"])
+        cases = {(item["reuse_connection_object"], item["body_bytes"], item["rejection"]) for item in report["results"]}
+        self.assertEqual(cases, {(reuse, size, rejection) for reuse in (False, True)
+                                for size in (15, 4111, 65551)
+                                for rejection in ("missing_token", "bad_token", "origin", "host")})
+
     def test_http_requires_same_origin_and_session_token(self):
         server = EditorServer(("127.0.0.1", 0), self.workspace)
         thread = Thread(target=server.serve_forever, daemon=True)

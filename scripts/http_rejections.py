@@ -1,5 +1,5 @@
 import argparse
-from http.client import HTTPConnection
+from http.client import HTTPConnection, HTTPException
 import json
 from pathlib import Path
 import platform
@@ -8,12 +8,9 @@ from threading import Thread
 from bdgui import EditorServer, Workspace
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    root = Path(__file__).resolve().parents[1]
-    workspace = Workspace(root, "examples/counter_compare.json")
+def rejection_matrix(workspace, *, samples=1):
+    if type(samples) is not int or not 1 <= samples <= 10:
+        raise ValueError("samples must be an integer between 1 and 10")
     server = EditorServer(("127.0.0.1", 0), workspace)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -26,7 +23,7 @@ def main():
             for padding in (0, 4096, 65536):
                 payload = json.dumps({"padding": "x" * padding})
                 for rejection in ("missing_token", "bad_token", "origin", "host"):
-                    for sample in range(10):
+                    for sample in range(samples):
                         if not reuse:
                             connection.close()
                         headers = {"Content-Type": "application/json", "X-BD-Token": token}
@@ -45,7 +42,7 @@ def main():
                             response = connection.getresponse()
                             data = response.read()
                             result.update(status=response.status, complete=len(data) == int(response.getheader("Content-Length")))
-                        except (OSError, ValueError) as error:
+                        except (OSError, ValueError, HTTPException) as error:
                             result.update(error=type(error).__name__, errno=getattr(error, "errno", None),
                                           winerror=getattr(error, "winerror", None))
                             connection.close()
@@ -55,13 +52,23 @@ def main():
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
-    report = {"platform": platform.platform(), "python": platform.python_version(), "fixed_samples": 240,
+    return {"platform": platform.platform(), "python": platform.python_version(), "fixed_samples": 24 * samples,
               "automatic_retries": 0, "http_version": "server HTTP/1.0; object reuse reconnects after close",
               "failures": sum(item.get("status") != 403 or not item.get("complete") for item in results), "results": results}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--samples", type=int, choices=range(1, 11), default=10)
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parents[1]
+    report = rejection_matrix(Workspace(root, "examples/counter_compare.json"), samples=args.samples)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({key: value for key, value in report.items() if key != "results"}))
+    return int(report["failures"] != 0)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

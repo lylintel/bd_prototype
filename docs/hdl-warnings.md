@@ -21,6 +21,43 @@ IP 源码列包含内置、固定上游源码和本地 adapter；示例设计列
 
 ## 位宽与其他 RTL 复核
 
+### 2B.1 评审指定类别复核
+
+2026-11-23 从当前 `build/hdl-checks.json` 的 24 个对象重新计数：保留 77 条，其中 Verilator 73、Yosys 4。以下按 Verilator 原始 rule 统计，不把 Yosys 提示计入 WIDTH，也不漏掉新版拆分的 WIDTH 子类别。
+
+| 指定类别 | 保留数量 | 说明 |
+|---|---:|---|
+| WIDTH 家族 | 17 | 原始 WIDTH=0，WIDTHEXPAND=14，WIDTHTRUNC=3 |
+| LATCH | 0 | 无残留 |
+| BLKSEQ | 0 | 无残留；BLKANDNBLK 亦为 0 |
+| CASEINCOMPLETE | 0 | 无残留 |
+| MULTIDRIVEN | 0 | 无残留 |
+| UNOPTFLAT | 0 | 无残留 |
+
+17 条 WIDTH 的逐条处置如下。工具指出的位数不同是真实的；这里“非缺陷”是针对有效位丢失/比较错误的风险判断，不宣称 Verilator 错算了位数。证明仅适用于列明的合法参数值域，用户改约束后仍显示原始诊断并重新评审，不通过截断常量或全局静默开关隐藏警告。
+
+| 源文件/行 | rule | 非缺陷证据 |
+|---|---|---|
+| examples/rtl/compare_eq.v:8 | WIDTHEXPAND | 当前 WIDTH=8、THRESHOLD=9；value 无符号零扩展后比较，无有效位丢失；不得截断可能越界的阈值改变比较语义 |
+| src/vendor/verilog-uart/rtl/uart_tx.v:95 | WIDTHEXPAND | 16 位 prescale 在表达式上下文扩展后计算 8*prescale-1；prescale=1..65535，结果 7..524279，19 位定时器可表示 |
+| src/vendor/verilog-uart/rtl/uart_tx.v:104 | WIDTHEXPAND | 相同整位 reload，7..524279 均可表示 |
+| src/vendor/verilog-uart/rtl/uart_rx.v:111 | WIDTHEXPAND | 相同整位 reload，7..524279 均可表示 |
+| src/vendor/verilog-uart/rtl/uart_rx.v:118 | WIDTHEXPAND | 相同整位 reload，7..524279 均可表示 |
+| src/vendor/verilog-uart/rtl/uart_rx.v:133 | WIDTHEXPAND | 半位 reload=4*prescale-2，合法范围 2..262138，小于 2^19；prescale=0 为无效波特率配置，未将其下溢豁免为合法 |
+| ip_library/builtin/bd_clock_divider/1.0.0/src/bd_clock_divider.v:13 | WIDTHEXPAND | HALF_PERIOD=1..65536，max(1,clog2(HALF_PERIOD)) 位能表示 HALF_PERIOD-1；无符号零扩展比较等价 |
+| ip_library/builtin/bd_debounce/1.0.0/src/bd_debounce.v:17 | WIDTHEXPAND | STABLE_CYCLES=2..65536，计数器可表示 STABLE_CYCLES-1，比较扩展不改变结果 |
+| ip_library/builtin/bd_shift_register/1.0.0/src/bd_shift_register.v:11 | WIDTHEXPAND | 1 位 serial_in 零扩展后 OR 到移位结果最低位；WIDTH=1..128，包括 WIDTH=1 的自检 |
+| ip_library/builtin/bd_spi_master/1.0.0/src/bd_spi_master.v:31 | WIDTHEXPAND | CLOCK_DIV=1..65535，定时器可表示 CLOCK_DIV-1 |
+| ip_library/builtin/bd_sync_fifo/1.0.0/src/bd_sync_fifo.v:20 | WIDTHEXPAND | COUNT_WIDTH=clog2(DEPTH+1) 可表示 DEPTH（1..256）；occupancy 与正整数零扩展比较等价 |
+| ip_library/builtin/bd_sync_fifo/1.0.0/src/bd_sync_fifo.v:28 | WIDTHEXPAND | PTR_WIDTH=max(1,clog2(DEPTH)) 可表示 DEPTH-1，写指针明确在该值回绕 |
+| ip_library/builtin/bd_sync_fifo/1.0.0/src/bd_sync_fifo.v:30 | WIDTHEXPAND | 读指针相同边界，非二次幂深度也不依赖自然溢出 |
+| ip_library/builtin/bd_uart_tx/1.0.0/src/bd_uart_tx.v:22 | WIDTHEXPAND | CLKS_PER_BIT=2..65535，计数器可表示 CLKS_PER_BIT-1 |
+| ip_library/builtin/bd_uart_rx/1.0.0/src/bd_uart_rx.v:29 | WIDTHTRUNC | CLKS_PER_BIT=4..65535，floor(CLKS_PER_BIT/2)-1 非负且小于 2^TIMER_WIDTH，丢弃位恒零 |
+| ip_library/builtin/bd_uart_rx/1.0.0/src/bd_uart_rx.v:32 | WIDTHTRUNC | CLKS_PER_BIT-1 小于 2^TIMER_WIDTH，丢弃位恒零 |
+| ip_library/builtin/bd_uart_rx/1.0.0/src/bd_uart_rx.v:38 | WIDTHTRUNC | 相同整位 reload，丢弃位恒零 |
+
+其余类别沿用本文原理由。此复核未修改 RTL、元数据约束、版本或 testbench/golden；保留原有 Icarus 行为门禁。
+
 这些是有意扩展或可证明在值域内的赋值，不通过截断常量来“消警告”；那可能改变越界阈值比较的行为。保留提示适用于下列参数约束与当前示例，不授权任意用户配置自动豁免。
 
 | 来源 | 次数 | 核对与决定 |

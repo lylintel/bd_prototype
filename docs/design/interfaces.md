@@ -1,6 +1,6 @@
 # Phase 2B：总线接口设计提案
 
-状态：**待评审，仅文档，未实现**。日期：2026-11-23。本文中的新 schema、错误码、API、UI 和测试均为拟议契约，不是当前能力。A 实现提交 `b8d2cbd`，B 实现提交 `daaa95d` 及 Linux include 兼容修复 `d54fe06`；本轮到本文及其门禁/文档提交为止，不进入 Phase 2B 实现。
+状态：**AXI-Stream 范围已批准，实施中；未完成项不是当前能力**。日期：2026-11-23。评审修订以 D049 为准：先做 AXI-Stream；第二期 AXI-Lite/APB3 顺序待定，两者均不在本期。迁移契约集中在 [migration.md](migration.md)。不得新增时钟域规则 W020-W022，不调用或评测真实模型。
 
 ## 1. 范围与分期
 
@@ -8,9 +8,9 @@
 
 | 分期 | 内容 | 不包含 |
 |---|---|---|
-| 2B.1 | AXI-Stream 基础握手 profile、APB3 profile；元数据确认、接口连接、语义展开、确定性 HDL | 任意总线推断、APB2/APB4、自动协议适配 |
+| 2B.1 | AXI-Stream 基础握手 profile；兼容性 golden 先行，再做元数据确认、接口连接、语义展开、确定性 HDL | APB3、AXI-Lite、任意总线推断、自动协议适配 |
 | 2B.2 | 层次接口端口、UI 展开/折叠、信号级拆解、AI 接口提案与离线评测 | AI 修改共享子设计定义、跨层隐式寻址 |
-| 2B.3 | AXI4-Lite：AW/W/B/AR/R 五通道绑定和独立握手仿真 | AXI4 burst/ID、多 outstanding、互联仲裁、地址分配 |
+| 第二期（顺序待定） | AXI4-Lite 或 APB3；须另行批准 | 本期不实现，AXI4 burst/ID、多 outstanding、互联仲裁、地址分配仍排除 |
 
 全阶段不做：自动插入 CDC/FIFO/位宽转换、自动复位反相、AXI-Lite/APB bridge、IP-XACT、完整 SystemVerilog interface/modport 输出、组合环完整签核、厂商布局布线、真实 LLM 评测。复用现有信号端口和 Verilog/SystemVerilog 模板，不引入另一套 RTL 引擎。
 
@@ -19,7 +19,7 @@
 - [../../design.schema.json](../../design.schema.json) 支持 v2 普通端点、v3 slice/const/concat、v4 根定义表与 v3 子设计。
 - [../../ops.schema.json](../../ops.schema.json) 与 [../../core/ops.py](../../core/ops.py) 是操作协议 v1，六类操作、四类端点，未知类型拒绝。
 - [../../core/diagnostics.py](../../core/diagnostics.py) 提供 code/severity/location/message/params/fix；[../../core/generation.py](../../core/generation.py) 持有工程化输出和 source map。
-- A 当前只允许 GUI 根层 AI 提案；子层 AI 禁用，不能把本设计当作已获授权解除该限制。
+- D046 的历史实现仅允许根层，与本次用户指定的“当前打开层”不一致。本期以后者为准：局部 ops 合回整根校验；共享子设计禁止 AI 修改，不隐式复制定义。
 
 ## 2. 接口定义与 IP 元数据
 
@@ -52,9 +52,9 @@
 | APB3 | PADDR、PSEL、PENABLE、PWRITE、PWDATA | PRDATA、PREADY | PSLVERR 可选；地址宽 1..32，数据宽建议 8/16/32，首期以 32 位为必测配置；不含 APB4 PSTRB/PPROT |
 | AXI4-Lite（后期） | AWADDR/AWPROT/AWVALID、WDATA/WSTRB/WVALID、BREADY、ARADDR/ARPROT/ARVALID、RREADY | AWREADY/WREADY、BRESP/BVALID、ARREADY、RDATA/RRESP/RVALID | 首个 profile 要求五通道所有列出信号；DATA_WIDTH=32/64，ADDR_WIDTH=1..64；不自动猜测 AWPROT/ARPROT tie-off |
 
-必选列表由 profile 决定，不允许单个 IP 把必选字段改成可选。可选项两端均存在时要求方向/宽度一致；两端均不存在时不展开；仅一端存在时首期报显式适配需求，**不自动悬空接收输入，也不静默填 0/1**。例如缺失 TLAST 不能假装每拍或永不结束一个包。用户可经确认将连接拆为信号网，使用现有 const 或适配 IP 后再校验。后续如引入缺省值，须版本化定义并另行评审，不在首期隐藏实现。
+必选列表由 profile 决定，不允许单个 IP 把必选字段改成可选。可选项两端均存在时要求方向/宽度一致；两端均不存在时不展开；仅一端存在时报适配诊断，**不自动悬空输入或静默补常量**。诊断必须提供需用户确认的一键 fix：预览显式展开及建议的成员绑定/常量，展示 TLAST 等字段的行为影响，确认后原子执行；拒绝确认不修改任何对象。信号级修改必须先显式物化，不能通过 fix 留下总线与信号两份事实来源。
 
-时钟/复位不塞进数据总线束：接口通过 association 指向已有物理 clock/reset 端口。关联存在性、role 确认、复位极性单独检查。共享端口可被多个接口引用为 clock/reset association，但不得作为多个数据 signal 映射。双方明确处于不同已知时钟域时报错要求显式 CDC 方案；未知域显示警告，不凭名称相同宣布同域。
+时钟/复位不塞进数据总线束：接口通过 association 指向已有物理端口。本期仅验证引用存在，不实现时钟域诊断（包括 W020-W022）。未来检查只能依据已确认 role，不依据名字猜测时钟域，宁漏报不误报，文案不得称 CDC 签核。共享 clock/reset association 不视为多个数据 signal 映射。
 
 ### 2.2 IP schema v2
 
@@ -105,11 +105,7 @@ v1 -> v2 的空接口内存迁移无信息损失；只读打开和普通保存�
 
 根 schema 5 保留扁平 subdesigns 定义表；v5 子设计是独立 scope schema：有 ports/instances/nets/interfaces/interface_connections，但不含 project_ips 或嵌套 subdesigns。继续根统一元数据和最大 200 定义/16 深度/2 MiB 限制，不能通过接口展开绕过既有 100000 nets 等上限。新增接口连接建议最多 10000 条，且展开后的每项旧限制也必须满足。
 
-迁移与保存策略：
-1. v2/v3/v4 按原 reader/writer 工作；没有接口操作就不迁移、不换排序、不增空字段。
-2. 首次确认接口操作时，在候选文档中升 v5；旧 ports/instances/nets 深拷贝无语义改写，根补空 subdesigns、interfaces、interface_connections；已有 v4 子设计递归迁移为 v5 scope，但仍引用根定义表。
-3. 迁移预览与操作一并通过整根校验后显式接受，一次历史提交；取消/撤销恢复原文档版本和原布局。加载不写磁盘，保存继续原持久化事务。
-4. 降级只允许没有接口描述/连接的 v5 或用户显式选择全部物化为信号网；输出到新文件并说明丢失接口分组语义，禁止静默覆写旧文件。
+迁移与保存的唯一对外契约见 [migration.md](migration.md)。迁移显式单向、旧文件不自动重写；无接口设计在同一生成模式下必须与 v4 输出逐字节一致，包括头部。首个实施任务先冻结该 golden 与迁移后保存/重开的往返测试，不先实现接口行为。
 
 接口端口的物理 ports 仍是 RTL 事实；interface_connections 独占它实际展开的物理端点/位范围。普通 nets、slice 或 concat 若占用相同位，报 E205；不能同时有“总线连接”和另一份部分 signal 连接，哪怕驱动值看起来一样。分析时使用范围相交，不仅比较端口名。
 
@@ -133,8 +129,8 @@ v1 -> v2 的空接口内存迁移无信息损失；只读打开和普通保存�
 | E208 | 派生名冲突或展开规模超限 | generated_name, conflicting_object, expanded_nets, limit |
 | E209 | 未确认接口或非法参数/关联 | interface, reason, parameter, value, allowed_values |
 | E210 | interface 与 scalar 混接/接口作为表达式成员 | source_type, target_type, expression_path |
-| E211 | 明确不同已知时钟域直接连接 | source_clock_net, target_clock_net, source_reset, target_reset |
-| W201 | clock/reset association 尚不能证明兼容 | endpoint, unresolved_associations, reason |
+| E211（本期不实施） | 未来依据已确认 role 的时钟域检查，另行评审 | source_clock_net, target_clock_net, source_reset, target_reset |
+| W201（本期不实施） | 未来时钟关联提示，不能绕过本期 W020-W022 禁令 | endpoint, unresolved_associations, reason |
 
 返回仍是 `code/severity/location/message/params/fix?`。诊断文案在后端与前端现有 i18n 路径中本地化；params 用稳定机器字段，数组规范排序。E201-E210 先于逐信号展开检查；阻断错误不继续产生几十条 E003 噪声。已展开且合法的成员继续走 E001-E008/W010，同一根因按 connection+signal+code 去重，并保留 provenance 供 UI 展开查看。
 
@@ -180,7 +176,7 @@ type Endpoint = ScalarEndpoint | InterfaceEndpoint;
 
 这是设计伪类型，不是新增 TypeScript 文件。ConcatEndpoint 的成员仍只允许旧标量递归联合，绝不包含 InterfaceEndpoint。interface-interface 的 connect/disconnect 进入接口连接集合；混接在 ops 层拒绝后映射 E210。未知额外属性、元数据中缺失或未知的定义版本、假造接口与越层 inst 路径仍拒绝。端点通过固定 IP id/version 的元数据解析定义版本，不另外接收模型指定版本。操作上限 200 不变，接口展开后还需受总信号/网数限制；建议每提案新增展开信号最多 4096，超过时要求拆分明确任务，而非隐藏截断。
 
-首期 AI 不新增接口定义、不确认候选、不修改 role/协议，也不自动物化接口。只能使用用户已确认的 root 接口或子设计导出边界。修改参数导致接口不兼容时必须对整根重新解析，不能只校验模型上下文子图。预览以一条接口操作为原子选择项，不能只接受 VALID 而漏掉 READY；diff 同时可展开查看完整信号修改与时钟/复位关联。
+首期 AI 不新增接口定义、不确认候选、不修改 role/协议，也不自动物化接口。使用当前打开层的已确认接口及导出边界，禁止越层名称；共享子设计只读。局部候选必须合回整根并重新解析，不能只校验模型上下文子图；接受时也核对 scope 与根快照。预览以一条接口操作为原子选择项，不能只接受 VALID 而漏掉 READY；diff 可展开完整信号修改。
 
 紧凑网表增加已解析的 interface 名称、协议/定义版本/profile、有效角色、已求值宽度、存在/缺失的可选信号、当前连接/占用摘要与 clock/reset 关联。IP 卡片增加相同已确认信息及物理映射，不发送 RTL、任意注册表文件或共享子设计内部定义。保持现有 8 张检索卡片、32k token 默认上下文、128 KiB 编码限制及选中子图策略；超限明确报错，不能截断一半接口。新增索引字段可以匹配中文“流接口/APB 主端”等，但不得用 held-out 结果调排名。
 
@@ -211,9 +207,9 @@ type Endpoint = ScalarEndpoint | InterfaceEndpoint;
 
 2000 实例性能使用两类配对夹具：原信号级夹具完全不变，另增电气拓扑等价的接口表达夹具（记录原始 net 数、展开后 net 数和接口数，不能借粗线降低业务规模）。固定种子、机器、工具/浏览器版本，按 A 的负载前后检采集三样本，拒测不算通过。
 
-仍保持既有绝对预算：500 导航 <2000ms、平移/缩放 >=45fps、拖动 >=30fps；2000 导航 <4000ms、平移/缩放 >=30fps、拖动 >=20fps；拖动更新 <10 节点，布局无 >=50ms 长任务，输出实际点击至绘制 <300ms，单步典型历史 <100 KiB。新接口索引/展开的耗时、派生网内存、HTTP 字节、冷启动另列。语义 median <300ms/max <600ms 仍按当前非阻塞策略报告，不私自转换政策。
+本功能验收只使用同机同次运行的有/无接口同规模配对开销 <=10%，不使用绝对毫秒/FPS 数字。旧性能预算属于旧功能历史门禁，不替代本期相对验收，也不把旧超限归因于接口功能。分别记录解析/生成/浏览器交互的配对原值与比值、派生网内存和请求字节；拒测及失败不计为通过。
 
-新增建议目标（待评审，不先改门禁）：配对语义解析中位数额外开销 <=10%，隐藏的成员不挂 DOM；request-local 接口/端口索引使复杂度近似 O(实例+成员+net)，不用每条粗线遍历全图。继续参考 A 的真实负载约束，本机当前没有三个合格的 2000 联合样本，不能把该遗留项预先算作新方案通过。若 v5 夹具超过原 2 MiB 限制，应明确拒绝并报告容量边界，不能偷偷升上限。
+已批准目标：同次配对的额外开销 <=10%，每提案最多展开 4096 信号；隐藏成员不挂 DOM，request-local 索引避免每条粗线遍历全图。旧 2000 绝对预算联合复验与本期配对验收分开报告。若夹具超过原 2 MiB 限制，明确报告容量边界，不偷偷升上限。
 
 ## 9. 风险、替代方案与任务拆分
 
@@ -233,7 +229,7 @@ type Endpoint = ScalarEndpoint | InterfaceEndpoint;
 
 | 任务 | 交付 | 验收条件 |
 |---|---|---|
-| 2B.0 | 评审本文，冻结 profile/格式/诊断/预算 | 第 10 节逐项结论记录；未通过不实现 |
+| 2B.0 | 首先冻结无接口兼容 golden 与显式迁移往返 | 同模式 v4/v5 HDL 字节一致；旧文件不改写，迁移后保存/重开一致，撤销恢复原文档 |
 | 2B.1a | 本地协议定义、IP v2 schema/解析、版本指纹 | 必选/可选/方向/参数全部正反例；v1 及旧来源/golden 不变 |
 | 2B.1b | 前缀候选与导入确认 | 候选不写激活元数据，歧义/缺失可纠正，明确确认后新 IP 版本 |
 | 2B.1c | 设计 v5/迁移、接口解析、所有权与诊断 | 本文 E201-E211 可复现；老版本保存不升级；整批原子撤销 |
@@ -244,7 +240,11 @@ type Endpoint = ScalarEndpoint | InterfaceEndpoint;
 | 2B.2d | 2000 实例配对性能与收尾报告 | 三个合格样本、绝对预算与新增开销分开，失败和拒测完整保留 |
 | 2B.3 | AXI4-Lite profile 与行为覆盖 | AW/W 独立握手等全清单通过；未完成时不标称 AXI-Lite 支持 |
 
-## 10. 待用户决策
+## 10. 已批准约束与第二期待定项
+
+以下原评审问题已由 D049 取代：本期只做 AXI-Stream；采用三种新版 schema、单向显式迁移与总线唯一事实来源；可选绑定需确认 fix；AI 当前打开层且共享定义只读；性能仅同次配对 <=10%，4096 展开信号上限。警告指定六类的计数和逐条证据见 [../hdl-warnings.md](../hdl-warnings.md)。第二期 AXI-Lite/APB3 顺序仍待定，不影响本期。
+
+以下清单保留为原评审记录，不再作为当前待办授权：
 
 1. 是否接受首期只做 AXI-Stream ready-valid 和 APB3，AXI4-Lite 后置？AXIS 要求 TREADY、APB 要求 PREADY，超出 profile 的合法省略形式首期不支持。
 2. 是否接受 IP schema 2 / design 5 / ops 2，以及“首次接口操作才迁移、只存接口连接、物化后才允许信号编辑”的策略？
@@ -253,7 +253,7 @@ type Endpoint = ScalarEndpoint | InterfaceEndpoint;
 5. 是否采用新增 <=10% 配对语义开销目标和每提案最多 4096 展开信号？既有绝对预算/时限及本机未完成的三样本复验不放宽。
 6. B 的 77 条可见警告豁免是否认可？如要求对已证明值域安全的内置 IP 仍做显式位宽清理，需另开版本升级、旧版本兼容、testbench/golden 工作，不混入本次接口文档提交。
 
-本文完成后停止等待评审。没有创建协议注册表、升级 schema、实现新 endpoint 或修改任何总线功能代码。
+本轮完成 AXI-Stream 片区及 phase-2b-1 报告后停止，不进入第二期。以下第 11 节是上轮纯文档交付的历史验证，不代表本轮接口实现已完成。
 
 ## 11. 本轮文档交付验证
 
