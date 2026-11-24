@@ -148,6 +148,58 @@ test("engineering generation writes versioned readonly output without changing t
   expect(readFileSync(path.join(server.directory, "examples/counter_compare.json"))).toEqual(original);
 });
 
+test("AXI-Stream import requires explicit mapping confirmation on desktop and mobile", async ({ page }, testInfo) => {
+  await openEditor(page);
+  const source = "module axis_feed(output [7:0] m_axis_tdata, output m_axis_tvalid, input m_axis_tready); assign m_axis_tdata=8'hA5; assign m_axis_tvalid=1'b1; endmodule\n";
+  const upload = { name: "axis_feed.v", mimeType: "text/plain", buffer: Buffer.from(source) };
+  const dialog = page.getByRole("dialog", { name: t("ip.importTitle"), exact: true });
+  await page.getByRole("button", { name: t("ip.import"), exact: true }).click();
+  await dialog.getByLabel(t("ip.files"), { exact: true }).setInputFiles({ ...upload, buffer: Buffer.from(source.replace(", input m_axis_tready", "")) });
+  const confirm = dialog.getByLabel(t("ip.confirmInterface", { name: "m_axis" }), { exact: true });
+  await expect(confirm).not.toBeChecked();
+  await expect(confirm).toBeDisabled();
+  await confirm.scrollIntoViewIfNeeded();
+  expect(existsSync(path.join(server.directory, "ip_library/axis_feed"))).toBe(false);
+  await dialog.getByRole("button", { name: t("common.cancel"), exact: true }).click();
+  expect(existsSync(path.join(server.directory, "ip_library/axis_feed"))).toBe(false);
+  await page.getByRole("button", { name: t("ip.import"), exact: true }).click();
+  await dialog.getByLabel(t("ip.files"), { exact: true }).setInputFiles(upload);
+  await confirm.check();
+  await dialog.getByLabel(t("ip.interfaceNameFor", { name: "m_axis" }), { exact: true }).fill("stream_out");
+  const renamed = dialog.getByLabel(t("ip.confirmInterface", { name: "stream_out" }), { exact: true });
+  await expect(renamed).not.toBeChecked();
+  await renamed.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("axis-import-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await renamed.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("axis-import-mobile.png") });
+  await renamed.check();
+  await dialog.getByRole("button", { name: t("ip.confirmImport", { count: 1 }), exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const stored = JSON.parse(readFileSync(path.join(server.directory, "ip_library/axis_feed/1.0.0/ip.json"), "utf8"));
+  expect(stored.schema_version).toBe(2);
+  expect(stored.interfaces).toHaveLength(1);
+  expect(stored.interfaces[0].name).toBe("stream_out");
+  expect(stored.interfaces[0].confirmed).toBe(true);
+  expect(stored.interfaces[0].signals).toEqual({ tdata: "m_axis_tdata", tvalid: "m_axis_tvalid", tready: "m_axis_tready" });
+  expect(readFileSync(path.join(server.directory, "ip_library/axis_feed/1.0.0/src/axis_feed.v"), "utf8")).toBe(source);
+  await page.getByRole("button", { name: "模块面板", exact: true }).click();
+  await page.getByRole("button", { name: t("ip.import"), exact: true }).click();
+  await dialog.getByLabel(t("ip.files"), { exact: true }).setInputFiles({ name: "odd_feed.v", mimeType: "text/plain",
+    buffer: Buffer.from("module odd_feed(output [7:0] payload, output strobe, input accept); assign payload=8'hA5; assign strobe=1'b1; endmodule\n") });
+  await expect(dialog.getByRole("button", { name: t("ip.confirmImport", { count: 1 }), exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: t("ip.addInterface"), exact: true }).click();
+  for (const [signal, port] of [["tdata", "payload"], ["tvalid", "strobe"], ["tready", "accept"]]) {
+    await dialog.getByLabel(t("ip.interfaceSignal", { name: "axis_0", signal }), { exact: true }).selectOption(port);
+  }
+  await dialog.getByLabel(t("ip.confirmInterface", { name: "axis_0" }), { exact: true }).check();
+  await dialog.getByRole("button", { name: t("ip.confirmImport", { count: 1 }), exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const manual = JSON.parse(readFileSync(path.join(server.directory, "ip_library/odd_feed/1.0.0/ip.json"), "utf8"));
+  expect(manual.interfaces[0].signals).toEqual({ tdata: "payload", tvalid: "strobe", tready: "accept" });
+});
+
 test("SystemVerilog import wiring generation and checks use explicit language", async ({ page }, testInfo) => {
   await openEditor(page);
   await page.getByRole("button", { name: t("ip.import"), exact: true }).click();

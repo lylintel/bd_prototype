@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, Check, Cpu, FolderOpen, LoaderCircle, Plus, RefreshCw, Upload, X } from "lucide-react";
 import { t, hasMessage } from "../i18n.js";
-import { IP_DRAG_TYPE, droppedFiles, encodeUpload, matchesLibrary, readImportEvents } from "./model.js";
+import { AXIS_SIGNALS, IP_DRAG_TYPE, addInterfaceDraft, droppedFiles, encodeUpload, interfaceConfirmationError, interfaceDrafts, matchesLibrary, readImportEvents, updateInterfaceDraft } from "./model.js";
 import "./library.css";
 
 export function OriginBadge({ origin }) {
@@ -62,7 +62,48 @@ export function LibraryList({ baseDir, revision, search, onCatalogChange, onAdd 
   </section>;
 }
 
-function MetadataEditor({ record, disabled, onChange }) {
+function InterfaceEditor({ record, onChange }) {
+  const drafts = interfaceDrafts(record);
+  const update = (index, patch, options = {}) => onChange(record.key, (previous) => updateInterfaceDraft(previous, index, patch, options));
+  return <section className="ip-interface-list">
+    <div className="ip-interface-toolbar"><h3>{t("ip.interfaces")}</h3><button type="button" className="button secondary" disabled={drafts.length >= 64}
+      onClick={() => onChange(record.key, addInterfaceDraft)}><Plus size={14} />{t("ip.addInterface")}</button></div>
+    {(drafts.length >= 64 || drafts.some((draft) => draft.candidate_limit_reached)) && <div className="ip-import-error" role="alert">{t("ip.interfaceLimit")}</div>}
+    {record.interfaceError && <div className="ip-import-error" role="alert">{record.interfaceError}</div>}
+    {drafts.map((draft, index) => {
+      const declaration = draft.declaration;
+      const problem = interfaceConfirmationError(record.metadata, declaration) || draft.diagnostics?.[0]?.message || "";
+      return <div className="ip-interface" key={index} role="group" aria-label={declaration.name}>
+        <div className="ip-interface-toolbar"><code>{declaration.name}</code><span className="ip-muted">{draft.confidence ? t("ip.confidence", { value: Math.round(draft.confidence * 100) }) : t("ip.interfaceManual")}</span>
+          <button type="button" className="icon-button" title={t("ip.removeInterface", { name: declaration.name })} aria-label={t("ip.removeInterface", { name: declaration.name })}
+            onClick={() => update(index, {}, { remove: true })}><X size={14} /></button></div>
+        <div className="ip-fields">
+          <label>{t("ip.interfaceName")}<input aria-label={t("ip.interfaceNameFor", { name: declaration.name })} value={declaration.name} maxLength={256} onChange={(event) => update(index, { name: event.target.value })} /></label>
+          <label>{t("ip.interfaceMode")}<select aria-label={t("ip.interfaceModeFor", { name: declaration.name })} value={declaration.mode} onChange={(event) => update(index, { mode: event.target.value })}>
+            {["master", "slave"].map((mode) => <option key={mode} value={mode}>{t(`ip.interface.${mode}`)}</option>)}</select></label>
+          {Object.entries(declaration.parameters).map(([parameter, value]) => <label key={parameter}><code>{parameter}</code><input value={value} maxLength={4096}
+            aria-label={t("ip.interfaceWidth", { name: declaration.name, parameter })} onChange={(event) => update(index, { parameters: { ...declaration.parameters, [parameter]: event.target.value } })} /></label>)}
+        </div>
+        <div className="ip-interface-signals">{AXIS_SIGNALS.map((signal) => <label key={signal}><code>{signal.toUpperCase()}{["tdata", "tvalid", "tready"].includes(signal) ? " *" : ""}</code>
+          <select value={declaration.signals[signal] ?? ""} aria-label={t("ip.interfaceSignal", { name: declaration.name, signal })} onChange={(event) => {
+            const name = event.target.value, signals = { ...declaration.signals }, parameters = { ...declaration.parameters };
+            if (name) signals[signal] = name; else delete signals[signal];
+            const parameter = { tdata: "DATA_WIDTH", tid: "ID_WIDTH", tdest: "DEST_WIDTH", tuser: "USER_WIDTH" }[signal];
+            if (parameter) {
+              if (name) parameters[parameter] = record.metadata.ports.find((port) => port.name === name).width;
+              else if (signal === "tdata") parameters[parameter] = ""; else delete parameters[parameter];
+            }
+            update(index, { signals, parameters });
+          }}><option value="">{t("ip.interfaceUnmapped")}</option>{record.metadata.ports.map((port) => <option key={port.name} value={port.name}>{t("ip.interfacePortLabel", { name: port.name, direction: t(`ip.direction.${port.dir}`) })}</option>)}</select></label>)}</div>
+        {problem && <div className="ip-import-error" role="status">{problem}</div>}
+        <label className="ip-check"><input type="checkbox" checked={declaration.confirmed} disabled={Boolean(problem) && !declaration.confirmed}
+          aria-label={t("ip.confirmInterface", { name: declaration.name })} onChange={(event) => update(index, {}, { confirm: event.target.checked })} />{t("ip.confirmInterface", { name: declaration.name })}</label>
+      </div>;
+    })}
+  </section>;
+}
+
+function MetadataEditor({ record, disabled, onChange, onInterfaceChange }) {
   const metadata = record.metadata;
   const update = (change) => onChange(record.key, change);
   return <fieldset className="ip-editor" disabled={disabled || !record.selected}>
@@ -78,6 +119,7 @@ function MetadataEditor({ record, disabled, onChange }) {
       <input aria-label={t("ip.parameterValue", { name: parameter.name })} value={parameter.default} maxLength={4096}
         onChange={(event) => update((next) => { next.parameters[index].default = event.target.value; })} /></label>)}
     {!metadata.parameters.length && <div className="ip-muted">{t("ip.noParameters")}</div>}
+    <InterfaceEditor record={record} onChange={onInterfaceChange} />
     <h3>{t("ip.ports")}</h3>
     {metadata.ports.map((port, index) => <div className="ip-port-editor" key={index}>
       <div className="ip-port-fields">
@@ -261,12 +303,12 @@ export function ImportButton({ token, onComplete, onOpenChange, onNotify }) {
             {current.status === "needs_version" && <div className="ip-version-diff" role="status"><strong>{t("ip.status.needs_version")}</strong>
               {Object.entries(current.diff ?? {}).filter(([, values]) => Array.isArray(values) && values.length).map(([kind, values]) => <div key={kind}><span>{t(`ip.diff.${kind}`)}</span><code>{values.join(", ")}</code></div>)}
             </div>}
-            <MetadataEditor record={current} disabled={Boolean(busy)} onChange={updateMetadata} />
+            <MetadataEditor record={current} disabled={Boolean(busy)} onChange={updateMetadata} onInterfaceChange={updateRecord} />
           </>}
         </div>
       </div>
       <div className="dialog-actions"><button type="button" className="button secondary" disabled={busy === "commit"} onClick={closeDialog}>{t("common.cancel")}</button>
-        <button type="button" className="button primary" disabled={Boolean(busy) || !selected.length} onClick={commit}><Check size={15} />{t("ip.confirmImport", { count: selected.length })}</button></div>
+        <button type="button" className="button primary" disabled={Boolean(busy) || !selected.length || selected.some((record) => record.interfaceError)} onClick={commit}><Check size={15} />{t("ip.confirmImport", { count: selected.length })}</button></div>
     </dialog>, document.body)}
   </>;
 }

@@ -207,6 +207,19 @@ class IpLibrary:
             return "needs_version", selected_version, diff
         return "ready", selected_version, diff
 
+    def _preserve_confirmed_interfaces(self, metadata: IpMetadata, index: dict) -> IpMetadata:
+        latest = self._latest(index, metadata.id)
+        if latest is None or latest["source_sha256"] != metadata.source.sha256:
+            return metadata
+        previous = load_ip(self._path(latest["metadata"]))
+        if previous.schema_version != 2:
+            return metadata
+        if _signature(previous) != latest["interface_hash"] or previous.source.sha256 != latest["source_sha256"]:
+            raise LibraryError("IP_LIBRARY_INDEX")
+        document = previous.to_dict()
+        document["source"] = asdict(metadata.source)
+        return _edited(metadata, document)
+
     def _publish(self, metadata: IpMetadata, upload: Upload, version: str | None, origin: str, names: list[str], dependencies: list[str]) -> tuple[str, str, dict]:
         if metadata.id == "builtin":
             raise LibraryError("IP_LIBRARY_INPUT", metadata.id)
@@ -277,11 +290,13 @@ class IpLibrary:
                             continue
                         try:
                             metadata = suggest_roles(metadata)
+                            index = self._index()
                             if selections is not None:
                                 metadata = _edited(metadata, selections[metadata.id])
+                            else:
+                                metadata = self._preserve_confirmed_interfaces(metadata, index)
                             defaults(metadata)
                             requested = version or (metadata.version if selections is not None else None)
-                            index = self._index()
                             status, chosen_version, diff = self._decision(index, metadata, requested)
                             if status == "ready":
                                 if dry_run:
@@ -290,8 +305,10 @@ class IpLibrary:
                                     status, chosen_version, diff = self._publish(metadata, upload, requested, origin, names,
                                                                                 _external_dependencies(metadata.id, parsed.dependencies))
                             counts[status] += 1
+                            from core.interfaces import suggest_interfaces
                             yield {"type": "ip", "file": upload.name, "id": metadata.id, "version": chosen_version,
                                    "status": status, "diff": diff, "metadata": replace(metadata, version=chosen_version).to_dict(),
+                                "interface_candidates": suggest_interfaces(metadata),
                                    "diagnostics": [asdict(item) for item in parsed.diagnostics if item.severity == "warning"]}
                         except (LibraryError, IpMetadataError, ExpressionError, OSError) as error:
                             counts["invalid"] += 1

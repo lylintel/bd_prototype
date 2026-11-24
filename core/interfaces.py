@@ -1,4 +1,5 @@
 from copy import deepcopy
+import re
 
 from core.expr import ExpressionError, evaluate
 
@@ -67,3 +68,51 @@ def validate_metadata_interfaces(metadata):
             resolve_interface(metadata, declaration)
         except InterfaceError as error:
             raise IpMetadataError("IP_INTERFACE", location, reason=error.reason, signal=error.signal) from error
+
+
+def suggest_interfaces(metadata):
+    from bdip import IpMetadata, IpMetadataError
+
+    claimed = {port for declaration in metadata.interfaces for port in declaration["signals"].values()}
+    groups = {}
+    for port in metadata.ports:
+        if port.name in claimed:
+            continue
+        match = re.fullmatch(r"([ms]_axis(?:_[A-Za-z0-9_$]+)?)_(tdata|tvalid|tready|tkeep|tstrb|tlast|tid|tdest|tuser)", port.name, re.IGNORECASE)
+        confidence = 0.95
+        if match:
+            name, signal = match[1], match[2].lower()
+        else:
+            match = re.fullmatch(r"([ms])_(data|valid|ready|keep|strb|last|id|dest|user)", port.name, re.IGNORECASE)
+            if not match:
+                continue
+            name, signal, confidence = f"{match[1]}_axis", "t" + match[2].lower(), 0.6
+        group = groups.setdefault(name, {"signals": {}, "confidence": confidence})
+        group["confidence"] = min(group["confidence"], confidence)
+        group["signals"].setdefault(signal, []).append(port)
+    candidates = []
+    available = max(0, 64 - len(metadata.interfaces))
+    for name, group in sorted(groups.items())[:available]:
+        signals = {signal: ports[0].name for signal, ports in group["signals"].items() if len(ports) == 1}
+        missing = sorted({"tdata", "tvalid", "tready"} - signals.keys())
+        ambiguous = sorted(signal for signal, ports in group["signals"].items() if len(ports) != 1)
+        bindings = {}
+        for signal, parameter in (("tdata", "DATA_WIDTH"), ("tid", "ID_WIDTH"), ("tdest", "DEST_WIDTH"), ("tuser", "USER_WIDTH")):
+            if signal in signals:
+                bindings[parameter] = group["signals"][signal][0].width
+        bindings.setdefault("DATA_WIDTH", "")
+        declaration = {"name": name, "protocol": "axi-stream", "definition_version": "1.0.0", "profile": "ready-valid",
+                       "mode": "master" if name.lower().startswith("m_") else "slave", "parameters": bindings,
+                       "signals": signals, "confirmed": False}
+        valid, diagnostics = not missing and not ambiguous, []
+        if valid:
+            try:
+                IpMetadata.from_dict({**metadata.to_dict(), "schema_version": 2,
+                                      "interfaces": [*metadata.to_dict()["interfaces"], {**declaration, "confirmed": True}]})
+            except IpMetadataError as error:
+                valid = False
+                diagnostics.append({"code": error.code, "message": str(error)})
+        candidates.append({"declaration": declaration, "confidence": group["confidence"], "valid": valid,
+                           "missing_signals": missing, "ambiguous_signals": ambiguous, "diagnostics": diagnostics,
+                           "candidate_limit_reached": len(groups) > available})
+    return candidates

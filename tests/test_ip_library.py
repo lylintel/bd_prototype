@@ -81,6 +81,52 @@ def test_axis_metadata_upgrade_keeps_source_and_previous_version(tmp_path):
     assert {row["metadata"]["version"] for row in library.entries()} == {"1.0.0", "1.1.0"}
 
 
+@pytest.mark.parametrize("prefix,confidence", [("s_axis_t", 0.95), ("s_", 0.6)])
+def test_axis_grouping_is_only_an_unconfirmed_preview(tmp_path, prefix, confidence):
+    source = Upload("stream.v", f"module stream(input [7:0] {prefix}data, input {prefix}valid, output {prefix}ready); assign {prefix}ready=1'b1; endmodule\n".encode())
+    library = IpLibrary(tmp_path)
+    preview = items(library.import_sources([source], dry_run=True))[0]
+    candidate = preview["interface_candidates"][0]
+    assert candidate["confidence"] == confidence
+    assert candidate["valid"] and candidate["missing_signals"] == []
+    assert candidate["declaration"]["confirmed"] is False
+    assert candidate["declaration"]["mode"] == "slave"
+    assert preview["metadata"]["schema_version"] == 1 and preview["metadata"]["interfaces"] == []
+    assert not (tmp_path / "ip_library").exists()
+    saved = items(library.import_sources([source]))[0]
+    assert saved["metadata"]["interfaces"] == []
+
+
+def test_axis_partial_group_reports_missing_ready(tmp_path):
+    source = Upload("partial.v", b"module partial(output [7:0] m_axis_tdata, output m_axis_tvalid); assign m_axis_tdata=0; assign m_axis_tvalid=0; endmodule\n")
+    candidate = items(IpLibrary(tmp_path).import_sources([source], dry_run=True))[0]["interface_candidates"][0]
+    assert candidate["missing_signals"] == ["tready"]
+    assert not candidate["valid"] and candidate["declaration"]["confirmed"] is False
+
+
+def test_axis_ambiguous_suffix_is_not_guessed(tmp_path):
+    source = Upload("ambiguous.v", b"module ambiguous(output [7:0] m_axis_tdata, output [7:0] m_axis_TDATA, output m_axis_tvalid, input m_axis_tready); assign m_axis_tdata=0; assign m_axis_TDATA=0; assign m_axis_tvalid=0; endmodule\n")
+    candidate = items(IpLibrary(tmp_path).import_sources([source], dry_run=True))[0]["interface_candidates"][0]
+    assert candidate["ambiguous_signals"] == ["tdata"]
+    assert "tdata" not in candidate["declaration"]["signals"]
+    assert candidate["declaration"]["parameters"]["DATA_WIDTH"] == ""
+    assert not candidate["valid"]
+
+
+def test_axis_same_source_reimport_preserves_confirmed_mapping(tmp_path):
+    source = Upload("stream.v", b"module stream(input [7:0] s_axis_tdata, input s_axis_tvalid, output s_axis_tready); assign s_axis_tready=1'b1; endmodule\n")
+    library = IpLibrary(tmp_path)
+    preview = items(library.import_sources([source], dry_run=True))[0]
+    metadata = copy.deepcopy(preview["metadata"])
+    metadata["schema_version"] = 2
+    metadata["interfaces"] = [{**preview["interface_candidates"][0]["declaration"], "confirmed": True}]
+    published = items(library.import_sources([source], selections={"stream": metadata}))[0]
+    assert published["status"] == "imported"
+    repeated = items(library.import_sources([source], dry_run=True))[0]
+    assert repeated["status"] == "skipped"
+    assert repeated["metadata"]["interfaces"] == metadata["interfaces"]
+
+
 def test_preview_edits_confirm_roles_without_forging_interface(tmp_path):
     library = IpLibrary(tmp_path)
     source = Upload("unit.v", b"module unit(input clk, output ready); assign ready=clk; endmodule\n")

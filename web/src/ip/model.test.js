@@ -1,6 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { addImported, droppedFiles, encodeUpload, findImportedDrop, matchesLibrary, originForDefinition, readImportEvents } from "./model.js";
+import { interfaceDrafts, updateInterfaceDraft, addInterfaceDraft } from "./model.js";
+
+test("interface drafts require confirmation and edits revoke it", () => {
+  const declaration = { name: "m_axis", protocol: "axi-stream", definition_version: "1.0.0", profile: "ready-valid", mode: "master",
+    parameters: { DATA_WIDTH: "8" }, signals: { tdata: "data", tvalid: "valid", tready: "ready" }, confirmed: false };
+  const record = { metadata: { schema_version: 1, interfaces: [], ports: [
+    { name: "data", dir: "out" }, { name: "valid", dir: "out" }, { name: "ready", dir: "in" }] },
+    interface_candidates: [{ declaration, confidence: 0.95 }] };
+  assert.equal(interfaceDrafts(record)[0].declaration.confirmed, false);
+  const confirmed = updateInterfaceDraft(record, 0, {}, { confirm: true });
+  assert.equal(confirmed.metadata.schema_version, 2);
+  assert.equal(confirmed.metadata.interfaces.length, 1);
+  assert.equal(record.metadata.interfaces.length, 0);
+  const edited = updateInterfaceDraft(confirmed, 0, { name: "renamed" });
+  assert.equal(edited.metadata.interfaces.length, 0);
+  assert.equal(interfaceDrafts(edited)[0].declaration.confirmed, false);
+  const incomplete = updateInterfaceDraft(record, 0, { signals: { tdata: "data" } }, { confirm: true });
+  assert.equal(incomplete.metadata.interfaces.length, 0);
+  assert.ok(incomplete.interfaceError);
+  const manual = addInterfaceDraft(record);
+  assert.equal(interfaceDrafts(manual).length, 2);
+  assert.equal(interfaceDrafts(manual)[1].declaration.parameters.DATA_WIDTH, "");
+});
 
 const entry = {
   metadata: { id: "pulse", version: "1.0.0", display_name: "Pulse", tags: ["timer"], ports: [{ name: "ready" }] },

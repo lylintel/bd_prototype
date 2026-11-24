@@ -3,6 +3,59 @@ import { canonicalDesign } from "../copilot.js";
 import { t } from "../i18n.js";
 
 export const IP_DRAG_TYPE = "application/x-bd-ip";
+export const AXIS_SIGNALS = ["tdata", "tvalid", "tready", "tkeep", "tstrb", "tlast", "tid", "tdest", "tuser"];
+
+export function interfaceDrafts(record) {
+  return structuredClone(record.interfaceDrafts ?? [
+    ...(record.metadata.interfaces ?? []).map((declaration) => ({ declaration, confidence: 1, diagnostics: [] })),
+    ...(record.interface_candidates ?? []),
+  ]);
+}
+
+export function interfaceConfirmationError(metadata, declaration) {
+  if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(declaration.name) || declaration.name.length > 256
+    || !["master", "slave"].includes(declaration.mode) || !declaration.parameters.DATA_WIDTH?.trim()
+    || ["tdata", "tvalid", "tready"].some((signal) => !declaration.signals[signal])) return t("ip.interfaceIncomplete");
+  const claimed = new Set();
+  for (const [signal, name] of Object.entries(declaration.signals)) {
+    const port = metadata.ports.find((item) => item.name === name);
+    const direction = (signal === "tready") === (declaration.mode === "master") ? "in" : "out";
+    if (!AXIS_SIGNALS.includes(signal) || !port || port.dir !== direction || port.signed || claimed.has(name)) return t("ip.interfaceDirection");
+    claimed.add(name);
+  }
+  return "";
+}
+
+export function updateInterfaceDraft(record, index, patch, { confirm = false, remove = false } = {}) {
+  const drafts = interfaceDrafts(record);
+  let error = "";
+  if (remove) drafts.splice(index, 1);
+  else {
+    const declaration = { ...drafts[index].declaration, ...structuredClone(patch), confirmed: false };
+    if (confirm) {
+      error = interfaceConfirmationError(record.metadata, declaration);
+      const others = drafts.filter((item, ordinal) => ordinal !== index && item.declaration.confirmed).map((item) => item.declaration);
+      const occupied = new Set(others.flatMap((item) => Object.values(item.signals)));
+      if (others.some((item) => item.name === declaration.name) || Object.values(declaration.signals).some((port) => occupied.has(port))) error = t("ip.interfaceOverlap");
+      declaration.confirmed = !error;
+    }
+    drafts[index] = { ...drafts[index], declaration, diagnostics: [], confidence: Object.keys(patch).length ? 0 : drafts[index].confidence };
+  }
+  const metadata = structuredClone(record.metadata);
+  metadata.interfaces = drafts.filter((item) => item.declaration.confirmed).map((item) => structuredClone(item.declaration));
+  if (metadata.interfaces.length) metadata.schema_version = 2;
+  return { ...record, metadata, interfaceDrafts: drafts, interfaceError: error };
+}
+
+export function addInterfaceDraft(record) {
+  const drafts = interfaceDrafts(record);
+  if (drafts.length >= 64) return { ...record, interfaceError: t("ip.interfaceLimit") };
+  let ordinal = 0;
+  while (drafts.some((item) => item.declaration.name === `axis_${ordinal}`)) ordinal++;
+  drafts.push({ confidence: 0, diagnostics: [], declaration: { name: `axis_${ordinal}`, protocol: "axi-stream", definition_version: "1.0.0",
+    profile: "ready-valid", mode: "master", parameters: { DATA_WIDTH: "" }, signals: {}, confirmed: false } });
+  return { ...record, interfaceDrafts: drafts, interfaceError: "" };
+}
 
 export function matchesLibrary(entry, query) {
   const metadata = entry.metadata;
