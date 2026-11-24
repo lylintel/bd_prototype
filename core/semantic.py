@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import json
 
 import bdtool
-from core.design import DesignFormatError, v4_projection
+from core.design import DesignFormatError
 from core.diagnostics import Diagnostic, issue
 from core.resolve import endpoint_text, resolve
 from core.rules import e001, e002, e003, e004, e005, e006, e007, e008, w010
@@ -89,7 +89,7 @@ def _identity(diagnostic):
     return json.dumps({key: raw[key] for key in ("code", "location", "params")}, sort_keys=True)
 
 
-def apply_fix(document, library, diagnostic):
+def apply_fix(document, library, diagnostic, *, confirmed=False):
     if not isinstance(diagnostic, dict):
         raise DesignFormatError(issue("D006", {}, reason="stale_fix"))
     before = validate(document, library)
@@ -98,9 +98,13 @@ def apply_fix(document, library, diagnostic):
     if matching is None:
         raise DesignFormatError(issue("D006", {}, reason="stale_fix"))
     fix = matching.fix
-    candidate = deepcopy(document)
-    target = next(item for item in candidate["instances"] if item["name"] == fix["inst"])
-    target.setdefault("params", {})[fix["name"]] = fix["value"]
+    if fix.get("kind") == "materialize_interface":
+        from core.interfaces import materialize_connection
+        candidate = materialize_connection(document, library, fix["scope"], fix["connection"], confirmed=confirmed)
+    else:
+        candidate = deepcopy(document)
+        target = next(item for item in candidate["instances"] if item["name"] == fix["inst"])
+        target.setdefault("params", {})[fix["name"]] = fix["value"]
     after = validate(candidate, library)
     existing = {_identity(item) for item in before if item.severity == "error"}
     remaining = {_identity(item) for item in after if item.severity == "error"}
@@ -112,7 +116,9 @@ def apply_fix(document, library, diagnostic):
 def inspect_design(document, library):
     if isinstance(document, dict) and document.get("schema_version") == 5:
         try:
-            return inspect_design(v4_projection(document), library)
+            from core.interfaces import expand_interfaces
+            expanded = expand_interfaces(document, library)
+            return inspect_interface_expansion(document, library, expanded)
         except DesignFormatError as error:
             return {"valid": False, "diagnostics": [error.diagnostic.to_dict()], "files": {}, "parameters": {},
                     "interfaces": {"ports": {}, "instances": {}}, "connections": []}
@@ -121,6 +127,16 @@ def inspect_design(document, library):
         return inspect_hierarchy(document, library)
     resolved = resolve(document, library)
     return inspect_resolved(resolved)
+
+
+def inspect_interface_expansion(document, library, expanded):
+    result = inspect_design(expanded["document"], library)
+    if expanded["diagnostics"]:
+        scalar = [item for item in result["diagnostics"] if not (item["code"] in ("E003", "W010") and
+                  item["params"].get("endpoint") in expanded["blocked_members"].get(item["location"].get("design", document["name"]), set()))]
+        result.update(valid=False, files={}, diagnostics=[*[item.to_dict() for item in expanded["diagnostics"]], *scalar])
+    result["bus_interfaces"] = expanded["bus_interfaces"]
+    return result
 
 
 def inspect_resolved(resolved):

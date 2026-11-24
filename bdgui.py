@@ -183,7 +183,7 @@ class Workspace:
 
         base_dir = payload.get("base_dir", ".")
         document, library = prepare(self, payload.get("design"), base_dir)
-        candidate = apply_fix(document, library, payload.get("diagnostic"))
+        candidate = apply_fix(document, library, payload.get("diagnostic"), confirmed=payload.get("confirmed", False))
         return inspect_workspace(self, candidate, base_dir)
 
     def propose_ops(self, payload: dict) -> dict:

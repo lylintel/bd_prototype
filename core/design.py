@@ -5,14 +5,15 @@ import json
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
-from bdip import IpMetadata, IpMetadataError, _legacy_width
+from bdip import IP_VALIDATOR, IpMetadata, IpMetadataError, _legacy_width
 from core.diagnostics import Diagnostic, issue
 
 
 MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 SCHEMA = json.loads((Path(__file__).resolve().parents[1] / "design.schema.json").read_text(encoding="utf-8"))
-VALIDATOR = Draft202012Validator(SCHEMA)
+VALIDATOR = Draft202012Validator(SCHEMA, registry=Registry().with_resource("urn:bdstudio:ip", Resource.from_contents(IP_VALIDATOR.schema)))
 
 
 class DesignFormatError(ValueError):
@@ -69,10 +70,16 @@ def load_document(text: str) -> dict:
         raise _invalid("$", "json") from error
 
 
-def v4_projection(document: dict) -> dict:
+def v4_projection(document: dict, library=()) -> dict:
     if document.get("schema_version") != 5:
         return document
     check_document(document)
+    if any(scope["interface_connections"] or scope["interfaces"] for scope in [document, *document["subdesigns"].values()]):
+        from core.interfaces import expand_interfaces
+        result = expand_interfaces(document, library)
+        if result["diagnostics"]:
+            raise DesignFormatError(result["diagnostics"][0])
+        return result["document"]
     result = deepcopy(document)
     for scope in [result, *result["subdesigns"].values()]:
         if scope["interfaces"] or scope["interface_connections"]:

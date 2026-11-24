@@ -249,7 +249,7 @@ def _endpoint(raw, ports, instances, budget, depth=0, index=0):
 def resolve(document: dict, library: tuple[IpMetadata, ...] | list[IpMetadata]) -> Resolution:
     if isinstance(document, dict) and document.get("schema_version") == 5:
         try:
-            return resolve(v4_projection(document), library)
+            return resolve(v4_projection(document, library), library)
         except DesignFormatError as error:
             return Resolution({}, {}, {}, (), (error.diagnostic,))
     if isinstance(document, dict) and document.get("schema_version") == 4:

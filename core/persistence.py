@@ -10,7 +10,7 @@ from core.diagnostics import issue
 def canonical_document(document: dict) -> dict:
     result = deepcopy(document)
     for scope in [result, *result.get("subdesigns", {}).values()]:
-        for section in ("instances", "nets"):
+        for section in ("instances", "nets", "interfaces", "interface_connections"):
             if isinstance(scope.get(section), list):
                 scope[section].sort(key=lambda item: item["name"])
     if "project_ips" in result:

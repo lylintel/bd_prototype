@@ -6,8 +6,8 @@
   "required": ["schema_version", "name", "ports", "instances", "nets"],
   "properties": {
     "schema_version": {"enum": [2, 3, 4, 5], "type": "integer"},
-    "interfaces": {"type": "array", "maxItems": 0},
-    "interface_connections": {"type": "array", "maxItems": 0},
+    "interfaces": {"type": "array", "maxItems": 64, "items": {"$ref": "urn:bdstudio:ip#/$defs/streamInterface"}},
+    "interface_connections": {"type": "array", "maxItems": 10000, "items": {"$ref": "#/$defs/interfaceConnection"}},
     "subdesigns": {"type": "object", "maxProperties": 200, "additionalProperties": {"$ref": "#/$defs/child"}},
     "name": {"type": "string", "maxLength": 256},
     "project_ips": {"type": "array", "maxItems": 200, "items": {"type": "object"}},
@@ -36,6 +36,15 @@
      "else": {"not": {"anyOf": [{"required": ["interfaces"]}, {"required": ["interface_connections"]}]}}}
   ],
   "$defs": {
+    "interfaceEndpoint": {"oneOf": [
+      {"type": "object", "additionalProperties": false, "required": ["inst", "interface"],
+       "properties": {"inst": {"type": "string", "maxLength": 256}, "interface": {"type": "string", "maxLength": 256}}},
+      {"type": "object", "additionalProperties": false, "required": ["ext_interface"],
+       "properties": {"ext_interface": {"type": "string", "maxLength": 256}}}
+    ]},
+    "interfaceConnection": {"type": "object", "additionalProperties": false, "required": ["name", "from", "to"],
+      "properties": {"name": {"type": "string", "maxLength": 128, "minLength": 1},
+                     "from": {"$ref": "#/$defs/interfaceEndpoint"}, "to": {"$ref": "#/$defs/interfaceEndpoint"}}},
     "child": {"oneOf": [
       {"$ref": "#/$defs/legacyChild"},
       {"$ref": "#/$defs/interfaceChild"}

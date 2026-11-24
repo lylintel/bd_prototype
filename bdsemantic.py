@@ -1,4 +1,5 @@
 from copy import deepcopy
+from dataclasses import replace
 import json
 import hashlib
 import os
@@ -23,7 +24,7 @@ def prepare(workspace, document, base_dir):
         project = tuple(migrate_legacy_modules(document, base, workspace_root=workspace.root).values())
         ids = {metadata.id for metadata in project}
     else:
-        if document.get("schema_version") not in (2, 3, 4):
+        if document.get("schema_version") not in (2, 3, 4, 5):
             raise DesignFormatError(issue("D001", {}, reason="schema_version"))
         raw_project = document.get("project_ips", [])
         if not isinstance(raw_project, list) or len(raw_project) > 200:
@@ -31,7 +32,7 @@ def prepare(workspace, document, base_dir):
         project = tuple(IpMetadata.from_dict(item, base_dir=base) for item in raw_project)
         ids = {metadata.id for metadata in project}
         scopes = [document]
-        if document.get("schema_version") == 4:
+        if document.get("schema_version") in (4, 5):
             from core.hierarchy import check_hierarchy_document
             check_hierarchy_document(document)
             scopes.extend(document["subdesigns"].values())
@@ -82,6 +83,9 @@ def _canvas_pins(endpoint, depth=0):
 
 
 def canvas_document(document, library):
+    if document.get("schema_version") == 5:
+        from core.interfaces import expand_interfaces
+        document = expand_interfaces(document, library)["document"]
     if document.get("schema_version") == 4:
         from core.hierarchy import hierarchy_library
         _, library = hierarchy_library(document, library)
@@ -115,7 +119,18 @@ def inspect_workspace(workspace, document, base_dir):
         prepared, library = prepare(workspace, document, base_dir)
         metadata_library = library
         canvas_source = prepared
-        if prepared.get("schema_version") == 4:
+        if prepared.get("schema_version") == 5:
+            from core.interfaces import expand_interfaces
+            from core.hierarchy import hierarchy_library
+            from core.semantic import inspect_interface_expansion
+            expanded = expand_interfaces(prepared, library)
+            result = inspect_interface_expansion(prepared, library, expanded)
+            documents, metadata_library = hierarchy_library(expanded["document"], library)
+            metadata_library = tuple(replace(metadata, schema_version=2, interfaces=tuple(prepared["subdesigns"][metadata.id]["interfaces"]))
+                                     if metadata.id in prepared["subdesigns"] and prepared["subdesigns"][metadata.id]["interfaces"] else metadata
+                                     for metadata in metadata_library)
+            canvas_source = documents[-1]
+        elif prepared.get("schema_version") == 4:
             from core.hierarchy import hierarchy_library, inspect_hierarchy_documents
             resolutions = {}
             documents, metadata_library = hierarchy_library(prepared, library, resolutions=resolutions)
@@ -162,7 +177,7 @@ def inspect_scope(workspace, payload):
 
     for instance in children[scope]["instances"]:
         visit(instance["ip"]["id"])
-    view = {**children[scope], "schema_version": 4, "project_ips": document.get("project_ips", []),
+    view = {**children[scope], "schema_version": 5 if document.get("schema_version") == 5 else 4, "project_ips": document.get("project_ips", []),
             "subdesigns": {name: children[name] for name in reachable}}
     result = inspect_workspace(workspace, view, payload.get("base_dir", "."))
     diagnostics = [{key: value for key, value in item.items() if key != "fix"} for item in root["diagnostics"]]

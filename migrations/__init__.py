@@ -41,4 +41,6 @@ def merge_layout(embedded, sidecar):
 
 
 def upgrade_design(document, library):
+    if isinstance(document, dict) and document.get("schema_version") == 5:
+        return migrate(document, library)
     return migrate(document, library, target_version=CURRENT_DESIGN_VERSION)
