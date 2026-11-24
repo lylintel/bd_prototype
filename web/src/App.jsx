@@ -717,22 +717,28 @@ export default function App() {
   }
   function saveDialog() { setModal({ kind: "save", path: documentPath.startsWith("designs/") ? documentPath : `designs/${rootDocument.name}.json` }); }
 
+  function hierarchyDialog() {
+    const selected = new Set(selection?.ids ?? (selection?.type === "node" ? [selection.id] : []));
+    const boundaries = (document.interface_connections ?? []).filter((connection) => Number(selected.has(connection.from.inst)) + Number(selected.has(connection.to.inst)) === 1);
+    setModal({ kind: "hierarchy", name: uniqueName(design, "group"), boundaries, confirmed: false });
+  }
+
   async function collapseSelection() {
     const selected = (selection?.ids ?? (selection?.type === "node" ? [selection.id] : [])).filter((name) => design.instances[name]);
     const snapshot = editorState.current.history.current;
-    const result = await api("/api/hierarchy/collapse", { design: document, base_dir: baseDir, selection: selected, name: modal.name });
-    if (editorState.current.history.current !== snapshot) throw new Error(t("semantic.notReady"));
+    const result = await api("/api/hierarchy/collapse", { design: rootDocument, base_dir: baseDir, scope, selection: selected, name: modal.name, confirmed: modal.confirmed });
+    if (editorState.current.history.current !== snapshot || editorState.current.scope !== scope || editorState.current.baseDir !== baseDir) throw new Error(t("semantic.notReady"));
     if (!result.valid) throw new Error(normalizeInspection(result).diagnostics[0]);
     const applied = mutate((next, nextLayout) => {
       const childNodes = Object.fromEntries(selected.map((name) => [name, nextLayout.nodes[name] ?? defaultPosition(name, design)]));
       const position = childNodes[selected[0]];
       for (const key of Object.keys(next)) delete next[key];
-      Object.assign(next, result.canvas);
+      Object.assign(next, scope ? result.scope_canvas : result.canvas);
       for (const name of selected) delete nextLayout.nodes[name];
       nextLayout.nodes[modal.name] = position;
       nextLayout.schema_version = 1;
       nextLayout.scopes = { ...nextLayout.scopes, [modal.name]: { nodes: childNodes, viewport: initialLayout.viewport } };
-    }, t("hierarchy.folded"), false, result.document);
+    }, t("hierarchy.folded"), false, scope ? result.scope_document : result.document);
     if (!applied) throw new Error(t("semantic.notReady"));
     setSelection({ type: "node", id: modal.name });
   }
@@ -990,7 +996,7 @@ export default function App() {
       </aside>
 
       <section className="center-panel">
-        <div className="canvas-heading"><div><span className="canvas-tab"><Workflow size={14} />Block Design</span><span className="canvas-meta">{Object.keys(design.instances).length} instances <span>/</span> {Object.keys(design.nets).length} nets</span></div><div><IconButton icon={Blocks} label={t("hierarchy.collapse")} disabled={!connectionReady || !inspection.valid || selection?.type !== "node" || !design.instances[selection.id]} onClick={() => setModal({ kind: "hierarchy", name: uniqueName(design, "group") })} /><IconButton icon={layoutRunning ? LoaderCircle : LayoutGrid} className={layoutRunning ? "spin" : ""} label={layoutRunning ? t("layout.running") : "整理布局"} disabled={layoutRunning || Boolean(preview) || !nodes.length} onClick={autoLayout} />{layoutRunning && <IconButton icon={X} label={t("layout.cancel")} onClick={() => layoutController.current?.abort()} />}<IconButton icon={Maximize2} label="适应画布" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div></div>
+        <div className="canvas-heading"><div><span className="canvas-tab"><Workflow size={14} />Block Design</span><span className="canvas-meta">{Object.keys(design.instances).length} instances <span>/</span> {Object.keys(design.nets).length} nets</span></div><div><IconButton icon={Blocks} label={t("hierarchy.collapse")} disabled={!connectionReady || !inspection.valid || selection?.type !== "node" || !design.instances[selection.id]} onClick={hierarchyDialog} /><IconButton icon={layoutRunning ? LoaderCircle : LayoutGrid} className={layoutRunning ? "spin" : ""} label={layoutRunning ? t("layout.running") : "整理布局"} disabled={layoutRunning || Boolean(preview) || !nodes.length} onClick={autoLayout} />{layoutRunning && <IconButton icon={X} label={t("layout.cancel")} onClick={() => layoutController.current?.abort()} />}<IconButton icon={Maximize2} label="适应画布" onClick={() => flow.fitView({ padding: 0.16, duration: 250 })} /></div></div>
         <div className="canvas" aria-label="设计画布" data-layout-state={layoutRunning ? "running" : "idle"} data-layout-stage={layoutPreview.current ? "applying" : layoutRunning ? "computing" : "idle"} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={dropModule}>
           <ReactFlow {...flowStaticProps.current} onlyRenderVisibleElements nodes={graph.nodes} edges={graph.edges} nodesDraggable={!preview} nodesConnectable={!preview} elementsSelectable={!preview} nodeTypes={nodeTypes} edgeTypes={edgeTypes} minZoom={0.25} maxZoom={2} deleteKeyCode={null} connectOnClick={false} snapToGrid
             connectionMode={ConnectionMode.Loose} connectionLineType={ConnectionLineType.Step}
@@ -1103,7 +1109,9 @@ export default function App() {
       <form onSubmit={submitModal}><div className="dialog-heading"><h2 id="editor-dialog-title">{{ save: "保存设计", open: "打开设计", external: "添加外部端口", module: "登记 RTL 模块", hierarchy: t("hierarchy.collapse"), bundle: t("hierarchy.networks") }[modal.kind]}</h2><IconButton icon={X} label="关闭对话框" disabled={Boolean(busy)} onClick={() => setModal(null)} /></div>
         <div className="dialog-body">
           {modal.kind === "bundle" && <div className="hierarchy-net-list">{modal.edges.map((edge) => <button className="small-command" type="button" key={edge.id} onClick={() => { setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setModal(null); setMobilePanel("inspector"); }}>{edge.data.net}<code>{edge.data.width}</code></button>)}</div>}
-          {modal.kind === "hierarchy" && <label className="field-label">{t("hierarchy.name")}<input autoFocus required aria-label={t("hierarchy.name")} value={modal.name} onChange={(event) => setModal({ ...modal, name: event.target.value })} /></label>}
+          {modal.kind === "hierarchy" && <><label className="field-label">{t("hierarchy.name")}<input autoFocus required aria-label={t("hierarchy.name")} value={modal.name} onChange={(event) => setModal({ ...modal, name: event.target.value })} /></label>
+            {modal.boundaries?.length > 0 && <><div className="interface-member">{modal.boundaries.map((connection) => <code key={connection.name}>{connection.name}</code>)}</div>
+              <label className="check-field"><input type="checkbox" required checked={modal.confirmed} onChange={(event) => setModal({ ...modal, confirmed: event.target.checked })} />{t("interfaces.confirmBoundary", { count: modal.boundaries.length })}</label></>}</>}
           {modal.kind === "save" && <label className="field-label">设计文件路径<input autoFocus required aria-label="保存路径" value={modal.path} onChange={(event) => setModal({ ...modal, path: event.target.value })} /></label>}
           {modal.kind === "open" && <><label className="field-label">工作区设计<select aria-label="工作区设计" value={modal.path} onChange={(event) => setModal({ ...modal, path: event.target.value })}>{modal.paths.map((path) => <option key={path}>{path}</option>)}</select></label><label className="field-label">文件路径<input required aria-label="打开路径" value={modal.path} onChange={(event) => setModal({ ...modal, path: event.target.value })} /></label></>}
           {modal.kind === "external" && <><label className="field-label">端口名称<input autoFocus required aria-label="新端口名称" value={modal.name} onChange={(event) => setModal({ ...modal, name: event.target.value })} /></label><label className="field-label">方向<select value={modal.direction} onChange={(event) => setModal({ ...modal, direction: event.target.value })}><option value="input">Input</option><option value="output">Output</option></select></label><label className="check-field"><input type="checkbox" checked={modal.vector} onChange={(event) => setModal({ ...modal, vector: event.target.checked })} />向量端口</label>{modal.vector && <div className="range-fields"><label>Left<input required value={modal.left} onChange={(event) => setModal({ ...modal, left: event.target.value })} /></label><span>:</span><label>Right<input required value={modal.right} onChange={(event) => setModal({ ...modal, right: event.target.value })} /></label></div>}<label className="check-field"><input type="checkbox" checked={modal.signed} onChange={(event) => setModal({ ...modal, signed: event.target.checked })} />Signed</label></>}

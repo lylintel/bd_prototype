@@ -137,6 +137,68 @@ def resolve_hierarchy(document, library):
         return replace(resolve({}, library), diagnostics=(error.diagnostic,))
 
 
+def scope_document(document, scope):
+    if not isinstance(scope, str):
+        raise _error('scope')
+    if not scope:
+        return document
+    children = document.get('subdesigns', {})
+    if scope not in children:
+        raise _error('scope')
+    reachable = set()
+
+    def visit(name):
+        if name == scope or name in reachable or name not in children:
+            return
+        reachable.add(name)
+        for instance in children[name]['instances']:
+            visit(instance['ip']['id'])
+
+    for instance in children[scope]['instances']:
+        visit(instance['ip']['id'])
+    return {**children[scope], 'schema_version': document['schema_version'], 'project_ips': document.get('project_ips', []),
+            'subdesigns': {name: children[name] for name in reachable}}
+
+
+def _collapse_interfaces(candidate, child, selected, information, boundary_ports):
+    parent_connections = []
+    occupied = set(child['ports']) | {item['name'] for key in ('instances', 'nets') for item in child[key]}
+    occupied.update(item['name'] for item in candidate['interface_connections'])
+    for connection in candidate['interface_connections']:
+        inside_keys = [key for key in ('from', 'to') if connection[key].get('inst') in selected]
+        if not inside_keys:
+            parent_connections.append(connection)
+        elif len(inside_keys) == 2:
+            child['interface_connections'].append(connection)
+        else:
+            inside_key = inside_keys[0]
+            outside_key = 'to' if inside_key == 'from' else 'from'
+            endpoint = connection[inside_key]
+            resolved = information['instances'][endpoint['inst']][endpoint['interface']]
+            boundary_name = 'boundary_' + connection['name'][:80]
+            while boundary_name in occupied or any(f'{boundary_name}_{signal}' in occupied for signal in resolved['signals']):
+                boundary_name += '_'
+            occupied.add(boundary_name)
+            signals = {}
+            for signal, member in resolved['signals'].items():
+                port_name = f'{boundary_name}_{signal}'
+                signals[signal] = port_name
+                occupied.add(port_name)
+                child['ports'][port_name] = {'direction': 'input' if member['direction'] == 'in' else 'output',
+                    **({'range': [member['width'] - 1, 0]} if member['width'] > 1 else {})}
+            declaration = {key: resolved[key] for key in ('protocol', 'definition_version', 'profile', 'mode', 'confirmed')}
+            declaration.update(name=boundary_name, signals=signals,
+                               parameters={key: str(value) for key, value in resolved['parameters'].items()})
+            for association in ('clock', 'reset'):
+                port = boundary_ports.get((endpoint['inst'], resolved.get(association)))
+                if port is not None:
+                    declaration[association] = port
+            child['interfaces'].append(declaration)
+            child['interface_connections'].append({**deepcopy(connection), outside_key: {'ext_interface': boundary_name}})
+            parent_connections.append({**deepcopy(connection), inside_key: {'inst': child['name'], 'interface': boundary_name}})
+    candidate['interface_connections'] = parent_connections
+
+
 def collapse_design(document, library, selection, name):
     from core.semantic import inspect_design
 
@@ -144,7 +206,7 @@ def collapse_design(document, library, selection, name):
         bdtool._name(name, "subdesign")
     except bdtool.DesignError as error:
         raise _error("name", str(name)) from error
-    if document.get("schema_version") == 4:
+    if document.get("schema_version") in (4, 5):
         check_hierarchy_document(document)
         candidate = deepcopy(document)
     else:
@@ -152,6 +214,7 @@ def collapse_design(document, library, selection, name):
     selected = set(selection)
     instances = {item["name"]: item for item in candidate["instances"]}
     occupied = set(instances) | set(candidate["ports"]) | {item["name"] for item in candidate["nets"]}
+    occupied.update(item['name'] for key in ('interfaces', 'interface_connections') for item in candidate.get(key, []))
     if (not selected or len(selected) != len(selection) or not selected <= instances.keys()
             or name in occupied or name in candidate["subdesigns"] or name in {item.id for item in library}
             or name in {candidate["name"], f"{candidate['name']}_wrapper"}):
@@ -159,11 +222,21 @@ def collapse_design(document, library, selection, name):
     inspection = inspect_design(candidate, library)
     if not inspection["valid"]:
         raise _error("invalid_design", name)
-    resolved = resolve_hierarchy(candidate, library)
+    interface_expansion = None
+    if candidate['schema_version'] == 5:
+        from core.interfaces import expand_interfaces
+
+        interface_expansion = expand_interfaces(candidate, library)
+    resolved = resolve_hierarchy(interface_expansion['document'] if interface_expansion else candidate, library)
     child = {"schema_version": 3, "name": name, "ports": {},
              "instances": [item for item in candidate["instances"] if item["name"] in selected], "nets": []}
+    if interface_expansion:
+        child.update(schema_version=5, interfaces=[], interface_connections=[])
     parent_nets = []
+    boundary_ports = {}
     for net in resolved.nets:
+        if interface_expansion and net.name in interface_expansion['origins'][candidate['name']]:
+            continue
         inside, outside = [], []
         for endpoint in net.endpoints:
             membership = {reference.endpoint.instance in selected for reference in endpoint.references}
@@ -185,6 +258,11 @@ def collapse_design(document, library, selection, name):
                                      **({"range": list(shape.bounds)} if shape.bounds is not None else {})}
         child["nets"].append({"name": net.name, "endpoints": [*[deepcopy(item.raw) for item in inside], {"ext": port_name}]})
         parent_nets.append({"name": net.name, "endpoints": [*[deepcopy(item.raw) for item in outside], {"inst": name, "port": port_name}]})
+        for endpoint in inside:
+            if 'inst' in endpoint.raw and 'slice' not in endpoint.raw:
+                boundary_ports[(endpoint.raw['inst'], endpoint.raw['port'])] = port_name
+    if interface_expansion:
+        _collapse_interfaces(candidate, child, selected, interface_expansion['bus_interfaces'], boundary_ports)
     candidate["instances"] = [item for item in candidate["instances"] if item["name"] not in selected]
     candidate["instances"].append({"name": name, "ip": {"id": name, "version": "1.0.0"}})
     candidate["nets"] = parent_nets

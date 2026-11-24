@@ -127,6 +127,130 @@ def axis_pair():
     return axis_pair_data()
 
 
+@pytest.mark.parametrize('selected,mode', [(['first'], 'master'), (['second'], 'slave'), (['first', 'second'], None)])
+def test_axis_collapse_keeps_complete_bus_boundaries_and_unique_facts(axis_pair, selected, mode):
+    from core.hierarchy import collapse_design
+
+    document, library = axis_pair
+    before = deepcopy(document)
+    folded = collapse_design(document, library, selected, 'stream_group')
+    assert document == before
+    assert folded['schema_version'] == 5
+    child = folded['subdesigns']['stream_group']
+    assert child['schema_version'] == 5
+    assert len(child['interface_connections']) == 1
+    assert all(not net['name'].startswith('__bd_if_') for scope in [folded, child] for net in scope['nets'])
+    if mode is None:
+        assert child['interfaces'] == []
+        assert folded['interface_connections'] == []
+        assert child['interface_connections'] == before['interface_connections']
+    else:
+        assert len(child['interfaces']) == 1
+        boundary = child['interfaces'][0]
+        assert boundary['mode'] == mode and boundary['confirmed'] is True
+        assert boundary['parameters'] == {'DATA_WIDTH': '8'}
+        assert set(boundary['signals']) == {'tdata', 'tvalid', 'tready'}
+        direction = 'output' if mode == 'master' else 'input'
+        assert child['ports'][boundary['signals']['tdata']]['direction'] == direction
+        assert child['ports'][boundary['signals']['tready']]['direction'] != direction
+        assert {'inst': 'stream_group', 'interface': boundary['name']} in [folded['interface_connections'][0][key] for key in ('from', 'to')]
+    result = inspect_design(folded, library)
+    assert result['valid'], result['diagnostics']
+    assert 'stream_group.v' in result['files']
+
+
+def test_axis_boundary_names_and_existing_associations_are_preserved(axis_pair):
+    from core.hierarchy import collapse_design
+
+    document, library = axis_pair
+    raw = library[0].to_dict()
+    raw['interfaces'][1].update(clock='clk', reset='rst')
+    metadata = IpMetadata.from_dict(raw)
+    document['nets'][0]['name'] = 'link_tdata'
+    folded = collapse_design(document, (metadata,), ['first'], 'stream_group')
+    child = folded['subdesigns']['stream_group']
+    boundary = child['interfaces'][0]
+    assert boundary['name'] == 'boundary_link_'
+    assert boundary['clock'] == 'boundary_link_tdata'
+    assert boundary['reset'] == 'boundary_rst_net'
+    assert len(set(child['ports'])) == len(child['ports'])
+    assert inspect_design(folded, (metadata,))['valid']
+
+
+def test_axis_nested_and_reused_definitions_revalidate_the_root(axis_pair):
+    from core.hierarchy import collapse_design
+
+    document, library = axis_pair
+    folded = collapse_design(document, library, ['first'], 'stream_group')
+    nested = collapse_design(folded, library, ['stream_group', 'second'], 'pair_group')
+    nested['instances'].append({'name': 'another_pair', 'ip': {'id': 'pair_group', 'version': '1.0.0'}})
+    for net in nested['nets']:
+        if any(endpoint.get('ext') and nested['ports'][endpoint['ext']]['direction'] == 'input' for endpoint in net['endpoints']):
+            original = next(endpoint for endpoint in net['endpoints'] if endpoint.get('inst') == 'pair_group')
+            net['endpoints'].append({**original, 'inst': 'another_pair'})
+    result = inspect_design(nested, library)
+    assert result['valid'], result['diagnostics']
+    assert set(result['files']) == {'axis_pair.v', 'axis_pair_wrapper.v', 'stream_group.v', 'pair_group.v'}
+    assert '    pair_group pair_group (\n' in result['files']['axis_pair.v']
+    assert '    pair_group another_pair (\n' in result['files']['axis_pair.v']
+    assert nested['subdesigns']['stream_group']['interfaces'][0]['mode'] == 'master'
+    nested['subdesigns']['stream_group']['instances'][0]['params']['WIDTH'] = 16
+    invalid = inspect_design(nested, library)
+    assert not invalid['valid'] and invalid['files'] == {}
+    assert any(item['location'].get('design') == 'stream_group' for item in invalid['diagnostics'])
+
+
+def test_axis_partial_scalar_boundary_is_not_guessed_as_an_interface(axis_pair):
+    from core.hierarchy import collapse_design
+
+    document, library = axis_pair
+    scalar = migrate(axis_scalar_reference(document), library, target_version=5)
+    data = next(net for net in scalar['nets'] if net['name'] == '__bd_if_link__tdata')
+    data['endpoints'][0] = {'concat': [{'inst': 'first', 'port': 'm_data', 'slice': [7, 4]},
+                                     {'inst': 'first', 'port': 'm_data', 'slice': [3, 0]}]}
+    folded = collapse_design(scalar, library, ['first'], 'scalar_group')
+    child = folded['subdesigns']['scalar_group']
+    assert child['interfaces'] == [] and child['interface_connections'] == []
+    assert folded['interface_connections'] == []
+    assert inspect_design(folded, library)['valid']
+    data['endpoints'][0]['concat'][1] = {'ext': 'in_data', 'slice': [3, 0]}
+    before = deepcopy(scalar)
+    with pytest.raises(DesignFormatError, match='hierarchy_mixed_concat'):
+        collapse_design(scalar, library, ['first'], 'mixed_group')
+    assert scalar == before
+
+
+def test_axis_hierarchy_service_requires_export_confirmation_and_checks_full_scope(axis_pair, tmp_path):
+    from bdsemantic import collapse_workspace
+
+    document, library = axis_pair
+    metadata = library[0].to_dict()
+    metadata['source']['path'] = 'bd_stream_slice.v'
+    shutil.copyfile(library[0].base_dir / library[0].source.path, tmp_path / 'bd_stream_slice.v')
+    document['project_ips'] = [metadata]
+    workspace = Workspace(tmp_path, 'unused.json')
+    payload = {'design': document, 'base_dir': '.', 'selection': ['first'], 'name': 'stream_group'}
+    with pytest.raises(DesignFormatError, match='confirmation_required'):
+        collapse_workspace(workspace, payload)
+    result = collapse_workspace(workspace, {**payload, 'confirmed': True})
+    assert result['valid'], result['diagnostics']
+    derived = next(item for item in result['metadata'] if item['id'] == 'stream_group')
+    assert derived['schema_version'] == 2 and derived['interfaces'][0]['confirmed'] is True
+    child_payload = {**payload, 'design': result['document'], 'scope': 'stream_group', 'name': 'inner_group', 'confirmed': True}
+    nested = collapse_workspace(workspace, child_payload)
+    assert nested['valid'], nested['diagnostics']
+    assert set(nested['document']['subdesigns']) == {'stream_group', 'inner_group'}
+    assert nested['scope_document']['name'] == 'stream_group'
+    assert 'inner_group' in nested['scope_canvas']['instances']
+    assert nested['document']['interface_connections'] == result['document']['interface_connections']
+    with pytest.raises(DesignFormatError, match='hierarchy_collision'):
+        collapse_workspace(workspace, {**child_payload, 'name': 'axis_pair'})
+    for invalid_scope in (False, [], None, 'missing', 'stream_group.first'):
+        with pytest.raises(DesignFormatError, match='hierarchy_scope'):
+            collapse_workspace(workspace, {**child_payload, 'scope': invalid_scope})
+    assert not (tmp_path / 'designs').exists()
+
+
 def axis_scalar_reference(document):
     reference = deepcopy(document)
     reference['schema_version'] = 4
@@ -152,10 +276,14 @@ def test_axis_generated_hdl_matches_independent_signal_reference(axis_pair, lang
 
 
 @pytest.mark.parametrize('language', ['v', 'sv'])
-def test_axis_strict_tools_and_icarus_handshake(axis_pair, tmp_path, language):
+@pytest.mark.parametrize('hierarchical', [False, True])
+def test_axis_strict_tools_and_icarus_handshake(axis_pair, tmp_path, language, hierarchical):
     from bdcheck import run_checks
 
     document, library = axis_pair
+    if hierarchical:
+        from core.hierarchy import collapse_design
+        document = collapse_design(document, library, ['first'], 'stream_group')
     files = generate_files(document, library, language=language)
     source = library[0].base_dir / library[0].source.path
     checked = run_checks(files, [source], 'axis_pair_wrapper', workspace_root=ROOT, strict_lint=True)

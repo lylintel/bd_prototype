@@ -196,38 +196,43 @@ def interface_action(workspace, payload):
 
 
 def collapse_workspace(workspace, payload):
-    from core.hierarchy import collapse_design
+    from core.hierarchy import collapse_design, scope_document
 
     document, library = prepare(workspace, payload.get("design"), payload.get("base_dir", "."))
     selection = payload.get("selection")
     if not isinstance(selection, list) or any(not isinstance(name, str) for name in selection):
         raise DesignFormatError(issue("D001", {}, reason="hierarchy_selection"))
-    result = collapse_design(document, library, selection, payload.get("name"))
-    return inspect_workspace(workspace, result, payload.get("base_dir", "."))
+    scope = payload.get('scope', '')
+    target = scope_document(document, scope)
+    crossing = [connection for connection in target.get('interface_connections', [])
+                if sum(connection[key].get('inst') in selection for key in ('from', 'to')) == 1]
+    if crossing and payload.get('confirmed') is not True:
+        raise DesignFormatError(issue('D006', {'design': target['name']}, reason='confirmation_required'))
+    if scope and (payload.get('name') in document['subdesigns'] or payload.get('name') in (document['name'], f"{document['name']}_wrapper")):
+        raise DesignFormatError(issue('D001', {}, reason='hierarchy_collision'))
+    folded = collapse_design(target, library, selection, payload.get('name'))
+    result = folded
+    if scope:
+        result = deepcopy(document)
+        result['subdesigns'].update(folded['subdesigns'])
+        result['subdesigns'][scope] = {key: value for key, value in folded.items() if key not in ('project_ips', 'subdesigns')}
+        result['subdesigns'][scope]['schema_version'] = 5 if result['schema_version'] == 5 else 3
+    inspection = inspect_workspace(workspace, result, payload.get('base_dir', '.'))
+    if scope and inspection['valid']:
+        view = scope_document(result, scope)
+        inspection.update(scope_document=view, scope_canvas=canvas_document(view, library))
+    return inspection
 
 
 def inspect_scope(workspace, payload):
+    from core.hierarchy import scope_document
+
     document = payload.get("design")
     root = inspect_workspace(workspace, document, payload.get("base_dir", "."))
     scope = payload.get("scope")
     if not scope or "document" not in root:
         return root
-    children = root["document"].get("subdesigns", {})
-    if not isinstance(scope, str) or scope not in children:
-        raise DesignFormatError(issue("D001", {}, reason="hierarchy_scope"))
-    reachable = set()
-
-    def visit(name):
-        if name in reachable or name == scope or name not in children:
-            return
-        reachable.add(name)
-        for instance in children[name]["instances"]:
-            visit(instance["ip"]["id"])
-
-    for instance in children[scope]["instances"]:
-        visit(instance["ip"]["id"])
-    view = {**children[scope], "schema_version": 5 if document.get("schema_version") == 5 else 4, "project_ips": document.get("project_ips", []),
-            "subdesigns": {name: children[name] for name in reachable}}
+    view = scope_document(root['document'], scope)
     result = inspect_workspace(workspace, view, payload.get("base_dir", "."))
     diagnostics = [{key: value for key, value in item.items() if key != "fix"} for item in root["diagnostics"]]
     return {**result, "valid": root["valid"], "diagnostics": diagnostics, "files": root["files"]}

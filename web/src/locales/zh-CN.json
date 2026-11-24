@@ -19,6 +19,7 @@
   "interfaces.from": "端点一",
   "interfaces.to": "端点二",
   "interfaces.members": "成员信号",
+    "interfaces.confirmBoundary": "确认导出 {count} 个完整接口边界及其成员端口",
   "interfaces.selectMember": "查看 {connection}.{signal}",
   "interfaces.width": "{width} bit",
   "interfaces.binding": "{source} -> {target}",
