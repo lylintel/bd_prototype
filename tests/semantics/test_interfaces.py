@@ -378,6 +378,42 @@ def test_axis_workspace_roundtrip_keeps_only_authoritative_connections(axis_pair
     assert embedded_path.read_bytes() == embedded_bytes
 
 
+def test_axis_editor_actions_require_confirmation_and_keep_one_source_of_truth(axis_pair, tmp_path):
+    from bdsemantic import interface_action
+
+    document, library = axis_pair
+    metadata = library[0].to_dict()
+    metadata['source']['path'] = 'bd_stream_slice.v'
+    shutil.copyfile(library[0].base_dir / library[0].source.path, tmp_path / 'bd_stream_slice.v')
+    document['project_ips'] = [metadata]
+    workspace = Workspace(tmp_path, 'unused.json')
+    legacy = axis_scalar_reference(document)
+    with pytest.raises(DesignFormatError):
+        interface_action(workspace, {'design': legacy, 'base_dir': '.', 'action': 'migrate'})
+    migrated = interface_action(workspace, {'design': legacy, 'base_dir': '.', 'action': 'migrate', 'confirmed': True})
+    assert migrated['document']['schema_version'] == 5
+    assert generate_files(migrated['document'], library) == generate_files(legacy, library)
+    empty = {**document, 'interface_connections': []}
+    payload = {'design': empty, 'base_dir': '.', 'action': 'connect', 'name': 'link',
+               'from': {'inst': 'first', 'interface': 'm_axis'}, 'to': {'inst': 'second', 'interface': 's_axis'}}
+    connected = interface_action(workspace, payload)
+    assert connected['valid'] and len(connected['document']['interface_connections']) == 1
+    with pytest.raises(DesignFormatError):
+        interface_action(workspace, {**payload, 'to': {'inst': 'second', 'interface': 'm_axis'}})
+    base = {'design': connected['document'], 'base_dir': '.', 'connection': 'link'}
+    plan = interface_action(workspace, {**base, 'action': 'plan'})
+    assert len(plan['plan']['nets']) == 3 and plan['plan']['bindings'] == []
+    with pytest.raises(DesignFormatError):
+        interface_action(workspace, {**base, 'action': 'materialize'})
+    materialized = interface_action(workspace, {**base, 'action': 'materialize', 'confirmed': True})
+    assert materialized['valid'] and materialized['document']['interface_connections'] == []
+    assert len(materialized['document']['nets']) == len(document['nets']) + 3
+    disconnected = interface_action(workspace, {**base, 'action': 'disconnect'})
+    assert not disconnected['valid'] and disconnected['document']['interface_connections'] == []
+    assert not (tmp_path / 'designs').exists()
+    assert empty['interface_connections'] == []
+
+
 def test_axis_workspace_fix_requires_explicit_confirmation(axis_pair, tmp_path):
     document, library = axis_pair
     metadata = library[0].to_dict()

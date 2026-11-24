@@ -1,4 +1,16 @@
 .diagnostic-location { display: block; overflow-wrap: anywhere; white-space: normal; font-size: 11px; color: #667885; }
+.node-pin.interface-pin { height: 44px; gap: 4px; color: #087f78; }
+.react-flow__handle.interface-handle { width: 12px; height: 12px; border-radius: 2px; border: 2px solid #087f78; background: #e6f5f0; }
+.react-flow__handle.interface-handle::before { content: ""; position: absolute; inset: -16px; }
+.external-node.external-interface-node { width: 190px; height: 66px; }
+.interface-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.interface-properties { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; font-size: 11px; }
+.interface-properties dd { margin: 0; overflow-wrap: anywhere; }
+.interface-member { display: grid; gap: 4px; border-top: 1px solid var(--line); padding: 9px 0; font-size: 11px; min-width: 0; }
+.interface-member code { overflow-wrap: anywhere; white-space: normal; }
+.interface-confirmation { max-height: calc(100dvh - 28px); }
+.interface-confirmation .dialog-body { max-height: 60dvh; overflow: auto; }
+.interface-edge-label { position: absolute; pointer-events: all; z-index: 12; padding: 2px 5px; min-height: 20px; border: 1px solid #c9ddda; border-radius: 3px; background: #f8fafb; color: #316c68; font: 10px "IBM Plex Mono", monospace; }
 .output-language { width: 130px; min-width: 130px; flex-shrink: 0; margin: 4px; border: 1px solid #d7e0e6; border-radius: 4px; background: white; font: inherit; font-size: 12px; color: #3f5968; }
 .semantic-parameters .parameter-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(64px, 86px) 28px; gap: 6px; }
 .semantic-parameters .parameter-field input { width: 100%; min-width: 0; }

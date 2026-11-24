@@ -1,6 +1,18 @@
 import { createHistory, commitHistory, undoHistory, redoHistory, historyBytes } from "./history.js";
 import { assessLoad } from "../e2e/benchmark-load.mjs";
 
+test("interface rows have stable geometry without changing ordinary pin spacing", () => {
+  const geometry = nodeGeometry({ ports: [
+    { endpoint: "unit.clk", drives: false },
+    { endpoint: "~if:unit:s_axis", drives: false, interface: true },
+    { endpoint: "~if:unit:m_axis", drives: true, interface: true },
+  ] });
+  assert.equal(geometry.initialHeight, 194);
+  assert.equal(geometry.handles[0].y, 82);
+  assert.equal(geometry.handles[1].y, 118);
+  assert.equal(geometry.handles[2].y, 88);
+});
+
 test("benchmark preflight rejects busy low-memory and unavailable measurements", () => {
   const before = { total: 1000, idle: 500 };
   assert.equal(assessLoad(before, { total: 2000, idle: 1300 }, 4 * 1024 ** 3, 16 * 1024 ** 3).qualified, true);

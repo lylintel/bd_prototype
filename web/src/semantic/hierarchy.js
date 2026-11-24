@@ -46,7 +46,7 @@ export function scopeState(state, scope) {
     for (const instance of definitions[name].instances) visit(instance.ip.id);
   }
   for (const instance of definitions[scope].instances) visit(instance.ip.id);
-  const document = { ...definitions[scope], schema_version: 4,
+  const document = { ...definitions[scope], schema_version: state.document.schema_version === 5 ? 5 : 4,
     project_ips: state.document.project_ips ?? [], subdesigns: Object.fromEntries([...reachable].map((name) => [name, definitions[name]])) };
   return { design: canvasDocument(document, state.design.modules), document, layout: state.layout.scopes?.[scope] ?? emptyLayout };
 }
@@ -57,13 +57,13 @@ export function mergeScopeState(state, next, scope) {
   const scopedLayout = { nodes: next.layout.nodes, viewport: next.layout.viewport };
   const layout = { ...state.layout, schema_version: 1, scopes: { ...state.layout.scopes, ...next.layout.scopes, [scope]: scopedLayout } };
   const child = state.document.subdesigns[scope];
-  if (body.name === child.name && ["ports", "instances", "nets"].every((key) => body[key] === child[key]) &&
+  if (body.name === child.name && ["ports", "instances", "nets", "interfaces", "interface_connections"].every((key) => body[key] === child[key]) &&
     (project_ips === state.document.project_ips || !state.document.project_ips && !project_ips?.length) &&
     Object.entries(subdesigns ?? {}).every(([name, definition]) => state.document.subdesigns[name] === definition)) {
     return { ...state, layout };
   }
   const document = { ...state.document, project_ips,
-    subdesigns: { ...state.document.subdesigns, ...subdesigns, [scope]: { ...body, name: scope, schema_version: 3 } } };
+    subdesigns: { ...state.document.subdesigns, ...subdesigns, [scope]: { ...body, name: scope, schema_version: state.document.schema_version === 5 ? 5 : 3 } } };
   return { ...state, document, design: canvasDocument(document, { ...state.design.modules, ...next.design.modules }),
     layout };
 }

@@ -41,8 +41,28 @@ export function endpointObject(value) {
   return { inst, port };
 }
 
+export function editableCanvas(document, canvas) {
+  if (document?.schema_version !== 5) return canvas;
+  return { ...canvas, nets: Object.fromEntries(document.nets.map((net) =>
+    [net.name, canvas.nets[net.name] ?? [...new Set(net.endpoints.flatMap((endpoint) => endpointPins(endpoint)))]])) };
+}
+
+export function interfaceOwnedPins(document, metadata = []) {
+  const owned = new Set();
+  if (document?.schema_version !== 5) return owned;
+  const library = new Map([...metadata, ...(document.project_ips ?? [])].map((item) => [`${item.id}@${item.version}`, item]));
+  const instances = new Map(document.instances.map((item) => [item.name, item]));
+  for (const connection of document.interface_connections) for (const endpoint of [connection.from, connection.to]) {
+    const instance = instances.get(endpoint.inst);
+    const declarations = endpoint.ext_interface ? document.interfaces : library.get(`${instance?.ip.id}@${instance?.ip.version}`)?.interfaces ?? [];
+    const declaration = declarations.find((item) => item.name === (endpoint.ext_interface ?? endpoint.interface));
+    for (const port of Object.values(declaration?.signals ?? {})) owned.add(endpoint.ext_interface ? `@${port}` : `${endpoint.inst}.${port}`);
+  }
+  return owned;
+}
+
 export function syncDocument(previous, canvas, metadata) {
-  if (!previous || ![2, 3, 4].includes(previous.schema_version)) throw new Error(t("semantic.notReady"));
+  if (!previous || ![2, 3, 4, 5].includes(previous.schema_version)) throw new Error(t("semantic.notReady"));
   if ([previous.instances, previous.nets].some((items) => new Set(items.map((item) => item.name)).size !== items.length)) throw new Error(t("semantic.duplicateDraft"));
   const candidates = [...(previous.project_ips ?? []), ...metadata];
   const instances = Object.entries(canvas.instances).map(([name, item]) => {
@@ -55,9 +75,15 @@ export function syncDocument(previous, canvas, metadata) {
     return { name, ip: { ...reference }, params: structuredClone(item.parameters ?? {}) };
   });
   const originalNets = new Map(previous.nets.map((net) => [net.name, net]));
+  const interfaceConnections = previous.schema_version === 5 ? previous.interface_connections.filter((connection) =>
+    [connection.from, connection.to].every((endpoint) => !endpoint.inst || Object.hasOwn(canvas.instances, endpoint.inst))) : [];
+  const owned = interfaceOwnedPins({ ...previous, interface_connections: interfaceConnections }, metadata);
   return { ...structuredClone(previous), name: canvas.name, ports: structuredClone(canvas.ports), instances,
+    ...(previous.schema_version === 5 ? { interface_connections: structuredClone(interfaceConnections) } : {}),
     nets: Object.entries(canvas.nets).map(([name, pins]) => {
       const original = originalNets.get(name);
+      if (owned.size && JSON.stringify(original?.endpoints.flatMap((endpoint) => endpointPins(endpoint))) !== JSON.stringify(pins)
+        && pins.some((pin) => owned.has(pin))) throw new Error(t("interfaces.memberReadOnly"));
       if (original?.endpoints.some(isExpression)) {
         const projected = [...new Set(original.endpoints.flatMap((endpoint) => endpointPins(endpoint)))];
         if (JSON.stringify(projected) !== JSON.stringify(pins)) throw new Error(t("semantic.expressionEditRequired"));
@@ -114,6 +140,13 @@ export function renameSemantic(document, before, after, kind = "node") {
     if (Array.isArray(endpoint.concat)) endpoint.concat.forEach((child) => visit(child, depth + 1));
   }
   for (const net of result.nets) net.endpoints.forEach((endpoint) => visit(endpoint));
+  for (const connection of result.interface_connections ?? []) {
+    for (const endpoint of [connection.from, connection.to]) if (!external && endpoint.inst === original) endpoint.inst = after;
+  }
+  if (external) for (const declaration of result.interfaces ?? []) {
+    for (const signal of Object.keys(declaration.signals)) if (declaration.signals[signal] === original) declaration.signals[signal] = after;
+    for (const association of ["clock", "reset"]) if (declaration[association] === original) declaration[association] = after;
+  }
   return result;
 }
 

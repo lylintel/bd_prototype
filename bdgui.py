@@ -545,6 +545,9 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self.json_response(workspace.semantic_inspect(payload.get("design"), payload.get("base_dir", ".")))
             elif self.path == "/api/semantic/fix":
                 self.json_response(workspace.semantic_fix(payload))
+            elif self.path == "/api/interfaces/action":
+                from bdsemantic import interface_action
+                self.json_response(interface_action(workspace, payload))
             elif self.path == "/api/hierarchy/collapse":
                 from bdsemantic import collapse_workspace
                 self.json_response(collapse_workspace(workspace, payload))

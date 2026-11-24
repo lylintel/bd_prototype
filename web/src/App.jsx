@@ -19,11 +19,13 @@ import Parameters from "./semantic/Parameters.jsx";
 import Diagnostics from "./semantic/Diagnostics.jsx";
 import Connections from "./semantic/Connections.jsx";
 import ExpressionNode from "./semantic/ExpressionNode.jsx";
+import InterfacePanel, { InterfaceConfirmation } from "./semantic/InterfacePanel.jsx";
+import { interfaceMode, parseInterfaceHandle, projectInterfaceGraph } from "./semantic/interfaces.js";
 import { markLayout, markOutput, nodeGeometry, recordRender, sameNodeData, visibleLabelEdges } from "./performance.js";
 import { bundleHierarchyEdges, hasSubdesign, mergeScopeState, scopeState } from "./semantic/hierarchy.js";
 import { publishPositions, requestLayout } from "./layout/client.js";
 import { createHistory, commitHistory, undoHistory, redoHistory } from "./history.js";
-import { expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, scheduleInspection, syncDocument } from "./semantic/model.js";
+import { editableCanvas, interfaceOwnedPins, expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, scheduleInspection, syncDocument } from "./semantic/model.js";
 import "./semantic/semantic.css";
 
 const { Handle } = FlowComponents;
@@ -48,13 +50,14 @@ function CommitInput({ value, onCommit, label, ...props }) {
 }
 
 function Pin({ port, side, onPin, active, connectable }) {
-  return <div className={`node-pin ${side}`} title={`${port.endpoint} ${rangeLabel(port)}`}>
+  const allowed = connectable && port.connectable !== false && !port.readOnly;
+  return <div className={`node-pin ${side} ${port.interface ? "interface-pin" : ""}`} title={`${port.label ?? port.endpoint} ${rangeLabel(port)}`}>
     <Handle type={port.drives ? "source" : "target"} position={side === "left" ? Position.Left : Position.Right} id={port.endpoint}
-      className={`${port.width > 1 || port.range ? "bus-handle" : ""} ${active === port.endpoint ? "active-handle" : ""}`}
-      aria-label={port.endpoint} role="button" tabIndex={0} isConnectable={connectable} aria-disabled={!connectable}
-      onClick={(event) => { event.stopPropagation(); onPin(port.endpoint); }}
-      onKeyDown={(event) => { if (event.key === "Enter") { event.stopPropagation(); onPin(port.endpoint); } }} />
-    <span className="pin-name">{port.name}</span><span className="pin-range">{rangeLabel(port)}</span>
+      className={`${port.width > 1 || port.range ? "bus-handle" : ""} ${port.interface ? "interface-handle" : ""} ${active === port.endpoint ? "active-handle" : ""}`}
+      aria-label={port.label ?? port.endpoint} role="button" tabIndex={0} isConnectable={allowed} aria-disabled={!allowed}
+      onClick={(event) => { event.stopPropagation(); if (allowed) onPin(port.endpoint); }}
+      onKeyDown={(event) => { if (event.key === "Enter" && allowed) { event.stopPropagation(); onPin(port.endpoint); } }} />
+    {port.interface && <Blocks size={11} />}<span className="pin-name">{port.name}</span><span className="pin-range">{rangeLabel(port)}</span>
   </div>;
 }
 
@@ -62,13 +65,14 @@ function BlockNode({ data, selected }) {
   recordRender("node", data.external ? `@${data.name}` : data.name);
   if (data.external) {
     const port = data.ports[0];
-    return <div className={`external-node ${selected ? "is-selected" : ""} ${data.highlight ? "has-error" : ""}`}>
+    const allowed = data.connectable && port?.connectable !== false && !port?.readOnly;
+    return <div className={`external-node ${data.externalInterface ? "external-interface-node" : ""} ${selected ? "is-selected" : ""} ${data.highlight ? "has-error" : ""}`}>
       <div className="external-icon"><ArrowUpRight size={16} /></div>
-      <div><span className="external-name">{data.name}</span><span className="external-detail">{port?.direction === "input" ? "INPUT" : "OUTPUT"} <b>{rangeLabel(port)}</b></span></div>
+      <div><span className="external-name">{data.name}</span><span className="external-detail">{data.externalInterface ? t("interfaces.externalRole", { mode: t(`ip.interface.${port.interfaceMode}`) }) : port?.direction === "input" ? "INPUT" : "OUTPUT"} <b>{rangeLabel(port)}</b></span></div>
       {port && <Handle type={port.drives ? "source" : "target"} position={port.drives ? Position.Right : Position.Left} id={port.endpoint}
-        role="button" tabIndex={0} aria-label={port.endpoint} isConnectable={data.connectable} aria-disabled={!data.connectable} className={data.active === port.endpoint ? "active-handle" : ""}
-        onClick={(event) => { event.stopPropagation(); data.onPin(port.endpoint); }}
-        onKeyDown={(event) => { if (event.key === "Enter") data.onPin(port.endpoint); }} />}
+        role="button" tabIndex={0} aria-label={port.label ?? port.endpoint} isConnectable={allowed} aria-disabled={!allowed} className={`${port.interface ? "interface-handle" : ""} ${data.active === port.endpoint ? "active-handle" : ""}`}
+        onClick={(event) => { event.stopPropagation(); if (allowed) data.onPin(port.endpoint); }}
+        onKeyDown={(event) => { if (event.key === "Enter" && allowed) data.onPin(port.endpoint); }} />}
     </div>;
   }
   const inputs = data.ports.filter((port) => !port.drives);
@@ -117,6 +121,8 @@ export default function App() {
   const [history, setHistory] = useState(null);
   const [scopePath, setScopePath] = useState([]);
   const [expandedGroups, setExpandedGroups] = useState([]);
+  const [expandedInterfaces, setExpandedInterfaces] = useState([]);
+  const [interfaceDialog, setInterfaceDialog] = useState(null);
   const [baseDir, setBaseDir] = useState("examples");
   const [documentPath, setDocumentPath] = useState("");
   const [token, setToken] = useState("");
@@ -170,6 +176,7 @@ export default function App() {
   const navigationAction = useRef(null);
   const projectionInputs = useRef(null);
   const stablePickPin = useCallback((endpoint) => pinAction.current(endpoint), []);
+  const selectInterface = useCallback((name) => { setSelection({ type: "interface", id: name }); setPendingPin(null); setMobilePanel("inspector"); }, []);
   const onNodeDragStop = useCallback((event, node) => layoutAction.current(node), []);
   const onConnect = useCallback((connection) => connectionAction.current(connection.sourceHandle, connection.targetHandle), []);
   const onConnectEnd = useCallback((event, state) => connectionEndAction.current(event, state), []);
@@ -186,6 +193,10 @@ export default function App() {
   const design = view?.design;
   const document = view?.document ?? design;
   const layout = view?.layout;
+  const expandedScopeInterfaces = useMemo(() => expandedInterfaces.filter((key) => key.startsWith(`${scope}:`)).map((key) => key.slice(scope.length + 1)), [expandedInterfaces, scope]);
+  const interfaceGraph = useMemo(() => projectInterfaceGraph(document, inspection.bus_interfaces, expandedScopeInterfaces), [document, inspection.bus_interfaces, expandedScopeInterfaces]);
+  const interfacePins = useMemo(() => new Map([...Object.values(interfaceGraph.ports).flat(), ...interfaceGraph.externals.map((item) => item.port)].map((port) => [port.endpoint, port])), [interfaceGraph]);
+  const ownedInterfacePins = useMemo(() => interfaceOwnedPins(document, inspection.metadata ?? []), [document, inspection.metadata]);
   useEffect(() => { navigationAction.current = (node) => {
     const target = design?.instances[node.id]?.module;
     if (!hasSubdesign(rootDocument, target)) return false;
@@ -201,14 +212,22 @@ export default function App() {
   const onNodesChange = useCallback((changes) => { if (!preview) setNodes((current) => applyNodeChanges(changes.filter((change) => change.type !== "remove"), current)); }, [preview]);
   const onMoveEnd = useCallback((event, viewport) => setZoom(Math.round(viewport.zoom * 100)), []);
   const onNodeClick = useCallback((event, node) => { if (!preview) {
+    if (node.data.externalInterface) { setSelection({ type: "interfacePort", id: node.data.name }); setPendingPin(null); return; }
     setSelection((previous) => node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id,
       ids: event.shiftKey || event.ctrlKey || event.metaKey ? [...new Set([...(previous?.ids ?? (previous?.type === "node" ? [previous.id] : [])), node.id])] : [node.id] });
     setPendingPin(null);
   } }, [preview]);
   const onNodeDoubleClick = useCallback((event, node) => { if (!preview && !navigationAction.current?.(node)) { setSelection(node.type === "expression" ? { type: "net", id: node.data.net } : { type: "node", id: node.id }); setMobilePanel("inspector"); } }, [preview]);
-  const onEdgeClick = useCallback((event, edge) => { if (!preview) { if (edge.data.bundle) setModal({ kind: "bundle", edges: edge.data.bundle }); else setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setPendingPin(null); } }, [preview]);
+  const onEdgeClick = useCallback((event, edge) => { if (!preview) { if (edge.data.interfaceConnection) { setSelection({ type: "interface", id: edge.data.interfaceConnection }); setMobilePanel("inspector"); } else if (edge.data.bundle) setModal({ kind: "bundle", edges: edge.data.bundle }); else setSelection({ type: "net", id: edge.data.net, sink: edge.data.sink }); setPendingPin(null); } }, [preview]);
   const onPaneClick = useCallback(() => { setSelection(null); setPendingPin(null); setMobilePanel(null); }, []);
-  const isValidConnection = useCallback((connection) => connectionReady && connectionError(design, connection.sourceHandle, connection.targetHandle, interfaces) === null, [connectionReady, design, interfaces]);
+  const isValidConnection = useCallback((connection) => {
+    if (!connectionReady) return false;
+    const first = parseInterfaceHandle(connection.sourceHandle), second = parseInterfaceHandle(connection.targetHandle);
+    if (first || second) return Boolean(first && second && interfacePins.get(connection.sourceHandle)?.connectable && interfacePins.get(connection.targetHandle)?.connectable
+      && interfaceMode(inspection.bus_interfaces, first) !== interfaceMode(inspection.bus_interfaces, second));
+    return !ownedInterfacePins.has(connection.sourceHandle) && !ownedInterfacePins.has(connection.targetHandle)
+      && connectionError(design, connection.sourceHandle, connection.targetHandle, interfaces) === null;
+  }, [connectionReady, design, interfaces, inspection.bus_interfaces, interfacePins, ownedInterfacePins]);
 
   function notify(message, error = false) { setToast({ message, error }); }
 
@@ -225,11 +244,48 @@ export default function App() {
     return rawApi(path, payload, signal);
   }
 
+  async function executeInterfaceAction(action, details = {}, expected = null) {
+    const current = editorState.current;
+    if (!current.history || current.busy || current.preview) return null;
+    const snapshot = expected?.snapshot ?? current.history.current;
+    try {
+      if (current.history.current !== snapshot || expected && (expected.scope !== current.scope || expected.baseDir !== current.baseDir)) throw new Error(t("semantic.notReady"));
+      setBusy(t("interfaces.applying"));
+      const result = await api("/api/interfaces/action", { design: snapshot.document ?? snapshot.design, base_dir: current.baseDir, scope: current.scope, action, ...details });
+      const latest = editorState.current;
+      if (latest.history.current !== snapshot || latest.baseDir !== current.baseDir || latest.scope !== current.scope) throw new Error(t("semantic.notReady"));
+      if (action === "plan") return { ...result, snapshot, scope: current.scope, baseDir: current.baseDir };
+      if (!result.document || !result.canvas) throw new Error(normalizeInspection(result).diagnostics[0] ?? t("semantic.notReady"));
+      const next = { ...snapshot, document: result.document, design: validateDocumentShape(editableCanvas(result.document, result.canvas)) };
+      const nextHistory = commitHistory(current.history, next);
+      editorState.current = { ...latest, history: nextHistory };
+      setHistory(nextHistory); setSaved(false); setPendingPin(null);
+      if (!current.scope) {
+        inspectedDesign.current = nextHistory.current.design;
+        inspectedSnapshot.current = { document: nextHistory.current.document, rootDocument: nextHistory.current.document, baseDir: current.baseDir };
+        setInspection(normalizeInspection(result)); setChecking(false);
+      } else setChecking(true);
+      if (action === "connect") {
+        const target = current.scope ? result.document.subdesigns[current.scope] : result.document;
+        setSelection({ type: "interface", id: target.interface_connections.at(-1).name });
+      } else setSelection(null);
+      notify(t("interfaces.updated"));
+      return result;
+    } catch (error) { notify(error.message, true); return null; }
+    finally { setBusy(""); }
+  }
+
+  async function requestMaterialization(connection) {
+    const result = await executeInterfaceAction("plan", { connection });
+    if (result) setInterfaceDialog({ ...result, action: "materialize", connection });
+  }
+
   function acceptDocument(result) {
     outputStates.current.clear();
-    const versioned = [2, 3, 4].includes(result.design.schema_version);
+    const versioned = [2, 3, 4, 5].includes(result.design.schema_version);
     setScopePath([]);
-    const canvas = validateDocumentShape(versioned ? result.inspection.canvas : result.design);
+    setExpandedInterfaces([]); setInterfaceDialog(null);
+    const canvas = validateDocumentShape(versioned ? editableCanvas(result.design, result.inspection.canvas) : result.design);
     setHistory(createHistory({ design: canvas, document: versioned ? result.design : null, layout: { ...initialLayout, ...result.layout } }));
     setBaseDir(result.base_dir);
     setDocumentPath(result.path);
@@ -304,6 +360,7 @@ export default function App() {
         next.document = syncDocument(previousView.document ?? inspection.document, next.design,
           [...(inspection.metadata ?? []), ...(ipCatalog.baseDir === current.baseDir ? ipCatalog.entries.map((entry) => entry.metadata) : [])]);
       } else if (!changed) next.document = previousView.document;
+      next.design = editableCanvas(next.document, next.design);
       next = mergeScopeState(previous.current, next, current.scope);
       if (JSON.stringify(next) === JSON.stringify(previous.current)) return true;
       if (JSON.stringify(next.design) === JSON.stringify(previousDesign)) next.design = previousDesign;
@@ -392,11 +449,19 @@ export default function App() {
 
   function connect(first, second) {
     if (!connectionReady) { notify("接口正在解析，请稍后连线", true); return; }
+    const from = parseInterfaceHandle(first), to = parseInterfaceHandle(second);
+    if (from || to) {
+      if (!from || !to) { notify(t("interfaces.mixed"), true); return; }
+      executeInterfaceAction("connect", { from, to });
+      return;
+    }
+    if (ownedInterfacePins.has(first) || ownedInterfacePins.has(second)) { notify(t("interfaces.memberReadOnly"), true); return; }
     mutate((next) => { const net = connectPorts(next, first, second, interfaces); setSelection({ type: "net", id: net }); }, "网络连接已更新");
     setPendingPin(null);
   }
   function pickPin(endpoint) {
     if (!connectionReady) { notify("接口正在解析，请稍后连线", true); return; }
+    if (ownedInterfacePins.has(endpoint) || parseInterfaceHandle(endpoint) && !interfacePins.get(endpoint)?.connectable) { notify(t("interfaces.memberReadOnly"), true); return; }
     if (pendingPin && pendingPin !== endpoint) connect(pendingPin, endpoint);
     else { setPendingPin(pendingPin === endpoint ? null : endpoint); setSelection({ type: "port", id: endpoint }); }
   }
@@ -405,6 +470,7 @@ export default function App() {
     const first = state.fromHandle?.id;
     const second = state.toHandle?.id ?? (event.target instanceof Element ? event.target.closest(".react-flow__handle")?.getAttribute("data-handleid") : undefined);
     if (first && second && first !== second && !state.isValid) {
+      if (parseInterfaceHandle(first) || parseInterfaceHandle(second)) { notify(t(parseInterfaceHandle(first) && parseInterfaceHandle(second) ? "interfaces.roleMismatch" : "interfaces.mixed"), true); setPendingPin(null); return; }
       const error = connectionReady ? connectionError(design, first, second, interfaces) : "接口正在解析，请稍后连线";
       if (error) notify(error, true);
     }
@@ -417,14 +483,14 @@ export default function App() {
       layoutPreview.current = null;
       layoutController.current?.abort(t("layout.stale"));
     }
-    const inputs = [design, inspection, selection, pendingPin, connectionReady, expandedGroups, scope];
+    const inputs = [design, inspection, selection, pendingPin, connectionReady, expandedGroups, scope, interfaceGraph];
     if (projectionInputs.current?.every((value, index) => value === inputs[index])) {
       const expressionPositions = new Map(expressionGraph.nodes.map((node) => [node.id, node.position]));
       setNodes((previous) => {
         markLayout("projection-start");
         let changed = false;
         const result = previous.map((node) => {
-          const position = layoutPreview.current?.positions[node.id] ?? layout.nodes[node.id] ?? (node.type === "expression" ? expressionPositions.get(node.id) : defaultPosition(node.id, design));
+          const position = layoutPreview.current?.positions[node.id] ?? layout.nodes[node.id] ?? (node.data.externalInterface ? node.position : node.type === "expression" ? expressionPositions.get(node.id) : defaultPosition(node.id, design));
           if (!position || node.position.x === position.x && node.position.y === position.y) return node;
           changed = true;
           return { ...node, position };
@@ -445,13 +511,24 @@ export default function App() {
       const parameters = inspection.parameters?.[name] ?? Object.fromEntries(Object.entries(definition?.parameters ?? {}).map(([key, spec]) => [key, instance.parameters?.[key] ?? spec.default]));
       result.push({ id: name, type: "block", position: layoutPreview.current?.positions[name] ?? layout.nodes[name] ?? defaultPosition(name, design), selected: selection?.ids?.includes(name) || selection?.id === name,
         data: { name, module: instance.module, parameters, foldable: hasSubdesign(rootDocument, instance.module) && Object.keys(definition?.ports ?? {}).length > 32,
-          compact: hasSubdesign(rootDocument, instance.module) && Object.keys(definition?.ports ?? {}).length > 32 && !expandedGroups.includes(`${scope}:${name}`), onTogglePins: toggleGroupPins,
-          ports: Object.keys(definition?.ports ?? {}).map((port) => endpointInfo(design, `${name}.${port}`, interfaces)).filter(Boolean), onPin: stablePickPin, active: pendingPin?.startsWith(`${name}.`) ? pendingPin : null, connectable: connectionReady, highlight: structured ? errorNodes.has(name) : errors.includes(`instances.${name}.`) || errors.includes(`${name}.`) } });
+          compact: !interfaceGraph.ports[name]?.length && hasSubdesign(rootDocument, instance.module) && Object.keys(definition?.ports ?? {}).length > 32 && !expandedGroups.includes(`${scope}:${name}`), onTogglePins: toggleGroupPins,
+          ports: [...Object.keys(definition?.ports ?? {}).map((port) => endpointInfo(design, `${name}.${port}`, interfaces)).filter((port) => port && !interfaceGraph.hiddenPins.has(port.endpoint))
+            .map((port) => ({ ...port, readOnly: ownedInterfacePins.has(port.endpoint) })), ...(interfaceGraph.ports[name] ?? [])], onPin: stablePickPin,
+          active: pendingPin?.startsWith(`${name}.`) || parseInterfaceHandle(pendingPin)?.inst === name ? pendingPin : null, connectable: connectionReady, highlight: structured ? errorNodes.has(name) : errors.includes(`instances.${name}.`) || errors.includes(`${name}.`) } });
     }
     for (const name of Object.keys(design.ports)) {
       const id = externalId(name);
+      if (interfaceGraph.hiddenExternals.has(id)) continue;
       result.push({ id, type: "block", position: layoutPreview.current?.positions[id] ?? layout.nodes[id] ?? defaultPosition(id, design), selected: selection?.id === id,
-        data: { name, external: true, ports: [endpointInfo(design, id, interfaces)], onPin: stablePickPin, active: pendingPin === id ? pendingPin : null, connectable: connectionReady, highlight: structured ? errorNodes.has(id) : errors.includes(`ports.${name}:`) } });
+        data: { name, external: true, ports: [{ ...endpointInfo(design, id, interfaces), readOnly: ownedInterfacePins.has(id) }], onPin: stablePickPin, active: pendingPin === id ? pendingPin : null, connectable: connectionReady, highlight: structured ? errorNodes.has(id) : errors.includes(`ports.${name}:`) } });
+    }
+    for (const [index, external] of interfaceGraph.externals.entries()) {
+      const anchorId = external.anchor ? externalId(external.anchor) : null;
+      const anchor = anchorId ? layout.nodes[anchorId] ?? defaultPosition(anchorId, design) : { x: external.port.drives ? 20 : 1120, y: 140 + index * 100 };
+      const offset = anchorId && interfaceGraph.hiddenExternals.has(anchorId) ? 0 : external.port.drives ? -210 : 210;
+      result.push({ id: external.id, type: "block", position: layoutPreview.current?.positions[external.id] ?? layout.nodes[external.id] ?? { x: anchor.x + offset, y: anchor.y },
+        data: { name: external.name, external: true, externalInterface: true, ports: [external.port], onPin: stablePickPin,
+          active: pendingPin === external.port.endpoint ? pendingPin : null, connectable: connectionReady } });
     }
       result.push(...expressionGraph.nodes.map((node) => ({ ...node, position: layoutPreview.current?.positions[node.id] ?? node.position,
         selected: selection?.type === "net" && selection.id === node.data.net })));
@@ -467,7 +544,7 @@ export default function App() {
           data: reusable ? prior.data : node.data };
       });
     });
-  }, [design, layout, inspection, selection, pendingPin, connectionReady, expandedGroups, scope]);
+  }, [design, layout, inspection, selection, pendingPin, connectionReady, expandedGroups, scope, interfaceGraph, ownedInterfacePins]);
 
   const invalidNets = new Set((inspection.structuredDiagnostics ?? []).filter((item) => item.severity === "error").map((item) => item.location.net).filter(Boolean));
   const selectedNetId = selection?.type === "net" ? selection.id : null;
@@ -488,7 +565,11 @@ export default function App() {
     style: { stroke: selectedNetId === edge.data.net ? "#0a8f7b" : invalidNets.has(edge.data.net) ? "#ba4545" : "#477caa", strokeWidth: edge.data.width > 1 ? 2.4 : 1.5 },
     labelStyle: { fill: "#66747e", fontSize: 11, fontFamily: "IBM Plex Mono, monospace" },
     labelBgStyle: { fill: "#f8fafb", fillOpacity: 0.95 }, labelBgPadding: [7, 3], labelBgBorderRadius: 3,
-  }))) : [], [design, interfaces, inspection.structuredDiagnostics, selectedNetId, selectedSink, expressionGraph]);
+  }))).concat(interfaceGraph.edges.map((edge) => ({ ...edge, data: { ...edge.data, onSelectInterface: selectInterface }, selected: selection?.type === "interface" && selection.id === edge.data.interfaceConnection,
+    style: { stroke: edge.data.invalid ? "#ba4545" : "#087f78", strokeWidth: edge.data.coarse ? 4 : edge.data.width > 1 ? 2.4 : 1.5 },
+    labelStyle: { fill: "#316c68", fontSize: 11, fontFamily: "IBM Plex Mono, monospace" },
+    labelBgStyle: { fill: "#f8fafb", fillOpacity: 0.95 }, labelBgPadding: [7, 3], labelBgBorderRadius: 3,
+  }))) : [], [design, interfaces, inspection.structuredDiagnostics, selectedNetId, selectedSink, expressionGraph, interfaceGraph, selection?.type, selection?.id, selectInterface]);
 
   const candidate = useMemo(() => preview ? candidateGraph(preview, layout.nodes, defaultPosition) : null, [preview, layout?.nodes]);
   const bundledEdges = useMemo(() => bundleHierarchyEdges(edges, nodes), [edges, nodes]);
@@ -502,7 +583,7 @@ export default function App() {
   useEffect(() => {
     if (!viewportRequest || !canvasWidth || !canvasHeight || !flow.viewportInitialized) return;
     if (!preview) {
-      const expected = new Set([...Object.keys(design?.instances ?? {}), ...Object.keys(design?.ports ?? {}).map(externalId), ...expressionGraph.nodes.map((node) => node.id)]);
+      const expected = new Set([...Object.keys(design?.instances ?? {}), ...Object.keys(design?.ports ?? {}).map(externalId).filter((id) => !interfaceGraph.hiddenExternals.has(id)), ...interfaceGraph.externals.map((node) => node.id), ...expressionGraph.nodes.map((node) => node.id)]);
       if (nodes.length !== expected.size || nodes.some((node) => !expected.has(node.id))) return;
     }
     if (viewportRequest.waitFor && !graph.nodes.some((node) => node.id === viewportRequest.waitFor)) return;
@@ -513,7 +594,7 @@ export default function App() {
       flow.setViewport(getViewportForBounds(bounds, canvasWidth, canvasHeight, 0.25, 1, 0.16));
     } else if (!viewportRequest.fit) flow.setViewport(viewportRequest.viewport);
     setViewportRequest(null);
-  }, [viewportRequest, graph.nodes, nodes, design, expressionGraph.nodes, preview, canvasWidth, canvasHeight, flow]);
+  }, [viewportRequest, graph.nodes, nodes, design, expressionGraph.nodes, interfaceGraph, preview, canvasWidth, canvasHeight, flow]);
 
   function insertModule(module, position) {
     let id;
@@ -524,8 +605,15 @@ export default function App() {
 
   function insertImported(entry, position, sourceBase) {
     if (sourceBase !== editorState.current.baseDir) { notify(t("ip.dragInvalid"), true); return; }
+    const original = editorState.current.view.document ?? inspection.document;
+    if (!original || !editorState.current.view.document && inspectedDesign.current !== editorState.current.view.design) { notify(t("semantic.notReady"), true); return; }
+    const replacement = clone(original);
     let id;
-    if (mutate((next, nextLayout) => { id = addImported(next, entry); nextLayout.nodes[id] = position ?? defaultPosition(id, next); }, t("ip.added", { name: entry.metadata.id }))) {
+    if (mutate((next, nextLayout) => {
+      id = addImported(next, entry);
+      replacement.instances.push({ name: id, ip: { id: entry.metadata.id, version: entry.metadata.version }, params: clone(next.instances[id].parameters) });
+      nextLayout.nodes[id] = position ?? defaultPosition(id, next);
+    }, t("ip.added", { name: entry.metadata.id }), false, replacement)) {
       setSelection({ type: "node", id }); setMobilePanel(null);
     }
   }
@@ -545,6 +633,8 @@ export default function App() {
 
   function removeSelection() {
     if (!selection) return;
+    if (selection.type === "interface") { executeInterfaceAction("disconnect", { connection: selection.id }); return; }
+    if (selection.type === "interfacePort") return;
     mutate((next, nextLayout) => {
       if (selection.type === "net" && selection.sink) disconnectPort(next, selection.sink);
       else if (selection.type === "net") delete next.nets[selection.id];
@@ -732,7 +822,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event) => {
-      if (!design || busy || preview || modal || ipImportOpen || connectionOpen || aiSettingsOpen || privacy.confirming || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName) || event.target.closest?.(".cm-editor")) return;
+      if (!design || busy || preview || modal || interfaceDialog || ipImportOpen || connectionOpen || aiSettingsOpen || privacy.confirming || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName) || event.target.closest?.(".cm-editor")) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveDialog(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
@@ -749,6 +839,11 @@ export default function App() {
       const id = location.instance ?? (location.external ? externalId(location.external) : null);
       setPendingPin(null);
       const destination = hasSubdesign(rootDocument, location.design) ? location.design : "";
+      if (location.connection) {
+        if (destination !== scope) setScopePath(destination ? [destination] : []);
+        setSelection({ type: "interface", id: location.connection }); setMobilePanel("inspector");
+        return;
+      }
       if (destination !== scope) {
         setScopePath(destination ? [destination] : []);
         setSelection(id ? { type: "node", id } : location.net ? { type: "net", id: location.net } : null);
@@ -777,6 +872,7 @@ export default function App() {
 
   async function applyDiagnosticFix(diagnostic) {
     if (fixing || busy || checking) return;
+    if (diagnostic.fix?.kind === "materialize_interface") { await requestMaterialization(diagnostic.fix.connection); return; }
     const snapshot = editorState.current.history.current;
     const sourceBase = editorState.current.baseDir;
     setFixing(true);
@@ -820,7 +916,7 @@ export default function App() {
 
   const connectionPorts = useMemo(() => design ? [...Object.keys(design.ports).map(externalId), ...Object.entries(design.instances).flatMap(([name, item]) =>
     Object.keys(design.modules[item.module]?.ports ?? {}).map((port) => `${name}.${port}`))].map((value) => ({ ...endpointInfo(design, value, interfaces), value })) : [], [design, interfaces]);
-  const connectedPins = useMemo(() => new Set(Object.values(design?.nets ?? {}).flat()), [design?.nets]);
+  const connectedPins = useMemo(() => new Set([...Object.values(design?.nets ?? {}).flat(), ...ownedInterfacePins]), [design?.nets, ownedInterfacePins]);
 
   if (!design) return <div className="boot-screen"><CircuitBoard size={36} /><h1>BD Studio</h1>{fatal ? <><p role="alert">{fatal}</p><button onClick={() => location.reload()}>重新连接</button></> : <LoaderCircle className="spin" size={20} />}</div>;
 
@@ -834,6 +930,7 @@ export default function App() {
   const external = selectionNode?.startsWith("@") ? design.ports[selectionNode.slice(1)] : null;
   const definition = instance ? design.modules[instance.module] : null;
   const selectedNet = selection?.type === "net" ? design.nets[selection.id] : null;
+  const selectedInterface = selection?.type === "interface" ? document.interface_connections?.find((item) => item.name === selection.id) : null;
   const semanticDocument = view.document ?? inspection.document;
   const selectedNetRecord = selectedNet && semanticDocument?.nets.find((net) => net.name === selection.id);
   const totalPins = Object.values(design.instances).reduce((count, item) => count + Object.keys(design.modules[item.module]?.ports ?? {}).length, 0);
@@ -942,7 +1039,10 @@ export default function App() {
       <aside className={`inspector-panel ${mobilePanel === "inspector" ? "mobile-open" : ""}`}>
         <div className="panel-heading"><Settings2 size={15} /><span>属性</span>{selection && <IconButton icon={Trash2} label="删除所选项" onClick={removeSelection} />}</div>
         <div className="inspector-content">
-          {instance ? <>
+          {selectedInterface ? <InterfacePanel connection={selectedInterface} summary={inspection.bus_interfaces?.connections.find((item) => item.name === selectedInterface.name)}
+            expanded={expandedScopeInterfaces.includes(selectedInterface.name)} disabled={Boolean(busy || checking || preview)}
+            onToggle={() => setExpandedInterfaces((current) => current.includes(`${scope}:${selectedInterface.name}`) ? current.filter((item) => item !== `${scope}:${selectedInterface.name}`) : [...current, `${scope}:${selectedInterface.name}`])}
+            onMaterialize={() => requestMaterialization(selectedInterface.name)} onDisconnect={() => executeInterfaceAction("disconnect", { connection: selectedInterface.name })} /> : instance ? <>
             <div className="inspector-object"><div className="inspector-symbol"><Cpu size={24} strokeWidth={1.4} /></div><span>RTL INSTANCE</span><h2>{selectionNode}</h2><code>{instance.module}</code></div>
             <section className="property-section"><h3>实例</h3><label className="field-label">名称<CommitInput label="实例名称" value={selectionNode} onCommit={renameSelected} /></label><div className="source-path"><span>Source</span>{definition?.sources?.map((path) => <code key={path}>{path}</code>)}</div></section>
             <Parameters instance={selectionNode} definition={definition} overrides={instance.parameters} resolved={inspection.parameters?.[selectionNode]}
@@ -978,6 +1078,7 @@ export default function App() {
             <div className="inspector-object"><div className="inspector-symbol teal"><Workflow size={25} strokeWidth={1.5} /></div><span>BLOCK DESIGN</span><h2>{design.name}</h2><code>{t(hdlLanguage === "sv" ? "hdl.systemVerilog" : "hdl.verilog2005")}</code></div>
             <section className="property-section"><h3>设计</h3><label className="field-label">模块名称<CommitInput label="设计名称" value={design.name} onCommit={(value) => mutate((next) => { checkName({ instances: {}, ports: {}, nets: {} }, value); next.name = value; })} /></label><div className="source-path"><span>Design file</span><code>{documentPath || "未保存"}</code><span>Source base</span><code>{baseDir}/</code></div></section>
             <section className="property-section"><h3>概览</h3><dl className="design-stats"><div><dt>模块实例</dt><dd>{Object.keys(design.instances).length}</dd></div><div><dt>信号网络</dt><dd>{Object.keys(design.nets).length}</dd></div><div><dt>外部端口</dt><dd>{Object.keys(design.ports).length}</dd></div><div><dt>输出文件</dt><dd>2</dd></div></dl></section>
+            {rootDocument.schema_version !== 5 && <section className="property-section"><button type="button" className="button secondary" disabled={Boolean(busy || checking || preview)} onClick={() => setInterfaceDialog({ action: "migrate", version: rootDocument.schema_version ?? 1, snapshot: history.current, scope, baseDir })}><Blocks size={15} />{t("interfaces.enable")}</button></section>}
             <section className="property-section"><h3>生成目标</h3><div className="output-file"><Code2 size={16} /><code>{`${design.name}.${hdlLanguage}`}</code></div><div className="output-file"><Blocks size={16} /><code>{`${rootDocument.name}_wrapper.${hdlLanguage}`}</code></div><span className="directory-label">build/gui/</span></section>
           </>}
         </div>
@@ -985,6 +1086,10 @@ export default function App() {
       </aside>
     </main>
     {privacy.view}
+    <InterfaceConfirmation value={interfaceDialog} busy={Boolean(busy)} onCancel={() => setInterfaceDialog(null)} onConfirm={async (value) => {
+      const result = await executeInterfaceAction(value.action, { connection: value.connection, confirmed: true }, value);
+      if (result) setInterfaceDialog(null);
+    }} />
     <footer className="status-bar"><span><span className="session-dot" />{busy || "本地连接"}</span><span className="status-path">{documentPath || "Untitled"}</span><span>JSON <span className="status-divider">|</span> {t(hdlLanguage === "sv" ? "hdl.systemVerilog" : "hdl.verilog2005")}</span></footer>
 
     <CopilotPanel open={copilotOpen && !scope} onClose={() => setCopilotOpen(false)} api={api} token={token} design={document} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} onAuthorize={privacy.authorize} />

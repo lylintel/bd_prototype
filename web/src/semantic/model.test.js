@@ -1,4 +1,30 @@
 import { scopeState, mergeScopeState, bundleHierarchyEdges } from "./hierarchy.js";
+import { interfaceHandle, parseInterfaceHandle, projectInterfaceGraph } from "./interfaces.js";
+
+test("interface graph switches between one coarse link and read-only members without changing facts", () => {
+  const connection = { name: "link", from: { inst: "first", interface: "m_axis" }, to: { inst: "second", interface: "s_axis" } };
+  const source = { name: "m_axis", mode: "master", valid: true, parameters: { DATA_WIDTH: 8 },
+    signals: { tdata: { port: "m_data", width: 8 }, tvalid: { port: "m_valid", width: 1 }, tready: { port: "m_ready", width: 1 } } };
+  const target = { name: "s_axis", mode: "slave", valid: true, parameters: { DATA_WIDTH: 8 },
+    signals: { tdata: { port: "s_data", width: 8 }, tvalid: { port: "s_valid", width: 1 }, tready: { port: "s_ready", width: 1 } } };
+  const signals = Object.fromEntries(["tdata", "tvalid", "tready"].map((signal) => [signal, { net: `__bd_if_link__${signal}`, width: signal === "tdata" ? 8 : 1,
+    source: signal === "tready" ? { inst: "second", port: "s_ready" } : { inst: "first", port: source.signals[signal].port },
+    sink: signal === "tready" ? { inst: "first", port: "m_ready" } : { inst: "second", port: target.signals[signal].port } }]));
+  const document = { schema_version: 5, ports: {}, nets: [], interface_connections: [connection] };
+  const info = { instances: { first: { m_axis: source }, second: { s_axis: target } }, external: {}, connections: [{ ...connection, signals, valid: true }] };
+  const compact = projectInterfaceGraph(document, info);
+  assert.equal(compact.edges.length, 1);
+  assert.equal(compact.edges[0].data.interfaceConnection, "link");
+  assert.equal(compact.edges[0].sourceHandle, interfaceHandle(connection.from));
+  assert.equal(compact.hiddenPins.size, 6);
+  assert.equal(compact.ports.first[0].drives, true);
+  const expanded = projectInterfaceGraph(document, info, ["link"]);
+  assert.equal(expanded.edges.length, 3);
+  assert.equal(expanded.hiddenPins.size, 0);
+  assert.equal(expanded.ownedPins.size, 6);
+  assert.deepEqual(parseInterfaceHandle(interfaceHandle(connection.to)), connection.to);
+  assert.equal(document.interface_connections[0], connection);
+});
 
 test("compact hierarchy bundles keep every distinct electrical net selectable", () => {
   const nodes = [{ id: "first", data: { compact: true } }, { id: "second", data: { compact: true } }];
@@ -50,7 +76,43 @@ test("layout-only child updates preserve root logical document identity", () => 
 });
 import test from "node:test";
 import assert from "node:assert/strict";
-import { syncDocument, parameterValue, diagnosticMessage, normalizeInspection, replaceEndpoint, projectConnections, renameSemantic, scheduleInspection } from "./model.js";
+import { editableCanvas, interfaceOwnedPins, syncDocument, parameterValue, diagnosticMessage, normalizeInspection, replaceEndpoint, projectConnections, renameSemantic, scheduleInspection } from "./model.js";
+
+test("v5 editable views never persist derived nets and protect interface members", () => {
+  const metadata = { id: "stream", version: "1.1.0", interfaces: [
+    { name: "m_axis", signals: { tdata: "m_data", tvalid: "m_valid", tready: "m_ready" } },
+    { name: "s_axis", signals: { tdata: "s_data", tvalid: "s_valid", tready: "s_ready" } },
+  ] };
+  const document = { schema_version: 5, name: "pair", ports: {}, interfaces: [], subdesigns: {}, project_ips: [metadata],
+    instances: ["first", "second"].map((name) => ({ name, ip: { id: "stream", version: "1.1.0" }, params: {} })), nets: [],
+    interface_connections: [{ name: "link", from: { inst: "first", interface: "m_axis" }, to: { inst: "second", interface: "s_axis" } }] };
+  const projected = { name: "pair", modules: {}, ports: {},
+    instances: { first: { module: "stream", parameters: {} }, second: { module: "stream", parameters: {} } },
+    nets: { __bd_if_link__tdata: ["first.m_data", "second.s_data"] } };
+  const editable = editableCanvas(document, projected);
+  assert.deepEqual(editable.nets, {});
+  assert.ok(interfaceOwnedPins(document, []).has("first.m_data"));
+  const changed = syncDocument(document, editable, []);
+  assert.deepEqual(changed.interface_connections, document.interface_connections);
+  assert.deepEqual(changed.nets, []);
+  assert.throws(() => syncDocument(document, { ...editable, nets: { bypass: ["first.m_data", "second.s_data"] } }, []));
+  assert.equal(renameSemantic(document, "first", "renamed").interface_connections[0].from.inst, "renamed");
+  const removed = syncDocument(document, { ...editable, instances: { second: editable.instances.second } }, []);
+  assert.deepEqual(removed.interface_connections, []);
+});
+
+test("v5 child interface edits retain their version and are not mistaken for layout-only changes", () => {
+  const child = { schema_version: 5, name: "group", ports: {}, instances: [], nets: [], interfaces: [], interface_connections: [] };
+  const document = { schema_version: 5, name: "top", ports: {}, instances: [], nets: [], interfaces: [], interface_connections: [], subdesigns: { group: child } };
+  const state = { document, design: { modules: {} }, layout: { nodes: {} } };
+  const scoped = scopeState(state, "group");
+  assert.equal(scoped.document.schema_version, 5);
+  const connections = [{ name: "link", from: { inst: "first", interface: "m_axis" }, to: { inst: "second", interface: "s_axis" } }];
+  const next = mergeScopeState(state, { ...scoped, document: { ...scoped.document, interface_connections: connections } }, "group");
+  assert.equal(next.document.subdesigns.group.schema_version, 5);
+  assert.deepEqual(next.document.subdesigns.group.interface_connections, connections);
+  assert.deepEqual(child.interface_connections, []);
+});
 
 test("canvas edits retain explicit versions and do not mutate the original", () => {
   const original = { schema_version: 2, name: "top", ports: {}, project_ips: [], instances: [{ name: "unit_0", ip: { id: "unit", version: "2.0.0" }, params: { WIDTH: 8 } }], nets: [] };

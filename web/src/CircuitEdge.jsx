@@ -1,7 +1,8 @@
 import React, { memo } from "react";
-import { BaseEdge, StepEdge, getSmoothStepPath, useNodes, useStore } from "@xyflow/react";
+import { BaseEdge, EdgeLabelRenderer, StepEdge, getSmoothStepPath, useNodes, useStore } from "@xyflow/react";
 import { getSmartEdge, smartEdgePresets } from "@tisoap/react-flow-smart-edge";
 import { edgeLabelPosition, recordRender } from "./performance.js";
+import { t } from "./i18n.js";
 
 const routingOptions = { drawEdge: smartEdgePresets.step.drawEdge, generatePath: smartEdgePresets.step.generatePath, nodePadding: 14, gridRatio: 10 };
 
@@ -16,15 +17,24 @@ function NetLabel({ text, x, y, end = false }) {
   </g>;
 }
 
+function InterfaceMemberLabel({ edge }) {
+  const label = t("interfaces.selectMember", { connection: edge.data.interfaceConnection, signal: edge.data.signal.toUpperCase() });
+  return <EdgeLabelRenderer><button type="button" className="nodrag nopan interface-edge-label" title={label} aria-label={label}
+    style={{ transform: `translate(-50%, -50%) translate(${edge.sourceX + 28}px, ${edge.sourceY - 15}px)` }}
+    onClick={(event) => { event.stopPropagation(); edge.data.onSelectInterface?.(edge.data.interfaceConnection); }}>{edge.data.signal.toUpperCase()}</button></EdgeLabelRenderer>;
+}
+
 function RoutedEdge(props) {
   const nodes = useNodes();
   const route = getSmartEdge({ ...props, nodes, options: routingOptions });
   if (route instanceof Error) return <g data-routing="unavailable"><title>节点重叠或通道不足，暂无法完成避障走线</title><StepEdge {...props} style={{ ...props.style, stroke: "#bd765f", strokeDasharray: "4 3" }} /></g>;
   const label = edgeLabelPosition(props, nodes, { x: route.edgeCenterX, y: route.edgeCenterY });
+  const member = props.data?.interfaceConnection && props.data?.signal;
   return <g data-routing="routed"><BaseEdge id={props.id} path={route.svgPathString} style={props.style}
     markerStart={props.markerStart} markerEnd={props.markerEnd} interactionWidth={16}
-    label={props.label} labelX={label.x} labelY={label.y} labelStyle={props.labelStyle}
-    labelShowBg={props.labelShowBg} labelBgStyle={props.labelBgStyle} labelBgPadding={props.labelBgPadding} labelBgBorderRadius={props.labelBgBorderRadius} /></g>;
+    label={member ? undefined : props.label} labelX={label.x} labelY={label.y} labelStyle={props.labelStyle}
+    labelShowBg={props.labelShowBg} labelBgStyle={props.labelBgStyle} labelBgPadding={props.labelBgPadding} labelBgBorderRadius={props.labelBgBorderRadius} />
+    {member && <InterfaceMemberLabel edge={props} />}</g>;
 }
 
 function CircuitEdge(props) {
@@ -41,8 +51,9 @@ function CircuitEdge(props) {
   });
   if (!dense && !small) return <RoutedEdge {...props} />;
   const emphasized = props.selected || props.className?.includes("ai-preview");
-  const style = { ...props.style, strokeWidth: small ? 1 : props.data?.width > 1 ? 2.5 : 1.5,
+  const style = { ...props.style, strokeWidth: props.data?.coarse ? small ? 2.5 : 4 : small ? 1 : props.data?.width > 1 ? 2.5 : 1.5,
     ...(!emphasized && small ? { stroke: "#82978b" } : {}) };
+  if (props.data?.interfaceConnection && props.data?.signal) return <g data-routing="interface-member"><StepEdge {...props} label={undefined} style={style} /><InterfaceMemberLabel edge={props} /></g>;
   if (labelMode && !emphasized && !props.data?.bundle) {
     if (!visibleEnds) return null;
     const source = (visibleEnds & 1) !== 0 && props.data?.sourceLabel !== false;

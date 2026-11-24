@@ -8,7 +8,7 @@ from pathlib import Path
 import bdtool
 from bdip import IpMetadata, migrate_legacy_modules
 from core.design import DesignFormatError, check_document, migrate
-from core.diagnostics import issue
+from core.diagnostics import Diagnostic, issue
 from core.persistence import write_project
 from core.resolve import ParameterError, parameters
 from core.semantic import inspect_design
@@ -144,6 +144,55 @@ def inspect_workspace(workspace, document, base_dir):
         diagnostic = error.diagnostic if isinstance(error, DesignFormatError) else issue("D005", {}, reason=getattr(error, "code", "source_or_metadata"))
         return {"valid": False, "diagnostics": [diagnostic.to_dict()], "files": {}, "parameters": {},
                 "interfaces": {"ports": {}, "instances": {}}}
+
+
+def interface_action(workspace, payload):
+    from core.interfaces import expand_interfaces, materialize_connection
+
+    action = payload.get("action")
+    if action not in ("migrate", "connect", "disconnect", "plan", "materialize"):
+        raise DesignFormatError(issue("D006", {}, reason="interface_action"))
+    base_dir = payload.get("base_dir", ".")
+    document, library = prepare(workspace, payload.get("design"), base_dir)
+    if action == "migrate":
+        if payload.get("confirmed") is not True:
+            raise DesignFormatError(issue("D006", {}, reason="confirmation_required"))
+        return inspect_workspace(workspace, migrate(document, library, target_version=5), base_dir)
+    if document.get("schema_version") != 5:
+        raise DesignFormatError(issue("D006", {}, reason="interface_migration_required"))
+    scope = payload.get("scope", "")
+    if not isinstance(scope, str) or scope and scope not in document["subdesigns"]:
+        raise DesignFormatError(issue("D006", {}, reason="interface_scope"))
+    candidate = deepcopy(document)
+    target = candidate["subdesigns"][scope] if scope else candidate
+    connection = payload.get("connection")
+    if action in ("plan", "materialize"):
+        expanded = expand_interfaces(document, library)
+        plan = expanded["materialization_plans"].get(target["name"], {}).get(connection)
+        if plan is None:
+            raise DesignFormatError(issue("D006", {}, reason="unsafe_interface_materialization"))
+        if action == "plan":
+            return {"plan": deepcopy(plan), "scope": target["name"], "connection": connection}
+        candidate = materialize_connection(document, library, target["name"], connection, confirmed=payload.get("confirmed", False))
+    elif action == "disconnect":
+        if sum(item["name"] == connection for item in target["interface_connections"]) != 1:
+            raise DesignFormatError(issue("D006", {}, reason="unknown_interface_connection"))
+        target["interface_connections"] = [item for item in target["interface_connections"] if item["name"] != connection]
+    else:
+        names = set(target["ports"]) | {item["name"] for key in ("instances", "nets", "interfaces", "interface_connections") for item in target[key]}
+        ordinal = 0
+        while f"stream_{ordinal}" in names:
+            ordinal += 1
+        target["interface_connections"].append({"name": payload.get("name", f"stream_{ordinal}"),
+                                                "from": deepcopy(payload.get("from")), "to": deepcopy(payload.get("to"))})
+    check_document(candidate)
+    result = inspect_workspace(workspace, candidate, base_dir)
+    if action == "connect":
+        blocked = next((item for item in result["diagnostics"] if item["severity"] == "error" and
+                        item["code"] not in ("E003", "E207")), None)
+        if blocked is not None:
+            raise DesignFormatError(Diagnostic(**blocked))
+    return result
 
 
 def collapse_workspace(workspace, payload):
