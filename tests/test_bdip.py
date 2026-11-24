@@ -55,7 +55,7 @@ def test_valid_schema_and_dataclass_roundtrip(counter_ip, change):
 
 
 @pytest.mark.parametrize("field,value", [
-    ("schema_version", 0), ("schema_version", 2), ("schema_version", True),
+    ("schema_version", 0), ("schema_version", 3), ("schema_version", True),
     ("id", "../counter"), ("id", "module"), ("id", "9counter"), ("id", "counter\n"),
     ("version", "1.0"), ("version", "1.0.0\n"), ("language", "python"), ("tags", ["counter", "counter"]),
     ("parameters", [{"name": "WIDTH", "type": "int", "default": 8}]),
@@ -95,6 +95,77 @@ def test_semantic_conflicts_rejected(counter_ip, case):
         counter_ip["parameters"][0].update(min=16, max=1)
     with pytest.raises(bdip.IpMetadataError):
         bdip.IpMetadata.from_dict(counter_ip)
+
+
+@pytest.fixture
+def axis_ip():
+    document = json.loads((ROOT / "ip_library/builtin/bd_stream_slice/1.0.0/ip.json").read_text(encoding="utf-8"))
+    document.update(schema_version=2, version="1.1.0")
+    document["interfaces"] = [{"name": "m_axis", "protocol": "axi-stream", "definition_version": "1.0.0",
+        "profile": "ready-valid", "mode": "master", "parameters": {"DATA_WIDTH": "WIDTH"},
+        "signals": {"tdata": "m_data", "tvalid": "m_valid", "tready": "m_ready"}, "confirmed": True}]
+    return document
+
+
+def test_axis_v2_metadata_roundtrip_and_independent_mapping(axis_ip):
+    metadata = bdip.IpMetadata.from_dict(axis_ip)
+    assert metadata.to_dict() == axis_ip
+    axis_ip["interfaces"][0]["signals"]["tdata"] = "changed"
+    assert metadata.interfaces[0]["signals"]["tdata"] == "m_data"
+    exported = metadata.to_dict()
+    exported["interfaces"][0]["signals"]["tdata"] = "also_changed"
+    assert metadata.interfaces[0]["signals"]["tdata"] == "m_data"
+
+
+@pytest.mark.parametrize("case", ["direction", "missing", "unknown_port", "width", "protocol", "unconfirmed", "duplicate_port", "duplicate_interface", "signed"])
+def test_axis_v2_metadata_rejects_invalid_interface(axis_ip, case):
+    interface = axis_ip["interfaces"][0]
+    if case == "direction":
+        interface["mode"] = "slave"
+    elif case == "missing":
+        del interface["signals"]["tready"]
+    elif case == "unknown_port":
+        interface["signals"]["tdata"] = "invented"
+    elif case == "width":
+        interface["parameters"]["DATA_WIDTH"] = "16"
+    elif case == "protocol":
+        interface["protocol"] = "apb3"
+    elif case == "unconfirmed":
+        interface["confirmed"] = False
+    elif case == "duplicate_port":
+        interface["signals"]["tvalid"] = "m_data"
+    elif case == "duplicate_interface":
+        axis_ip["interfaces"].append(copy.deepcopy(interface))
+    else:
+        next(port for port in axis_ip["ports"] if port["name"] == "m_data")["signed"] = True
+    with pytest.raises(bdip.IpMetadataError):
+        bdip.IpMetadata.from_dict(axis_ip)
+
+
+def test_axis_v2_signature_includes_mapping_without_changing_v1(counter_ip, axis_ip):
+    from ip_import.library import _signature, interface_diff
+
+    original = bdip.IpMetadata.from_dict(counter_ip)
+    previous_payload = {"parameters": [parameter.to_dict() for parameter in original.parameters],
+        "ports": [{key: value for key, value in port.to_dict().items() if key != "role"} for port in original.ports]}
+    assert _signature(original) == hashlib.sha256(json.dumps(previous_payload, sort_keys=True).encode()).hexdigest()
+    declared = bdip.IpMetadata.from_dict(axis_ip)
+    blank = bdip.IpMetadata.from_dict({**axis_ip, "interfaces": []})
+    assert _signature(declared) != _signature(blank)
+    assert interface_diff(blank, declared)["added_interfaces"] == ["m_axis"]
+
+
+def test_axis_v2_invalid_direct_metadata_cannot_overwrite_saved_profile(axis_ip, tmp_path):
+    metadata = bdip.IpMetadata.from_dict(axis_ip)
+    target = tmp_path / "ip.json"
+    bdip.save_ip(metadata, target)
+    original = target.read_bytes()
+    changed = copy.deepcopy(metadata.interfaces[0])
+    changed["signals"]["tready"] = "invented"
+    with pytest.raises(bdip.IpMetadataError):
+        bdip.save_ip(replace(metadata, interfaces=(changed,)), target)
+    assert target.read_bytes() == original
+    assert bdip.load_ip(target).to_dict() == metadata.to_dict()
 
 
 def test_version_required_and_document_is_independent(counter_ip):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 import hashlib
 import json
@@ -32,7 +33,7 @@ def _validate(document: object) -> bytes:
         raise IpMetadataError("IP_JSON_INVALID", "$") from error
     if len(payload) > MAX_METADATA_BYTES:
         raise IpMetadataError("IP_METADATA_TOO_LARGE", "$")
-    if isinstance(document, dict) and (type(document.get("schema_version")) is not int or document["schema_version"] != 1):
+    if isinstance(document, dict) and (type(document.get("schema_version")) is not int or document["schema_version"] not in (1, 2)):
         raise IpMetadataError("IP_SCHEMA_VERSION", "$.schema_version")
     error = next(IP_VALIDATOR.iter_errors(document), None)
     if error is not None:
@@ -132,11 +133,15 @@ class IpMetadata:
             role = None if raw_role is None else IpRole(raw_role["kind"], raw_role["confidence"], raw_role["confirmed"], raw_role.get("polarity"), raw_role.get("async"))
             ports.append(IpPort(item["name"], item["dir"], item["width"], item.get("signed"),
                                 tuple(item["range"]) if "range" in item else None, role))
-        return cls(document["schema_version"], document["id"], document["version"], document["display_name"],
+        metadata = cls(document["schema_version"], document["id"], document["version"], document["display_name"],
                    document["description"], tuple(document["tags"]), IpSource(**document["source"]), document["language"],
-                   tuple(IpParameter(**item) for item in document["parameters"]), tuple(ports), tuple(document["interfaces"]),
+                   tuple(IpParameter(**item) for item in document["parameters"]), tuple(ports), tuple(deepcopy(document["interfaces"])),
                    tuple(IpSource(**item) for item in document.get("additional_sources", [])),
                    Path(base_dir).resolve() if base_dir is not None else None)
+        if metadata.schema_version == 2:
+            from core.interfaces import validate_metadata_interfaces
+            validate_metadata_interfaces(metadata)
+        return metadata
 
     def to_dict(self) -> dict:
         data = {
@@ -144,7 +149,7 @@ class IpMetadata:
             "display_name": self.display_name, "description": self.description, "tags": list(self.tags),
             "source": asdict(self.source), "language": self.language,
             "parameters": [parameter.to_dict() for parameter in self.parameters],
-            "ports": [port.to_dict() for port in self.ports], "interfaces": list(self.interfaces),
+            "ports": [port.to_dict() for port in self.ports], "interfaces": deepcopy(list(self.interfaces)),
         }
         if self.additional_sources:
             data["additional_sources"] = [asdict(source) for source in self.additional_sources]
@@ -188,7 +193,7 @@ def load_ip(path: Path) -> IpMetadata:
 def save_ip(metadata: IpMetadata, path: Path) -> None:
     path = Path(path).resolve()
     data = metadata.to_dict()
-    _validate(data)
+    IpMetadata.from_dict(data)
     sources = [data["source"], *data.get("additional_sources", [])]
     for source in sources:
         original = ((metadata.base_dir or path.parent) / source["path"]).resolve()

@@ -73,6 +73,8 @@ def defaults(metadata: IpMetadata) -> dict[str, int]:
 def _signature(metadata: IpMetadata) -> str:
     data = {"parameters": [parameter.to_dict() for parameter in metadata.parameters],
             "ports": [{key: value for key, value in port.to_dict().items() if key != "role"} for port in metadata.ports]}
+    if metadata.schema_version == 2:
+        data["interfaces"] = list(metadata.interfaces)
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
 
@@ -90,6 +92,12 @@ def interface_diff(previous: IpMetadata, current: IpMetadata) -> dict:
         result[f"added_{section}"] = sorted(after.keys() - before.keys())
         result[f"removed_{section}"] = sorted(before.keys() - after.keys())
         result[f"changed_{section}"] = sorted(name for name in before.keys() & after.keys() if before[name] != after[name])
+    if previous.schema_version == 2 or current.schema_version == 2:
+        before = {item["name"]: item for item in previous.interfaces}
+        after = {item["name"]: item for item in current.interfaces}
+        result["added_interfaces"] = sorted(after.keys() - before.keys())
+        result["removed_interfaces"] = sorted(before.keys() - after.keys())
+        result["changed_interfaces"] = sorted(name for name in before.keys() & after.keys() if before[name] != after[name])
     return result
 
 

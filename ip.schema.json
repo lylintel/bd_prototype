@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "BD Studio IP Metadata v1",
+  "title": "BD Studio IP Metadata v1 and v2",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "id", "version", "display_name", "description", "tags", "source", "language", "parameters", "ports", "interfaces"],
   "properties": {
-    "schema_version": { "type": "integer", "const": 1 },
+    "schema_version": { "type": "integer", "enum": [1, 2] },
     "id": { "$ref": "#/$defs/identifier" },
     "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?![\\s\\S])" },
     "display_name": { "type": "string", "minLength": 1, "maxLength": 256 },
@@ -16,9 +16,30 @@
     "language": { "enum": ["verilog-2005", "systemverilog"] },
     "parameters": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/parameter" } },
     "ports": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/port" } },
-    "interfaces": { "type": "array", "maxItems": 0 }
+    "interfaces": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/streamInterface" } }
   },
+  "allOf": [{"if": {"properties": {"schema_version": {"const": 1}}},
+             "then": {"properties": {"interfaces": {"maxItems": 0}}}}],
   "$defs": {
+    "streamInterface": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "protocol", "definition_version", "profile", "mode", "parameters", "signals", "confirmed"],
+      "properties": {
+        "name": {"$ref": "#/$defs/identifier"}, "protocol": {"const": "axi-stream"},
+        "definition_version": {"const": "1.0.0"}, "profile": {"const": "ready-valid"},
+        "mode": {"enum": ["master", "slave"]}, "confirmed": {"type": "boolean", "const": true},
+        "clock": {"$ref": "#/$defs/identifier"}, "reset": {"$ref": "#/$defs/identifier"},
+        "parameters": {"type": "object", "additionalProperties": false, "required": ["DATA_WIDTH"],
+          "properties": {"DATA_WIDTH": {"$ref": "#/$defs/expression"}, "ID_WIDTH": {"$ref": "#/$defs/expression"},
+                         "DEST_WIDTH": {"$ref": "#/$defs/expression"}, "USER_WIDTH": {"$ref": "#/$defs/expression"}}},
+        "signals": {"type": "object", "additionalProperties": false, "required": ["tdata", "tvalid", "tready"],
+          "properties": {"tdata": {"$ref": "#/$defs/identifier"}, "tvalid": {"$ref": "#/$defs/identifier"},
+            "tready": {"$ref": "#/$defs/identifier"}, "tkeep": {"$ref": "#/$defs/identifier"},
+            "tstrb": {"$ref": "#/$defs/identifier"}, "tlast": {"$ref": "#/$defs/identifier"},
+            "tid": {"$ref": "#/$defs/identifier"}, "tdest": {"$ref": "#/$defs/identifier"},
+            "tuser": {"$ref": "#/$defs/identifier"}}}
+      }
+    },
     "identifier": {
       "type": "string",
       "maxLength": 256,

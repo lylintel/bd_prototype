@@ -59,6 +59,28 @@ def test_changed_interface_needs_explicit_new_version(tmp_path):
     assert len(library.entries()) == 2
 
 
+def test_axis_metadata_upgrade_keeps_source_and_previous_version(tmp_path):
+    source = Upload("axis_stage.v", (ROOT / "ip_library/builtin/bd_stream_slice/1.0.0/src/bd_stream_slice.v").read_bytes().replace(b"bd_stream_slice", b"axis_stage"))
+    library = IpLibrary(tmp_path)
+    first = items(library.import_sources([source]))[0]
+    original = (tmp_path / "ip_library/axis_stage/1.0.0/ip.json").read_bytes()
+    metadata = copy.deepcopy(first["metadata"])
+    metadata.update(schema_version=2)
+    metadata["interfaces"] = [{"name": "m_axis", "protocol": "axi-stream", "definition_version": "1.0.0",
+        "profile": "ready-valid", "mode": "master", "parameters": {"DATA_WIDTH": "WIDTH"},
+        "signals": {"tdata": "m_data", "tvalid": "m_valid", "tready": "m_ready"}, "confirmed": True}]
+    conflict = items(library.import_sources([source], selections={"axis_stage": metadata}))[0]
+    assert conflict["status"] == "needs_version"
+    assert conflict["diff"]["added_interfaces"] == ["m_axis"]
+    metadata["version"] = "1.1.0"
+    published = items(library.import_sources([source], selections={"axis_stage": metadata}))[0]
+    assert published["status"] == "imported"
+    assert published["metadata"]["source"]["sha256"] == first["metadata"]["source"]["sha256"]
+    assert (tmp_path / "ip_library/axis_stage/1.0.0/ip.json").read_bytes() == original
+    assert (tmp_path / "ip_library/axis_stage/1.1.0/src/axis_stage.v").read_bytes() == source.content
+    assert {row["metadata"]["version"] for row in library.entries()} == {"1.0.0", "1.1.0"}
+
+
 def test_preview_edits_confirm_roles_without_forging_interface(tmp_path):
     library = IpLibrary(tmp_path)
     source = Upload("unit.v", b"module unit(input clk, output ready); assign ready=clk; endmodule\n")
