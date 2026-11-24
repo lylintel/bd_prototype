@@ -112,7 +112,9 @@ def parse_diagnostics(tool, text, paths):
     return result
 
 
-def run_checks(files, sources, top, *, workspace_root=None):
+def run_checks(files, sources, top, *, workspace_root=None, strict_lint=False):
+    if type(strict_lint) is not bool:
+        raise ValueError(MESSAGES["HDL_TOOL_OPTIONS"])
     bdtool._name(top, "top")
     for name in files:
         if Path(name).name != name or Path(name).suffix not in {".v", ".sv"}:
@@ -156,7 +158,7 @@ def run_checks(files, sources, top, *, workspace_root=None):
                 diagnostics.extend(version_errors)
                 continue
             if tool == "verilator":
-                command = [*program, "--lint-only", "-Wall", "-Wno-fatal", "--top-module", top, *staged]
+                command = [*program, "--lint-only", "-Wall", *([] if strict_lint else ["-Wno-fatal"]), "--top-module", top, *staged]
             else:
                 language = "-sv " if any(name.lower().endswith(".sv") for name in staged) else ""
                 script = "read_verilog " + language + " ".join(f'"{name}"' for name in staged) + f"; hierarchy -check -top {top}; synth -top {top} -flatten; check -assert; write_json synthesis.json"
@@ -201,4 +203,4 @@ def run_checks(files, sources, top, *, workspace_root=None):
             tools.append({"name": tool, "stage": stage, "status": status, "version": version, "expected_version": TOOL_VERSIONS[tool],
                           "diagnostics": items, "log": text, "directory": temporary, **statistics})
             diagnostics.extend(items)
-    return {"valid": all(tool["status"] == "passed" for tool in tools), "tools": tools, "diagnostics": diagnostics}
+    return {"valid": all(tool["status"] == "passed" for tool in tools), "tools": tools, "diagnostics": diagnostics, "strict_lint": strict_lint}

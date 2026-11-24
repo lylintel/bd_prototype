@@ -556,3 +556,10 @@ P2.6 的 main 合并提交 5cc18aa 已通过本地完整门禁与 [CI 4381558451
 - 检查保留无关标量诊断和端口信息，只抑制已由接口错误解释的成员级未接提示，避免修复因隐藏的无关问题形成死路。解析缓存持有 scope 元数据引用，防止短寿命对象 id 复用。
 - 38 项接口基线与新语义用例通过，服务级确认、磁盘无副作用、v5 内嵌布局不降级均覆盖；生成物成员 source map、专门握手仿真、画布与 AI 留给后续独立任务。
 - 2B.1c 完整门禁通过：701 Python +90 子测试、66 Node、32 E2E，日志 build/phase2b-semantics-check.log；旧语义性能 340.321/477.243ms 非阻塞告警，不改变接口相对验收要求。
+
+### 2B.1d：独立参考、成员映射与握手证据
+
+- 生成与 source map 共用展开结果；有实际接口连接时标注设计 v5 / source map v2，记录连接及成员来源。无接口继续通过冻结的 v4 字节基线，不改旧模板行为。
+- 新的项目级接口示例只增加 metadata v2 profile，不修改内置源 RTL。新 golden 由手写标量连线参考生成，READY 方向独立给定，不复用接口展开器求预期，生成入口拒绝覆盖已有快照。
+- 新接口示例严格 Verilator lint（无 -Wno-fatal），Yosys synth/check，Verilog/SV 双语言 Icarus scoreboard 均通过聚焦验证。testbench 检查随机背压、稳定性、复位、顺序/在途/排空与数据回绕；故意忽略 ready 的负向对照能失败。未削弱任何已有 testbench。
+- 2B.1d 完整门禁通过：708 Python +91 子测试、66 Node、32 E2E，日志 build/phase2b-generation-final-check.log。新示例严格零警告，Yosys 22 个通用单元；旧语义性能 252.424/280.706ms 通过旧门槛，不代替接口配对验收。旧示例迁移断言仍保持 v4，新增 v5 必须保持版本及连接，不做降级。

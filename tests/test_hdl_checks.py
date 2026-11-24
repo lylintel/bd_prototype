@@ -142,6 +142,21 @@ def test_explicit_missing_tool_does_not_silently_use_another_version(monkeypatch
     assert bdcheck.tool_commands()['verilator'] is None
 
 
+def test_strict_lint_keeps_warnings_fatal(monkeypatch, pinned_versions):
+    monkeypatch.setattr(bdcheck, 'tool_commands', lambda: {'verilator': ['verilator']})
+
+    def run(command, **kwargs):
+        assert '-Wno-fatal' not in command
+        kwargs['stdout'].write(b'%Warning-WIDTH: demo.v:1:1: width mismatch\n')
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(bdcheck.subprocess, 'run', run)
+    result = bdcheck.run_checks({'demo.v': 'module demo; endmodule\n'}, [], 'demo', strict_lint=True)
+    assert not result['valid']
+    assert any(item['severity'] == 'warning' for item in result['diagnostics'])
+    assert result['tools'][0]['status'] == 'failed'
+
+
 def test_windows_mixed_tool_paths_restore_the_original_source():
     result = bdcheck.parse_diagnostics('verilator', '%Warning-WIDTH: sources/0\\unit.sv:7:3: width\n', {'sources/0/unit.sv': 'rtl/unit.sv'})
     assert result[0]['location'] == {'file': 'rtl/unit.sv', 'line': 7, 'column': 3}

@@ -184,7 +184,10 @@ class EditorTests(unittest.TestCase):
                 path.write_text(json.dumps(document), encoding="utf-8")
                 before = path.read_bytes()
                 loaded = self.workspace.load(self.workspace.relative(path))
-                self.assertEqual(loaded["design"]["schema_version"], 4)
+                expected_version = 5 if document.get("schema_version") == 5 else 4
+                self.assertEqual(loaded["design"]["schema_version"], expected_version)
+                if expected_version == 5:
+                    self.assertEqual(loaded["design"]["interface_connections"], document["interface_connections"])
                 self.assertTrue(loaded["inspection"]["valid"], loaded["inspection"]["diagnostics"])
                 self.assertEqual(path.read_bytes(), before)
 

@@ -48,7 +48,7 @@ def main():
         files = generate_files(document, library, language=language)
         base = workspace.path(base_dir)
         sources = sorted({(base / source.path).resolve() for item in library for source in (item.source, *item.additional_sources)})
-        result = run_checks(files, sources, f"{document['name']}_wrapper", workspace_root=ROOT)
+        result = run_checks(files, sources, f"{document['name']}_wrapper", workspace_root=ROOT, strict_lint=name.startswith("examples/interfaces/"))
         unexpected = unexpected_generated_warnings(name, files, result["diagnostics"])
         result["generated_warning_policy"] = {"unexpected": len(unexpected),
             "exemptions": [item for item in result["diagnostics"] if item["severity"] == "warning"

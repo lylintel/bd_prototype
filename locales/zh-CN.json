@@ -6,6 +6,7 @@
   "HDL_TOOL_TIMEOUT": "{tool} 检查超过 30 秒，已停止。",
   "HDL_TOOL_LOG_LIMIT": "{tool} 检查日志超过 1 MiB，结果不可视为通过。",
   "HDL_TOOL_INPUT": "生成文件名必须是合法的 Verilog/SystemVerilog 模块文件名。",
+  "HDL_TOOL_OPTIONS": "HDL 检查参数无效，严格 lint 选项必须为布尔值。",
   "HDL_INCLUDE": "HDL include 隔离校验失败：{detail}",
   "HDL_GENERATED_WARNING": "生成 HDL 有未豁免警告：{rule}",
   "HDL_TOOL_VERSION": "{tool} 版本不匹配，未执行 RTL 检查：{detail}",

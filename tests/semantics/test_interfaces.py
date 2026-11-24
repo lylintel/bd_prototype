@@ -2,6 +2,7 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 
 import pytest
@@ -10,7 +11,7 @@ from bdgui import Workspace
 from bdip import IpMetadata
 from bdsemantic import prepare
 from core.design import DesignFormatError, check_document, load_document, migrate
-from core.generation import generate_files
+from core.generation import generate_artifacts, generate_files
 from core.persistence import canonical_document, write_project
 from core.semantic import apply_fix, inspect_design
 
@@ -94,8 +95,7 @@ def test_compatibility_stage_does_not_silently_drop_unimplemented_interfaces():
         generate_files(upgraded, library)
 
 
-@pytest.fixture
-def axis_pair():
+def axis_pair_data():
     directory = ROOT / 'ip_library/builtin/bd_stream_slice/1.0.0'
     raw = json.loads((directory / 'ip.json').read_text(encoding='utf-8'))
     raw.update(schema_version=2, version='1.1.0')
@@ -120,6 +120,80 @@ def axis_pair():
         'interface_connections': [{'name': 'link', 'from': {'inst': 'first', 'interface': 'm_axis'},
                                   'to': {'inst': 'second', 'interface': 's_axis'}}]}
     return document, (metadata,)
+
+
+@pytest.fixture
+def axis_pair():
+    return axis_pair_data()
+
+
+def axis_scalar_reference(document):
+    reference = deepcopy(document)
+    reference['schema_version'] = 4
+    reference.pop('interfaces')
+    reference.pop('interface_connections')
+    reference['nets'].extend([
+        {'name': '__bd_if_link__tdata', 'endpoints': [{'inst': 'first', 'port': 'm_data'}, {'inst': 'second', 'port': 's_data'}]},
+        {'name': '__bd_if_link__tvalid', 'endpoints': [{'inst': 'first', 'port': 'm_valid'}, {'inst': 'second', 'port': 's_valid'}]},
+        {'name': '__bd_if_link__tready', 'endpoints': [{'inst': 'second', 'port': 's_ready'}, {'inst': 'first', 'port': 'm_ready'}]},
+    ])
+    return reference
+
+
+@pytest.mark.parametrize('language', ['v', 'sv'])
+def test_axis_generated_hdl_matches_independent_signal_reference(axis_pair, language):
+    document, library = axis_pair
+    reference = generate_files(axis_scalar_reference(document), library, language=language)
+    expected = {name: text.replace('schema_version: 4', 'schema_version: 5', 1) for name, text in reference.items()}
+    assert generate_files(document, library, language=language) == expected
+    if language == 'v':
+        frozen = json.loads((Path(__file__).parent / 'golden/axis-pair.json').read_text(encoding='utf-8'))
+        assert expected == frozen
+
+
+@pytest.mark.parametrize('language', ['v', 'sv'])
+def test_axis_strict_tools_and_icarus_handshake(axis_pair, tmp_path, language):
+    from bdcheck import run_checks
+
+    document, library = axis_pair
+    files = generate_files(document, library, language=language)
+    source = library[0].base_dir / library[0].source.path
+    checked = run_checks(files, [source], 'axis_pair_wrapper', workspace_root=ROOT, strict_lint=True)
+    assert checked['valid'], checked['diagnostics']
+    assert checked['strict_lint'] and not checked['diagnostics']
+    assert next(tool for tool in checked['tools'] if tool['name'] == 'yosys')['cell_count'] > 0
+    generated = []
+    for name, text in files.items():
+        target = tmp_path / name
+        target.write_text(text, encoding='utf-8')
+        generated.append(str(target))
+    compiled = subprocess.run([shutil.which('iverilog'), '-g2012', '-s', 'tb', '-o', str(tmp_path / 'simulation'),
+        *generated, str(source), str(ROOT / 'tests/fixtures/interfaces/axis_pair_tb.sv')], capture_output=True, text=True, timeout=30)
+    assert compiled.returncode == 0 and not compiled.stderr.strip(), compiled.stderr
+    simulated = subprocess.run([shutil.which('vvp'), str(tmp_path / 'simulation')], capture_output=True, text=True, timeout=15)
+    assert simulated.returncode == 0 and 'PASS AXIS' in simulated.stdout, simulated.stdout + simulated.stderr
+
+
+def test_axis_handshake_scoreboard_rejects_ignored_backpressure(axis_pair, tmp_path):
+    document, library = axis_pair
+    generated = []
+    for name, text in generate_files(document, library).items():
+        target = tmp_path / name
+        target.write_text(text, encoding='utf-8')
+        generated.append(str(target))
+    bench = ROOT / 'tests/fixtures/interfaces/axis_pair_tb.sv'
+    original = bench.read_bytes()
+    faulty = original.replace(b'.out_ready(out_ready)', b".out_ready(1'b1)")
+    assert faulty != original
+    faulty_path = tmp_path / 'faulty_tb.sv'
+    faulty_path.write_bytes(faulty)
+    compiled = subprocess.run([shutil.which('iverilog'), '-g2012', '-s', 'tb', '-o', str(tmp_path / 'simulation'),
+        *generated, str(library[0].base_dir / library[0].source.path), str(faulty_path)], capture_output=True, text=True, timeout=30)
+    assert compiled.returncode == 0, compiled.stderr
+    simulated = subprocess.run([shutil.which('vvp'), str(tmp_path / 'simulation')], capture_output=True, text=True, timeout=15)
+    assert simulated.returncode != 0
+    assert any(reason in simulated.stdout for reason in ('backpressure', 'reordered', 'duplicated', 'lost'))
+    assert bench.read_bytes() == original
 
 
 def test_axis_connection_lowers_ready_in_reverse_without_persisting_nets(axis_pair):
@@ -209,6 +283,20 @@ def test_axis_duplicate_external_names_are_not_silently_selected(axis_pair):
     result = inspect_design(document, library)
     assert not result['valid']
     assert any(item['code'] == 'E208' for item in result['diagnostics'])
+
+
+def test_axis_source_map_locates_each_generated_member(axis_pair):
+    document, library = axis_pair
+    artifacts = generate_artifacts(document, library)
+    assert artifacts['source_map']['schema_version'] == 2
+    records = artifacts['source_map']['files']['axis_pair.v']['ranges']
+    assert {item['location']['signal'] for item in records if item['location'].get('connection') == 'link'} == {'tdata', 'tvalid', 'tready'}
+    text = artifacts['files']['axis_pair.v']
+    assert 'schema_version: 5' in text
+    for item in records:
+        if item['location'].get('connection') == 'link':
+            line = text.splitlines()[item['start_line'] - 1]
+            assert f"__bd_if_link__{item['location']['signal']}" in line
 
 
 def test_axis_generated_name_collision_is_an_explicit_error(axis_pair):
@@ -317,6 +405,21 @@ def test_axis_workspace_fix_requires_explicit_confirmation(axis_pair, tmp_path):
 
 
 if __name__ == '__main__':
+    if sys.argv[1:] == ['--freeze-axis']:
+        destination = ROOT / 'examples/interfaces/axis_pair.json'
+        frozen = Path(__file__).parent / 'golden/axis-pair.json'
+        if destination.exists() or frozen.exists():
+            raise SystemExit('Refusing to overwrite the interface example or its independent golden.')
+        document, library = axis_pair_data()
+        expected = generate_files(axis_scalar_reference(document), library)
+        frozen.write_bytes((json.dumps({name: text.replace('schema_version: 4', 'schema_version: 5', 1) for name, text in expected.items()}, indent=2) + '\n').encode())
+        metadata = library[0].to_dict()
+        metadata['source']['path'] = '../../ip_library/builtin/bd_stream_slice/1.0.0/src/bd_stream_slice.v'
+        document['project_ips'] = [metadata]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((json.dumps(document, ensure_ascii=False, indent=2) + '\n').encode('utf-8'))
+        print('Created project-local v2 profile and a golden from handwritten scalar connections.')
+        raise SystemExit(0)
     if sys.argv[1:] != ['--freeze-v4'] or GOLDEN.exists():
         raise SystemExit('Only --freeze-v4 is supported, and an existing golden must never be overwritten.')
     result = {}
