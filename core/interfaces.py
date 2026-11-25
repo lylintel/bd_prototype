@@ -226,11 +226,11 @@ def expand_interfaces(document, library):
                 origins[scope["name"]][net_name] = {**location, "signal": signal}
             summary["valid"] = len(diagnostics) == start_errors
             info["connections"].append(summary)
-            scope["nets"].extend(generated)
             if not summary["valid"]:
                 blocked[scope["name"]].update(member_keys)
             errors = diagnostics[start_errors:]
             if not errors or all(item.code == "E207" for item in errors):
+                scope["nets"].extend(generated)
                 materialized = deepcopy(generated)
                 for addition in additions:
                     source_pin = addition["endpoints"][0]
@@ -244,6 +244,9 @@ def expand_interfaces(document, library):
                        "bindings": bindings, "omitted_outputs": omissions, "requires_confirmation": True}
                 for index in range(start_errors, len(diagnostics)):
                     diagnostics[index] = replace(diagnostics[index], fix=fix)
+            else:
+                for net in generated:
+                    origins[scope['name']].pop(net['name'], None)
             if len(scope["nets"]) > 100000:
                 diagnostics.append(issue("E208", location, reason="expanded_limit", generated_name="", expanded_nets=len(scope["nets"]), limit=100000))
     return {"document": projected, "diagnostics": diagnostics, "bus_interfaces": information[document["name"]],

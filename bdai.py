@@ -9,7 +9,7 @@ from time import monotonic
 from uuid import uuid4
 
 import bdtool
-from ai.context import compact_design as compact_design, metadata_card as metadata_card
+from ai.context import apply_scoped_ops, editable_scope, compact_design as compact_design, metadata_card as metadata_card
 from bdip import migrate_legacy_modules
 from bdsemantic import canvas_document, prepare
 from core.design import DesignFormatError, check_document
@@ -52,7 +52,7 @@ def prepare_context(workspace, raw, base_dir):
     return document, tuple(metadata[key] for key in sorted(metadata))
 
 
-def _view(document, library, errors=()):
+def _view(document, library, errors=(), scope=''):
     result = inspect_design(document, library)
     diagnostics = [item.to_dict() for item in errors]
     diagnostics.extend(item for item in result["diagnostics"] if item not in diagnostics)
@@ -60,10 +60,26 @@ def _view(document, library, errors=()):
     result["valid"] = not any(item["severity"] == "error" for item in diagnostics)
     if not result["valid"]:
         result["files"] = {}
-    references = {(item["ip"]["id"], item["ip"]["version"]) for item in document["instances"]}
+    canvas_source, view_library = document, library
+    if document.get('schema_version') in (4, 5):
+        from core.hierarchy import hierarchy_library
+        from core.interfaces import expand_interfaces
+
+        projected = expand_interfaces(document, library)['document'] if document['schema_version'] == 5 else document
+        documents, view_library = hierarchy_library(projected, library)
+        canvas_source = documents[-1]
+        if document['schema_version'] == 5:
+            view_library = tuple(replace(metadata, schema_version=2, interfaces=tuple(document['subdesigns'][metadata.id]['interfaces']))
+                if metadata.id in document['subdesigns'] else metadata for metadata in view_library)
+    references = {(item['ip']['id'], item['ip']['version']) for body in [document, *document.get('subdesigns', {}).values()] for item in body['instances']}
     references.update((item["id"], item["version"]) for item in document.get("project_ips", []))
-    visible = tuple(item for item in library if (item.id, item.version) in references)
-    result.update(document=deepcopy(document), canvas=canvas_document(document, visible), metadata=[item.to_dict() for item in visible])
+    visible = tuple(item for item in view_library if (item.id, item.version) in references)
+    result.update(document=deepcopy(document), canvas=canvas_document(canvas_source, visible), metadata=[item.to_dict() for item in visible])
+    if scope:
+        from core.hierarchy import scope_document
+        scoped = _view(scope_document(document, scope), library)
+        result.update(scope_document=scoped['document'], scope_canvas=scoped['canvas'], scope_metadata=scoped['metadata'],
+                      scope_bus_interfaces=scoped.get('bus_interfaces'), scope_view=scoped)
     return result
 
 
@@ -99,20 +115,27 @@ class ProposalStore:
         hashes = (fingerprint(document), fingerprint([item.to_dict() for item in library]))
         if expected is not None and hashes != expected:
             fail("AI_STALE_PROPOSAL")
+        scope = payload.get('scope', '')
+        editable_scope(document, scope)
         operations = deepcopy(validate_operations(payload.get("ops")))
+        version = payload['ops']['schema_version'] if isinstance(payload['ops'], dict) else 1
         permission = payload.get("allow_removals", False)
         if type(permission) is not bool:
             fail("AI_REQUEST", field="allow_removals")
         if not permission and any(item["op"] == "remove_instance" for item in operations):
             fail("AI_OPERATION_FORBIDDEN", op="remove_instance")
-        candidate, errors = apply_ops(document, library, operations)
-        result = _view(candidate, library, errors)
+        candidate, errors = apply_scoped_ops(document, library, {'schema_version': version, 'ops': operations}, scope)
+        result = _view(candidate, library, errors, scope)
         summary = payload.get("summary", "")
         if not isinstance(summary, str) or len(summary) > 8000:
             fail("AI_REQUEST", field="summary")
         identifier = str(uuid4())
         result.update(id=identifier, ops=operations, summary=summary, assumptions=[], questions=[], missing_ip=[],
-                      base_hash=fingerprint(document), requires_confirmation=True)
+                      base_hash=fingerprint(document), requires_confirmation=True, ops_version=version, scope=scope,
+                      migration={'from': document['schema_version'], 'to': candidate['schema_version']} if document['schema_version'] != candidate['schema_version'] else None)
+        if document['schema_version'] == 5:
+            from core.interfaces import expand_interfaces
+            result['base_bus_interfaces'] = deepcopy(expand_interfaces(document, library)['scope_interfaces'][scope or document['name']])
         if outcome is not None:
             result["context"] = deepcopy(outcome.get("context", {}))
             for key in ("assumptions", "questions", "missing_ip", "attempts", "trace", "retrieved"):
@@ -124,7 +147,7 @@ class ProposalStore:
         result["validation"] = {"valid": result["valid"], "diagnostics": result["diagnostics"]}
         stored = {"base_hash": result["base_hash"], "library_hash": fingerprint([item.to_dict() for item in library]),
                   "base_dir": self.workspace.relative(self.workspace.path(base_dir)) or ".", "ops": deepcopy(operations),
-                  "created": monotonic(), "valid": result["valid"]}
+                  "created": monotonic(), "valid": result["valid"], 'scope': scope, 'ops_version': version}
         with self.lock:
             self._prune()
             while len(self.pending) >= 32:
@@ -150,15 +173,15 @@ class ProposalStore:
             base_dir = payload.get("base_dir", ".")
             document, library = prepare_context(self.workspace, payload.get("design"), base_dir)
             if (fingerprint(document) != stored["base_hash"] or fingerprint([item.to_dict() for item in library]) != stored["library_hash"]
-                    or (self.workspace.relative(self.workspace.path(base_dir)) or ".") != stored["base_dir"]):
+                    or (self.workspace.relative(self.workspace.path(base_dir)) or ".") != stored["base_dir"] or payload.get('scope', '') != stored['scope']):
                 fail("AI_STALE_PROPOSAL")
             operations = [operation for index, operation in enumerate(stored["ops"]) if index in set(selected)]
-            candidate, errors = apply_ops(document, library, operations)
-            result = _view(candidate, library, errors)
+            candidate, errors = apply_scoped_ops(document, library, {'schema_version': stored['ops_version'], 'ops': operations}, stored['scope'])
+            result = _view(candidate, library, errors, stored['scope'])
             if not result["valid"]:
                 fail("AI_INVALID_PROPOSAL", diagnostics=[{"code": item["code"], "params": item["params"]} for item in result["diagnostics"]])
             self.pending.pop(identifier)
-            return {**result, "accepted": True}
+            return {**result, "accepted": True, 'scope': stored['scope'], 'ops_version': stored['ops_version']}
 
     def discard(self, payload):
         identifier = payload.get("proposal_id")
@@ -182,11 +205,12 @@ class ProposalStore:
             base_dir = payload.get("base_dir", ".")
             document, library = prepare_context(self.workspace, payload.get("design"), base_dir)
             if (fingerprint(document) != stored["base_hash"] or fingerprint([item.to_dict() for item in library]) != stored["library_hash"]
-                    or (self.workspace.relative(self.workspace.path(base_dir)) or ".") != stored["base_dir"]):
+                    or (self.workspace.relative(self.workspace.path(base_dir)) or ".") != stored["base_dir"] or payload.get('scope', '') != stored['scope']):
                 fail("AI_STALE_PROPOSAL")
             indexes = set(selected)
-            candidate, errors = apply_ops(document, library, [item for index, item in enumerate(stored["ops"]) if index in indexes])
-            return {**_view(candidate, library, errors), "id": identifier, "selected": selected}
+            operations = {'schema_version': stored['ops_version'], 'ops': [item for index, item in enumerate(stored['ops']) if index in indexes]}
+            candidate, errors = apply_scoped_ops(document, library, operations, stored['scope'])
+            return {**_view(candidate, library, errors, stored['scope']), "id": identifier, "selected": selected, 'scope': stored['scope'], 'ops_version': stored['ops_version']}
 
 
 def _legacy_endpoint(text):

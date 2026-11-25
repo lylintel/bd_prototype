@@ -230,6 +230,7 @@ class Workspace:
         return self.create_llm_client(payload).test_connection()
 
     def propose_ai(self, payload):
+        from ai.context import editable_scope
         from ai.pipeline import run_pipeline
         from bdai import fail, fingerprint, prepare_context
 
@@ -240,13 +241,16 @@ class Workspace:
             self.proposals.check_request(payload)
             base_dir = payload.get("base_dir", ".")
             document, library = prepare_context(self, payload.get("design"), base_dir)
+            scope = payload.get('scope', '')
+            editable_scope(document, scope)
             expected = (fingerprint(document), fingerprint([item.to_dict() for item in library]))
             outcome = run_pipeline(document, library, payload.get("prompt"), self.create_llm_client(),
                                    allow_removals=payload.get("allow_removals", False),
                                    context_token_budget=self._settings_store().configuration().context_token_budget,
                                    selected_instances=payload.get("selected_instances", []),
-                                   send_ip_descriptions=self._settings_store().configuration().send_ip_descriptions)
-            return self.proposals.preview({"design": payload.get("design"), "base_dir": base_dir, "ops": outcome["ops"], "summary": outcome["summary"],
+                                   send_ip_descriptions=self._settings_store().configuration().send_ip_descriptions, scope=scope)
+            return self.proposals.preview({"design": payload.get("design"), "base_dir": base_dir, 'scope': scope,
+                                           "ops": {'schema_version': outcome['schema_version'], 'ops': outcome['ops']}, "summary": outcome["summary"],
                                            "allow_removals": payload.get("allow_removals", False)},
                                           outcome=outcome, expected=expected)
         finally:

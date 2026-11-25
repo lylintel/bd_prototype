@@ -72,12 +72,26 @@ class FakeSession:
             result = tools["bd_propose"].handler(SimpleNamespace(arguments={"ops": [{"op": "remove_instance", "name": "compare_0"}]}))
             self.emit("assistant.message", content=result.text_result_for_llm)
             return
-        if prompt in ("metadata only", "typed proposal"):
+        if prompt == 'typed interface':
+            tools = {tool.name: tool for tool in self.options['tools']}
+            workflow = tools['bd_workflow'].handler(SimpleNamespace(arguments={}))
+            if workflow.result_type != 'success':
+                self.emit('assistant.message', content=workflow.text_result_for_llm)
+                return
+            contract = json.loads(workflow.text_result_for_llm)['contract']
+            assert contract['properties']['schema_version']['const'] == 2
+            result = tools['bd_propose'].handler(SimpleNamespace(arguments={'schema_version': 2, 'ops': [
+                {'op': 'connect', 'net': 'link', 'from': {'type': 'interface', 'inst': 'first', 'interface': 'm_axis'},
+                 'to': {'type': 'interface', 'inst': 'second', 'interface': 's_axis'}}]}))
+            self.emit('assistant.message', content=result.text_result_for_llm)
+            return
+        if prompt in ("metadata only", "typed proposal", "typed proposal loop"):
             tools = {tool.name: tool for tool in self.options["tools"]}
             name = "bd_read_source" if prompt == "metadata only" else "bd_propose"
             arguments = {"module": "counter"} if name == "bd_read_source" else {"ops": [
                 {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19}]}
-            result = tools[name].handler(SimpleNamespace(arguments=arguments))
+            for attempt in range(4 if prompt == 'typed proposal loop' else 1):
+                result = tools[name].handler(SimpleNamespace(arguments=arguments))
             self.emit("assistant.message", content=result.text_result_for_llm)
             return
         if prompt.startswith("workflow threshold"):
@@ -216,6 +230,62 @@ class CopilotTests(unittest.TestCase):
             self.assertFalse(any(item["type"] == "proposal" for item in events))
             self.assertIn("AI_OPERATION_FORBIDDEN", next(item["content"] for item in events if item["type"] == "message"))
             self.assertEqual(self.bridge.workspace.proposals.pending, {})
+
+    def test_sdk_typed_proposals_are_limited_to_three_per_turn(self):
+        self.bridge.connect()
+        events = self.drain(self.send('typed proposal loop', share_context=True, allow_design_changes=True, design=self.design, base_dir='examples'))
+        self.assertEqual(sum(item['type'] == 'proposal' for item in events), 3)
+        self.assertIn('AI_ATTEMPT_LIMIT', next(item['content'] for item in events if item['type'] == 'message'))
+
+    def test_sdk_current_open_scope_uses_local_names_and_shared_scope_is_readonly(self):
+        from ai.client import LLMError
+        from bdsemantic import prepare
+        from core.hierarchy import collapse_design
+
+        document, library = prepare(self.bridge.workspace, self.design, 'examples')
+        root = collapse_design(document, library, ['counter_0', 'compare_0'], 'group')
+        self.bridge.connect()
+        events = self.drain(self.send('typed proposal', share_context=True, allow_design_changes=True,
+                                     design=root, scope='group', base_dir='examples'))
+        proposal = next(item['proposal'] for item in events if item['type'] == 'proposal')
+        self.assertTrue(proposal['valid'], proposal['diagnostics'])
+        self.assertEqual(proposal['scope'], 'group')
+        self.assertEqual(proposal['scope_document']['instances'][1]['params']['THRESHOLD'], 19)
+        self.assertFalse((self.bridge.workspace.root / 'build').exists())
+        root['instances'].append({'name': 'reuse', 'ip': {'id': 'group', 'version': '1.0.0'}})
+        count = len(self.clients[0].sessions)
+        with self.assertRaises(LLMError) as raised:
+            self.send('typed proposal', share_context=True, allow_design_changes=True, design=root, scope='group', base_dir='examples')
+        self.assertEqual(raised.exception.code, 'AI_SHARED_SCOPE')
+        self.assertEqual(len(self.clients[0].sessions), count)
+
+    def test_sdk_v2_interface_proposal_stays_atomic_through_selection_and_acceptance(self):
+        from tests.semantics.test_interfaces import axis_pair_data
+
+        document, library = axis_pair_data()
+        metadata = library[0].to_dict()
+        metadata['source']['path'] = 'rtl/bd_stream_slice.v'
+        shutil.copyfile(library[0].base_dir / library[0].source.path, self.bridge.workspace.root / 'examples/rtl/bd_stream_slice.v')
+        document['project_ips'] = [metadata]
+        document['interface_connections'] = []
+        self.bridge.connect()
+        events = self.drain(self.send('typed interface', share_context=True, allow_design_changes=True, design=document, base_dir='examples'))
+        proposal = next(item['proposal'] for item in events if item['type'] == 'proposal')
+        self.assertTrue(proposal['valid'], proposal['diagnostics'])
+        self.assertEqual(proposal['ops_version'], 2)
+        self.assertEqual(len(proposal['ops']), 1)
+        selection = {'design': document, 'base_dir': 'examples', 'proposal_id': proposal['id'], 'selected': [0]}
+        self.assertTrue(self.bridge.workspace.select_ops(selection)['valid'])
+        accepted = self.bridge.workspace.accept_ops({**selection, 'confirmed': True})
+        self.assertTrue(accepted['valid'])
+        self.assertEqual(accepted['document']['nets'], document['nets'])
+        self.assertEqual(len(accepted['document']['interface_connections']), 1)
+        self.assertEqual(document['interface_connections'], [])
+        disconnect = self.bridge.workspace.propose_ops({'design': accepted['document'], 'base_dir': 'examples', 'ops': {'schema_version': 2,
+            'ops': [{**proposal['ops'][0], 'op': 'disconnect'}]}})
+        self.assertFalse(disconnect['valid'])
+        self.assertEqual(disconnect['base_bus_interfaces']['connections'][0]['signals']['tready']['source'], {'inst': 'second', 'port': 's_ready'})
+        self.assertFalse((self.bridge.workspace.root / 'build').exists())
 
     def test_streaming_and_multiturn_use_restricted_session(self):
         self.bridge.connect()

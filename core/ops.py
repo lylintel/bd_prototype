@@ -6,7 +6,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 import bdtool
-from core.design import DesignFormatError, check_document
+from core.design import DesignFormatError, check_document, migrate
 from core.diagnostics import Diagnostic
 from core.expr import ExpressionError, evaluate
 from core.resolve import ParameterError, parameters
@@ -14,6 +14,7 @@ from core.semantic import validate
 
 
 MAX_OPERATIONS = 200
+MAX_INTERFACE_SIGNALS = 4096
 SCHEMA = json.loads((Path(__file__).resolve().parents[1] / "ops.schema.json").read_text(encoding="utf-8"))
 VALIDATOR = Draft202012Validator(SCHEMA)
 OPERATIONS = frozenset(("add_instance", "remove_instance", "set_param", "add_external_port", "connect", "disconnect"))
@@ -36,18 +37,22 @@ def _name(value):
     return value
 
 
-def _endpoint_types(endpoint, budget, depth=0):
+def _endpoint_types(endpoint, budget, depth=0, *, version=1, path='endpoint'):
     budget[0] += 1
     if depth > 16 or budget[0] > 256:
         raise OperationError("OP_ENDPOINT_LIMIT")
     if not isinstance(endpoint, dict):
         raise OperationError("OP_SCHEMA", path="endpoint", rule="object")
     kind = endpoint.get("type")
+    if kind == 'interface' and version == 2:
+        if depth:
+            raise OperationError('E210', source_type='interface', target_type='expression', expression_path=path)
+        return
     if not isinstance(kind, str) or kind not in ENDPOINT_TYPES:
         raise OperationError("OP_ENDPOINT_TYPE", type=str(kind)[:80])
     if kind == "concat" and isinstance(endpoint.get("concat"), list):
-        for child in endpoint["concat"]:
-            _endpoint_types(child, budget, depth + 1)
+        for index, child in enumerate(endpoint["concat"]):
+            _endpoint_types(child, budget, depth + 1, version=version, path=f'{path}.concat[{index}]')
 
 
 def decode_endpoint(endpoint):
@@ -58,7 +63,7 @@ def decode_endpoint(endpoint):
 
 
 def typed_endpoint(endpoint):
-    kind = "concat" if "concat" in endpoint else "const" if "const" in endpoint else "slice" if "slice" in endpoint else "port"
+    kind = 'interface' if 'interface' in endpoint or 'ext_interface' in endpoint else "concat" if "concat" in endpoint else "const" if "const" in endpoint else "slice" if "slice" in endpoint else "port"
     result = {"type": kind, **deepcopy(endpoint)}
     if kind == "concat":
         result["concat"] = [typed_endpoint(child) for child in endpoint["concat"]]
@@ -69,6 +74,9 @@ def validate_operations(operations):
     payload = {"schema_version": 1, "ops": operations} if isinstance(operations, list) else operations
     if not isinstance(payload, dict) or not isinstance(payload.get("ops"), list):
         raise OperationError("OP_SCHEMA", path="ops", rule="array")
+    version = payload.get('schema_version')
+    if type(version) is not int or version not in (1, 2):
+        raise OperationError('OP_SCHEMA', path='$.schema_version', rule='version')
     if len(payload["ops"]) > MAX_OPERATIONS:
         raise OperationError("OP_LIMIT", limit=MAX_OPERATIONS)
     try:
@@ -78,7 +86,7 @@ def validate_operations(operations):
         if isinstance(error, OperationError):
             raise
         raise OperationError("OP_SCHEMA", path="ops", rule="json") from error
-    for operation in payload["ops"]:
+    for index, operation in enumerate(payload["ops"]):
         if not isinstance(operation, dict):
             raise OperationError("OP_SCHEMA", path="ops", rule="object")
         command = operation.get("op")
@@ -86,7 +94,9 @@ def validate_operations(operations):
             raise OperationError("OP_UNKNOWN_OPERATION", op=str(command)[:80])
         for field in ("from", "to"):
             if field in operation:
-                _endpoint_types(operation[field], [0])
+                _endpoint_types(operation[field], [0], version=version, path=f'$.ops[{index}].{field}')
+        if 'from' in operation and 'to' in operation and (operation['from']['type'] == 'interface') != (operation['to']['type'] == 'interface'):
+            raise OperationError('E210', source_type=operation['from']['type'], target_type=operation['to']['type'], expression_path=f'$.ops[{index}]')
     error = next(VALIDATOR.iter_errors(payload), None)
     if error:
         path = "$" + "".join(f"[{part}]" if isinstance(part, int) else f".{part}" for part in error.absolute_path)
@@ -99,23 +109,27 @@ def _mentions(endpoint, instance):
 
 
 class _Draft:
-    def __init__(self, document, library):
+    def __init__(self, document, library, interface_costs=None):
         self.document = document
+        self.interface_costs = interface_costs or {}
+        self.expanded_signals = 0
         self.library = {}
         for metadata in library:
             self.library.setdefault((metadata.id, metadata.version), []).append(metadata)
         self.reindex()
 
     def reindex(self):
-        self.instances, self.nets = {}, {}
+        self.instances, self.nets, self.buses = {}, {}, {}
         for item in self.document["instances"]:
             self.instances.setdefault(item["name"], []).append(item)
         for item in self.document["nets"]:
             self.nets.setdefault(item["name"], []).append(item)
+        for item in self.document.get('interface_connections', []):
+            self.buses.setdefault(item['name'], []).append(item)
 
     def available_name(self, name):
         _name(name)
-        if name in self.instances or name in self.nets or name in self.document["ports"]:
+        if name in self.instances or name in self.nets or name in self.document["ports"] or name in self.buses or any(item['name'] == name for item in self.document.get('interfaces', [])):
             raise OperationError("OP_DUPLICATE_NAME", name=name)
 
     def instance(self, name):
@@ -171,9 +185,10 @@ class _Draft:
         metadata = self.metadata(reference)
         instance = {"name": name, "ip": reference, "params": deepcopy(operation.get("params", {}))}
         self.check_parameters(instance)
+        self.consume_interfaces(self.interface_costs.get(reference['id'], 0))
         self.document["instances"].append(instance)
         snapshots = self.document.setdefault("project_ips", [])
-        if not any((item["id"], item["version"]) == (metadata.id, metadata.version) for item in snapshots):
+        if metadata.id not in self.document.get('subdesigns', {}) and not any((item["id"], item["version"]) == (metadata.id, metadata.version) for item in snapshots):
             snapshots.append(metadata.to_dict())
 
     def remove_instance(self, operation):
@@ -194,6 +209,9 @@ class _Draft:
                     net["endpoints"] = remaining
                     kept.append(net)
         self.document["nets"] = kept
+        if 'interface_connections' in self.document:
+            self.document['interface_connections'] = [connection for connection in self.document['interface_connections']
+                if all(endpoint.get('inst') != operation['name'] for endpoint in (connection['from'], connection['to']))]
 
     def set_param(self, operation):
         instance = self.instance(operation["inst"])
@@ -224,7 +242,61 @@ class _Draft:
             shape["signed"] = operation["signed"]
         self.document["ports"][name] = shape
 
+    def consume_interfaces(self, count):
+        self.expanded_signals += count
+        if self.expanded_signals > MAX_INTERFACE_SIGNALS:
+            raise OperationError('OP_INTERFACE_LIMIT', limit=MAX_INTERFACE_SIGNALS, expanded_signals=self.expanded_signals)
+
+    def interface(self, endpoint):
+        if 'ext_interface' in endpoint:
+            name = _name(endpoint['ext_interface'])
+            declarations = self.document.get('interfaces', [])
+        else:
+            instance = self.instance(endpoint['inst'])
+            name = _name(endpoint['interface'])
+            declarations = self.metadata(instance['ip']).interfaces
+        found = [item for item in declarations if item['name'] == name]
+        if len(found) != 1:
+            raise OperationError('E203', endpoint=name, missing_signals=[], unresolved_ports=[name], reason='unknown_interface')
+        if found[0].get('confirmed') is not True:
+            raise OperationError('E209', interface=name, reason='unconfirmed')
+        return found[0]
+
+    def interface_connection(self, operation):
+        source, target = decode_endpoint(operation['from']), decode_endpoint(operation['to'])
+        left, right = self.interface(source), self.interface(target)
+        if self.document['schema_version'] != 5:
+            self.document = migrate(self.document, tuple(item for matches in self.library.values() for item in matches), target_version=5)
+            self.reindex()
+        if 'net' in operation:
+            _name(operation['net'])
+        candidates = self.buses.get(operation['net'], []) if 'net' in operation else self.document['interface_connections']
+        matches = [item for item in candidates if (item['from'], item['to']) in ((source, target), (target, source))]
+        if len(matches) > 1 or 'net' in operation and len(candidates) > 1:
+            raise OperationError('OP_AMBIGUOUS_NET')
+        if operation['op'] == 'disconnect':
+            if not matches:
+                raise OperationError('OP_NOT_CONNECTED')
+            self.document['interface_connections'].remove(matches[0])
+            return
+        if matches:
+            return
+        if 'net' in operation and candidates:
+            raise OperationError('OP_NET_CONFLICT', net=operation['net'])
+        name = operation.get('net')
+        if name is None:
+            names = set(self.instances) | set(self.nets) | set(self.document['ports']) | set(self.buses) | {item['name'] for item in self.document['interfaces']}
+            suffix = 1
+            while f'stream_{suffix}' in names:
+                suffix += 1
+            name = f'stream_{suffix}'
+        self.available_name(name)
+        self.consume_interfaces(len(set(left['signals']) | set(right['signals'])))
+        self.document['interface_connections'].append({'name': name, 'from': source, 'to': target})
+
     def connection(self, operation):
+        if operation['from']['type'] == 'interface':
+            return self.interface_connection(operation)
         source, target = decode_endpoint(operation["from"]), decode_endpoint(operation["to"])
         if not self.drives(source) or self.drives(target):
             raise OperationError("OP_DIRECTION")
@@ -274,10 +346,28 @@ def apply_ops(document, library, operations):
         commands = validate_operations(operations)
         library = tuple(library)
         operation_library = library
-        if document.get("schema_version") == 4:
+        interface_costs = {}
+        if document.get('schema_version') == 5:
+            from core.hierarchy import hierarchy_library
+            from core.interfaces import expand_interfaces
+
+            expanded = expand_interfaces(document, library)
+            _, operation_library = hierarchy_library(expanded['document'], library)
+            operation_library = tuple(replace(metadata, schema_version=2, interfaces=tuple(document['subdesigns'][metadata.id]['interfaces']))
+                if metadata.id in document['subdesigns'] else metadata for metadata in operation_library)
+
+            def signal_cost(name):
+                if name not in interface_costs:
+                    interface_costs[name] = len(expanded['origins'][name]) + sum(signal_cost(instance['ip']['id'])
+                        for instance in document['subdesigns'][name]['instances'] if instance['ip']['id'] in document['subdesigns'])
+                return interface_costs[name]
+
+            for name in document['subdesigns']:
+                signal_cost(name)
+        elif document.get("schema_version") == 4:
             from core.hierarchy import hierarchy_library
             _, operation_library = hierarchy_library(document, library)
-        draft = _Draft(deepcopy(document), operation_library)
+        draft = _Draft(deepcopy(document), operation_library, interface_costs)
         for index, operation in enumerate(commands):
             if operation["op"] in ("connect", "disconnect"):
                 draft.connection(operation)

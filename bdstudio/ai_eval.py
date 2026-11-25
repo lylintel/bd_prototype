@@ -8,7 +8,7 @@ import yaml
 
 from ai.pipeline import run_pipeline
 from bdip import load_ip, migrate_legacy_modules
-from core.design import migrate
+from core.design import check_document, migrate
 from core.expr import MESSAGES
 from core.resolve import endpoint_text, resolve
 from core.semantic import validate
@@ -176,6 +176,19 @@ def load_held_out(path=HELD_OUT):
     return cases
 
 
+def load_interface_cases(path=ROOT / 'tests/ai_eval/interfaces.yaml'):
+    document = yaml.safe_load(path.read_text(encoding='utf-8'))
+    cases = document['cases']
+    if (document['schema_version'] != 1 or document.get('provenance') != 'independently_authored_design_and_signal_expectations'
+            or document.get('protocol') != 'axi-stream' or len(cases) != 20 or len({item['id'] for item in cases}) != 20
+            or sum(item['split'] == 'dev' for item in cases) != 12 or sum(item['split'] == 'held-out' for item in cases) != 8):
+        raise ValueError('Expected independent AXIS dev12/held-out8 cases')
+    for case in cases:
+        check_document(case['input'])
+        check_document(case['expect']['document'])
+    return deepcopy(cases)
+
+
 def write_report(report, folder, previous=None):
     folder.mkdir(parents=True, exist_ok=True)
     if previous is not None:
@@ -204,7 +217,7 @@ def main(argv=None):
     parser.add_argument("--allow-network", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--workspace", type=Path, default=ROOT)
-    parser.add_argument("--suite", choices=("dev", "held-out", "all"), default="all")
+    parser.add_argument("--suite", choices=("dev", "held-out", "all", "interfaces"), default="all")
     parser.add_argument("--max-calls", type=int, default=400)
     parser.add_argument("--max-cost", default="0")
     parser.add_argument("--input-price")
@@ -212,6 +225,14 @@ def main(argv=None):
     parser.add_argument("--input-overhead", type=int, default=1024)
     parser.add_argument("--max-output-tokens", type=int, default=8192)
     args = parser.parse_args(argv)
+    if args.suite == 'interfaces':
+        if args.client != 'mock' or args.allow_network:
+            parser.error('The interface cohort is offline mock only')
+        from ai.interface_evaluation import evaluate_interfaces, write_interface_report
+        report = evaluate_interfaces()
+        write_interface_report(report, args.report)
+        print(json.dumps({key: report[key] for key in ('cohort', 'count', 'completed_trials', 'calls', 'real_model_called', 'metrics')}, ensure_ascii=False))
+        return 0
     if args.client == "real" and not args.allow_network:
         parser.error(MESSAGES["AI_EVAL_NETWORK_REQUIRED"])
     from ai.client import LLMError

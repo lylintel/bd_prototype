@@ -81,6 +81,7 @@ class Turn:
     finished: bool = False
     stopping: bool = False
     workflow: object = None
+    proposal_attempts: int = 0
 
 
 class CopilotBridge:
@@ -183,16 +184,20 @@ class CopilotBridge:
         self.workspace.proposals.check_request(payload)
         context = None
         if payload.get("share_context") is True:
+            from ai.context import editable_scope
             from bdsemantic import canvas_document, prepare
 
             raw = copy.deepcopy(payload.get("design"))
             base_dir = payload.get("base_dir", ".")
             document, library = prepare(self.workspace, raw, base_dir)
-            data = raw if "schema_version" not in raw else canvas_document(document, library)
+            scope = payload.get('scope', '')
+            view = editable_scope(document, scope)
+            data = raw if "schema_version" not in raw and not scope else canvas_document(view, library)
             if len(json.dumps(document, ensure_ascii=False)) > MAX_CONTEXT:
                 raise CopilotError("Design snapshot is too large to share.")
-            advanced = any(any(key in endpoint for key in ("slice", "const", "concat")) for net in document["nets"] for endpoint in net["endpoints"])
-            context = {"design": data, "document": document, "advanced": advanced, "base_dir": base_dir,
+            advanced = document.get('schema_version') == 5 or bool(document.get('subdesigns')) or bool(scope) or any(any(key in endpoint for key in ("slice", "const", "concat")) for net in view["nets"] for endpoint in net["endpoints"])
+            context = {"design": data, "document": document, "advanced": advanced, "base_dir": base_dir, 'scope': scope,
+                       'ops_version': 2 if document.get('schema_version') == 5 or any(item.interfaces for item in library) else 1,
                        "allow_design_changes": payload.get("allow_design_changes") is True,
                        "selected_instances": payload.get("selected_instances", [])}
         elif "design" in payload:
@@ -249,11 +254,15 @@ class CopilotBridge:
             turn.task.cancel()
 
     def _tools(self, conversation):
-        from bdai import metadata_card, prepare_context, translate_legacy
-        from ai.context import budget_context, scope_violations
+        from bdai import fingerprint, metadata_card, prepare_context, translate_legacy
+        from ai.context import budget_context, editable_scope, scope_violations
         from core.ops import SCHEMA as OPS_SCHEMA, OperationError
 
         tools = []
+        version = (conversation.context or {}).get('ops_version', 1)
+        contract = copy.deepcopy(OPS_SCHEMA)
+        contract['properties']['schema_version'] = {'type': 'integer', 'const': version}
+        contract['properties']['ops']['items'] = {'$ref': '#/$defs/operationV2' if version == 2 else '#/$defs/operation'}
         descriptions = {
             "bd_design": "Read a compact shared netlist with instances, parameters, resolved ports and expression connections; no RTL or coordinates.",
             "bd_validate": "Validate the current shared design with the local core. Returns diagnostics and port interfaces, no file writes.",
@@ -271,7 +280,8 @@ class CopilotBridge:
             "bd_read_source": {"module": {"type": "string"}},
             "bd_requirements": {"specification": {"type": "object"}},
             "bd_plan": {"plan": {"type": "object"}},
-            "bd_propose": {"ops": OPS_SCHEMA["properties"]["ops"], "summary": {"type": "string", "maxLength": 8000}},
+            "bd_propose": {"ops": contract["properties"]["ops"], "summary": {"type": "string", "maxLength": 8000},
+                           **({'schema_version': {'type': 'integer', 'const': 2}} if version == 2 else {})},
         }
         for name in TOOL_NAMES:
             def invoke(invocation, tool_name=name):
@@ -290,25 +300,30 @@ class CopilotBridge:
                         raise CopilotError("The user did not share a design for this turn. Do not infer the current canvas from earlier turns.")
                     if tool_name == "bd_design":
                         document, library = prepare_context(self.workspace, context["document"], context["base_dir"])
-                        netlist, details = budget_context(document, library, token_budget=self.workspace._settings_store().configuration().context_token_budget,
+                        view = editable_scope(document, context.get('scope', ''))
+                        netlist, details = budget_context(view, library, token_budget=self.workspace._settings_store().configuration().context_token_budget,
                                                          selected_instances=context["selected_instances"])
+                        details['design_scope'] = context.get('scope', '')
                         result = {"netlist": netlist, "context_scope": details}
                     elif tool_name in ("bd_validate", "bd_preview"):
-                        inspected = self.workspace.semantic_inspect(context["document"], context["base_dir"])
+                        from bdsemantic import inspect_scope
+                        inspected = inspect_scope(self.workspace, {'design': context['document'], 'base_dir': context['base_dir'], 'scope': context.get('scope', '')})
                         result = {"valid": inspected["valid"], "diagnostics": [{key: item[key] for key in ("code", "params", "location")} for item in inspected["diagnostics"]],
-                                  "interfaces": inspected["interfaces"]}
+                                  "interfaces": inspected["interfaces"], **({'bus_interfaces': inspected['bus_interfaces']} if 'bus_interfaces' in inspected else {})}
                     else:
                         if context.get("allow_design_changes") is not True:
                             raise CopilotError("This user turn did not authorize the project design workflow.")
-                        if turn.workflow is None:
+                        if context['advanced'] and tool_name in ('bd_requirements', 'bd_plan', 'bd_generate'):
+                            raise OperationError('OP_LEGACY_UNSUPPORTED', op='current_scope_requires_typed_ops')
+                        if turn.workflow is None and not context['advanced']:
                             turn.workflow = DesignRun(self.workspace, context, conversation.evidence, turn.id)
                         workflow = turn.workflow
                         optional = {"summary"} if tool_name == "bd_propose" else {"query"} if tool_name == "bd_catalog" else set()
                         required = set(schemas.get(tool_name, {})) - optional
                         arguments = bdtool._fields(invocation.arguments or {}, "tool.arguments", required, optional)
                         if tool_name == "bd_workflow":
-                            result = {"skill": workflow_instructions(), "contract": OPS_SCHEMA,
-                                "base_hash": workflow.base_hash, "user_evidence": conversation.evidence,
+                            result = {"skill": workflow_instructions(), "contract": contract, 'scope': context.get('scope', ''),
+                                "base_hash": workflow.base_hash if workflow else fingerprint(context['document']), "user_evidence": conversation.evidence,
                                 "previous_specification": conversation.specification, "dimensions": DIMENSIONS, "checks": CHECKS}
                         elif tool_name == "bd_catalog":
                             from ai.retrieval import SearchIndex
@@ -318,7 +333,7 @@ class CopilotBridge:
                                 send_descriptions=self.workspace._settings_store().configuration().send_ip_descriptions)
                             identifiers = {item["id"] for item in cards}
                             result = {"ips": cards,
-                                      "legacy_definition_hashes": {name: item["definition_hash"] for name, item in workflow.catalog["modules"].items() if name in identifiers}}
+                                      "legacy_definition_hashes": {name: item["definition_hash"] for name, item in workflow.catalog["modules"].items() if name in identifiers} if workflow else {}}
                         elif tool_name == "bd_read_source":
                             _, library = prepare_context(self.workspace, context["document"], context["base_dir"])
                             matches = [metadata_card(item) for item in library if item.id == arguments["module"]]
@@ -336,34 +351,42 @@ class CopilotBridge:
                         else:
                             proposal = getattr(turn, "legacy_proposal", None) if tool_name == "bd_generate" else None
                             if proposal is None:
+                                if turn.proposal_attempts >= 3:
+                                    raise OperationError('AI_ATTEMPT_LIMIT', limit=3)
+                                turn.proposal_attempts += 1
                                 if tool_name == "bd_generate":
                                     if workflow.plan is None or workflow.candidate is None or workflow.blockers:
                                         raise CopilotError("A valid audited plan is required before proposing changes.")
                                     operations = translate_legacy(self.workspace, context, workflow.plan["operations"])
                                     summary = "; ".join(item["statement"] for item in workflow.specification["requirements"])
                                 else:
+                                    if version == 2 and (type(arguments['schema_version']) is not int or arguments['schema_version'] != 2):
+                                        raise OperationError('OP_SCHEMA', path='schema_version', rule='version')
                                     operations = arguments["ops"]
                                     summary = arguments.get("summary", "")
                                 document, library = prepare_context(self.workspace, context["document"], context["base_dir"])
-                                _, details = budget_context(document, library, token_budget=self.workspace._settings_store().configuration().context_token_budget,
+                                view = editable_scope(document, context.get('scope', ''))
+                                _, details = budget_context(view, library, token_budget=self.workspace._settings_store().configuration().context_token_budget,
                                                             selected_instances=context["selected_instances"])
+                                details['design_scope'] = context.get('scope', '')
                                 if scope_violations(operations, details):
                                     raise OperationError("AI_CONTEXT_SCOPE", op="proposal")
-                                proposal = self.workspace.propose_ops({"design": context["document"], "base_dir": context["base_dir"], "ops": operations, "summary": summary})
+                                proposal = self.workspace.propose_ops({"design": context["document"], "base_dir": context["base_dir"], 'scope': context.get('scope', ''),
+                                    "ops": {'schema_version': version, 'ops': operations}, "summary": summary})
                                 proposal["context"] = details
                                 if tool_name == "bd_generate":
                                     turn.legacy_proposal = proposal
                                 self._emit(turn, {"type": "proposal", "proposal": proposal})
                             result = {"proposal_id": proposal["id"], "valid": proposal["valid"], "requires_confirmation": True,
                                       "diagnostics": [{key: item[key] for key in ("code", "params", "location")} for item in proposal["diagnostics"]],
-                                      "run_dir": self.workspace.relative(workflow.directory)}
+                                      **({"run_dir": self.workspace.relative(workflow.directory)} if workflow else {})}
                         if tool_name in ("bd_requirements", "bd_plan", "bd_generate"):
                             self._emit(turn, {"type": "workflow", "stage": tool_name, "run_dir": self.workspace.relative(workflow.directory),
                                 "status": "pending_confirmation" if tool_name == "bd_generate" else "blocked" if workflow.blockers else "complete", "blockers": workflow.blockers})
                     text = json.dumps(result, ensure_ascii=False)
                     if tool_name in ("bd_design", "bd_validate", "bd_preview", "bd_catalog", "bd_read_source"):
                         text = f"BEGIN_BD_DATA\n{text}\nEND_BD_DATA"
-                    if len(text) > MAX_CONTEXT:
+                    if len(text) > MAX_CONTEXT or len(text.encode('utf-8')) > 128 * 1024:
                         raise CopilotError("Tool result is too large; request a smaller design.")
                     self._emit(turn, {"type": "tool", "name": tool_name, "status": "complete"})
                     return self._sdk.Result(result_type="success", text_result_for_llm=text)

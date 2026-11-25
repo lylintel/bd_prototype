@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Check, X } from "lucide-react";
 import { hasMessage, t } from "../i18n.js";
 import { diagnosticMessage } from "../semantic/model.js";
-import { operationText } from "./model.js";
+import { operationMembers, operationText } from "./model.js";
 import "./ai.css";
 
 export default function Proposal({ proposal, busy = false, onAccept, onDiscard, onSelect = null }) {
@@ -29,6 +29,8 @@ export default function Proposal({ proposal, busy = false, onAccept, onDiscard, 
   return <section className="ai-proposal" aria-label={t("ai.proposalTitle")}>
     <header><strong>{t("ai.proposalTitle")}</strong><span>{t(proposal.valid && view.valid ? "ai.pending" : "ai.invalid")}</span></header>
     {proposal.summary && <p className="ai-summary">{proposal.summary}</p>}
+    <p className="ai-operation-count">{t("ai.currentScope", { name: proposal.scope || proposal.document.name })}</p>
+    {proposal.migration && <p className="ai-warning" role="status">{t("ai.schemaMigration", proposal.migration)}</p>}
     {proposal.context?.scope === "subgraph" && <p className="ai-warning" role="status">{t("ai.subgraphOnly", { count: proposal.context.included_instances.length, total: proposal.context.totals.instances })}</p>}
     {proposal.attempts > 0 && <p className="ai-operation-count">{t("ai.attempts", { count: proposal.attempts })}</p>}
     {["assumptions", "questions", "missing_ip"].map((field) => proposal[field]?.length > 0 && <div className="ai-notes" key={field}><strong>{t(`ai.${field}`)}</strong><ul>{proposal[field].map((value, index) => <li key={index}>{value}</li>)}</ul></div>)}
@@ -37,6 +39,8 @@ export default function Proposal({ proposal, busy = false, onAccept, onDiscard, 
       <label><input type="checkbox" aria-label={t("ai.selectOperation", { index: index + 1 })} checked={selected.includes(index)} disabled={busy || pending || checking}
         onChange={(event) => selectionChanged(event.target.checked ? [...selected, index].sort((left, right) => left - right) : selected.filter((value) => value !== index))} />
         <span>{hasMessage(`ai.op.${operation.op}`) ? t(`ai.op.${operation.op}`) : operation.op}</span><code>{operationText(operation)}</code></label>
+      {operation.from?.type === "interface" && <details><summary>{t("interfaces.members")}</summary>{operationMembers(proposal, operation).map((member) =>
+        <div className="interface-member" key={member.signal}><strong>{member.signal}</strong><code>{t("interfaces.binding", member)}</code><span>{t("interfaces.width", member)}</span></div>)}</details>}
     </li>)}</ol>
     {!proposal.ops.length && <p>{t("ai.empty")}</p>}
     {view.diagnostics?.length > 0 && <div className="ai-proposal-diagnostics">{view.diagnostics.map((item, index) =>

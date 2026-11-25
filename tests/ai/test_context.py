@@ -12,6 +12,59 @@ from core.design import DesignFormatError
 from scripts.synthetic_design import synthetic_design
 
 
+def test_interface_cards_and_netlist_include_only_confirmed_structural_facts():
+    from ai.context import compact_design
+    from core.hierarchy import collapse_design
+    from tests.semantics.test_interfaces import axis_pair_data
+
+    document, library = axis_pair_data()
+    card = metadata_card(library[0])
+    output = next(item for item in card['interfaces'] if item['name'] == 'm_axis')
+    assert output['parameters']['DATA_WIDTH'] == 8
+    assert output['parameter_expressions']['DATA_WIDTH'] == 'WIDTH'
+    assert output['signals']['tready'] == {'port': 'm_ready', 'direction': 'in', 'width': 1}
+    assert set(output['missing_optional_signals']) == {'tkeep', 'tstrb', 'tlast', 'tid', 'tdest', 'tuser'}
+    unconfirmed = replace(library[0], interfaces=tuple({**item, 'confirmed': False} for item in library[0].interfaces))
+    assert 'interfaces' not in metadata_card(unconfirmed)
+    folded = collapse_design(document, library, ['first'], 'stream_group')
+    netlist = compact_design(folded, library)
+    group = next(item for item in netlist['instances'] if item['name'] == 'stream_group')
+    assert group['hierarchical'] and group['interfaces'][0]['occupied']
+    assert group['interfaces'][0]['connections'] == ['link']
+    assert group['interfaces'][0]['effective_mode'] == 'master'
+    assert netlist['interface_connections'] == folded['interface_connections']
+    assert all('__bd_if_' not in net['name'] for net in netlist['nets'])
+    assert all(key not in json.dumps(netlist) for key in ('project_ips', 'subdesigns', 'source', 'sha256'))
+
+
+def test_interface_subgraph_includes_whole_bus_neighbors_and_rejects_partial_context():
+    from copy import deepcopy
+    from tests.semantics.test_interfaces import axis_pair_data
+
+    document, library = axis_pair_data()
+    original_instances, original_links = deepcopy(document['instances']), deepcopy(document['interface_connections'])
+    document['instances'] = []
+    document['interface_connections'] = []
+    document['nets'] = []
+    for ordinal in range(30):
+        for instance in original_instances:
+            document['instances'].append({**deepcopy(instance), 'name': f"{instance['name']}_{ordinal}"})
+        connection = deepcopy(original_links[0])
+        connection['name'] = f'link_{ordinal}'
+        for key in ('from', 'to'):
+            connection[key]['inst'] += f'_{ordinal}'
+        document['interface_connections'].append(connection)
+    subset, details = budget_context(document, library, token_budget=10_000, selected_instances=['first_0'])
+    assert details['scope'] == 'subgraph'
+    assert {item['name'] for item in subset['instances']} == {'first_0', 'second_0'}
+    assert subset['interface_connections'] == [document['interface_connections'][0]]
+    assert details['totals']['interface_connections'] == 30
+    assert details['estimated_tokens'] <= 10_000
+    with pytest.raises(LLMError) as raised:
+        budget_context(document, library, token_budget=512, selected_instances=['first_0'])
+    assert raised.value.code == 'AI_CONTEXT_BUDGET'
+
+
 @pytest.mark.parametrize("count", [500, 2000])
 def test_context_budget_full_subgraph_and_explicit_errors(count):
     document, library = synthetic_design(instance_count=count)

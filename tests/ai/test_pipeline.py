@@ -10,6 +10,64 @@ from ai.pipeline import run_pipeline
 from core.hierarchy import collapse_design
 
 
+def test_axis_pipeline_retries_whole_interface_batches_and_exposes_structural_feedback():
+    from tests.semantics.test_interfaces import axis_pair_data
+
+    document, library = axis_pair_data()
+    document['interface_connections'] = []
+    operation = {'op': 'connect', 'net': 'link', 'from': {'type': 'interface', 'inst': 'first', 'interface': 'm_axis'},
+                 'to': {'type': 'interface', 'inst': 'second', 'interface': 's_axis'}}
+    wrong = {**operation, 'to': {'type': 'interface', 'inst': 'second', 'interface': 'm_axis'}}
+    client = ReplayClient([response([wrong], schema_version=2), response([operation], schema_version=2)])
+    result = run_pipeline(document, library, '连接两个流接口', client)
+    assert result['validation']['valid'] and result['attempts'] == 2
+    assert len(result['document']['interface_connections']) == 1 and result['document']['nets'] == document['nets']
+    assert client.requests[0]['schema']['properties']['schema_version']['const'] == 2
+    feedback = json.loads(client.requests[1]['messages'][-1]['content'])
+    assert feedback['diagnostics'][0]['code'] == 'E202'
+    assert feedback['affected_interfaces']['first'][1]['effective_mode'] == 'master'
+    assert {'inst': 'second', 'interface': 's_axis', 'mode': 'slave', 'parameters': {'DATA_WIDTH': 8}} in feedback['available_interfaces']
+    assert feedback['affected_external_interfaces'] == []
+    assert all('message' not in item for item in feedback['diagnostics'])
+    assert document['interface_connections'] == []
+
+
+def test_pipeline_current_open_child_merges_back_into_unchanged_root(bundle):
+    document, library = bundle
+    document = collapse_design(document, library, ['counter_0', 'compare_0'], 'group')
+    before = deepcopy(document)
+    client = ReplayClient([response([parameter('compare_0', 'THRESHOLD', 19)])])
+    result = run_pipeline(document, library, '修改当前层比较器阈值', client, scope='group')
+    assert result['validation']['valid']
+    assert result['document']['instances'] == before['instances'] and result['document']['nets'] == before['nets']
+    assert result['document']['subdesigns']['group']['instances'][1]['params']['THRESHOLD'] == 19
+    assert result['context']['design_scope'] == 'group'
+    context = json.loads(client.requests[0]['messages'][2]['content'].split('\n', 1)[1].rsplit('\n', 1)[0])
+    assert context['netlist']['name'] == 'group'
+    assert 'subdesigns' not in context['netlist']
+    assert document == before
+    invalid = run_pipeline(document, library, '修改当前层宽度', ReplayClient([response([parameter('counter_0', 'WIDTH', 16)])] * 3), scope='group')
+    assert not invalid['validation']['valid']
+    assert any(item['location'].get('design') == 'group' for item in invalid['validation']['diagnostics'])
+
+
+@pytest.mark.parametrize('nested', [False, True])
+def test_pipeline_shared_definitions_are_readonly_before_any_model_call(bundle, nested):
+    document, library = bundle
+    document = collapse_design(document, library, ['counter_0', 'compare_0'], 'group')
+    reference = 'group'
+    if nested:
+        document = collapse_design(document, library, ['group'], 'outer')
+        reference = 'outer'
+    document['instances'].append({'name': 'reuse', 'ip': {'id': reference, 'version': '1.0.0'}})
+    client = ReplayClient([response([parameter('compare_0', 'THRESHOLD', 19)])])
+    before = deepcopy(document)
+    with pytest.raises(LLMError) as caught:
+        run_pipeline(document, library, '修改共享定义', client, scope='group')
+    assert caught.value.code == 'AI_SHARED_SCOPE'
+    assert client.requests == [] and document == before
+
+
 def test_hierarchy_mock_edits_current_level_leaf_and_keeps_definitions(bundle):
     document, library = bundle
     document = collapse_design(document, library, ["counter_0"], "counter_group")

@@ -50,6 +50,10 @@ GUI 与新语义 API 支持明确的 IP 版本引用、参数表达式、可定�
 v4 支持多选实例折叠为可复用子设计、双击进入和面包屑返回。子层参数及连接修改写回整个权威设计，生成每个子设计的独立模块。
 层次示例见 [examples/hierarchy/counter.json](examples/hierarchy/counter.json)。高端口数子设计默认显示可展开摘要，网络束仅聚合显示，点击后可选择真实网络。
 
+v5 增加已确认的 AXI-Stream ready-valid 接口，示例见 [examples/interfaces/axis_pair.json](examples/interfaces/axis_pair.json)。导入候选必须确认，画布支持接口句柄、粗线和只读成员展开；修改单信号前需确认物化，取消不修改，一次撤销恢复整束。完整层次边界导出也需确认，可选成员不对称不会自动补常量。旧文件不自动升级，无接口 v5 与同模式 v4 HDL 逐字节一致，统一契约见 [docs/design/migration.md](docs/design/migration.md)。
+
+AI 使用当前打开层的局部名字和已确认接口；共享子定义只读，候选合回整根检查，接受时核对作用层及整根快照。ops v2 增加原子 interface 端点，禁止混接/嵌入 concat，每提案最多新增展开 4096 信号；v1 回放继续按原端点契约验证。独立离线评测：`python -m bdstudio.ai_eval --client mock --suite interfaces --report build/ai-eval-interfaces`，包含冻结的 dev12/held-out8 和三轮重复，不允许真实网络模式。实施及性能验收状态见 [docs/reports/phase-2b-1.md](docs/reports/phase-2b-1.md)。
+
 “整理布局”在独立 Web Worker 中运行 ELK，小图分层、超过 500 节点时矩形打包。大图保留当前视口，分批应用坐标，计算和应用阶段均可取消；设计变化时不覆盖新编辑。布局只改变独立坐标，一次撤销恢复。
 超过 256 条显示边时使用端点 net 标签，选中恢复完整路径，向量默认粗线。标签不改变电气连接；长名称可悬停查看全文。
 

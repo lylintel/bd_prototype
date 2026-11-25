@@ -106,6 +106,8 @@ export function endpointPins(endpoint, depth = 0) {
 
 export function formatEndpoint(endpoint, depth = 0) {
   if (!endpoint || typeof endpoint !== "object" || depth > 16) return "?";
+  if (endpoint.ext_interface) return `@${endpoint.ext_interface}`;
+  if (endpoint.interface) return `${endpoint.inst}.${endpoint.interface}`;
   if (Object.hasOwn(endpoint, "const")) return String(endpoint.const);
   if (Array.isArray(endpoint.concat)) return `{${endpoint.concat.map((child) => formatEndpoint(child, depth + 1)).join(", ")}}`;
   const key = endpointPins(endpoint)[0] ?? "?";

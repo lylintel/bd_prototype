@@ -9,6 +9,56 @@ from core.ops import apply_ops
 from core.semantic import validate
 
 
+def test_interface_expectations_are_authored_before_replays_and_keep_old_cohorts_independent():
+    from bdstudio.ai_eval import load_interface_cases
+
+    cases = load_interface_cases()
+    assert len(cases) == 20
+    assert sum(case['split'] == 'dev' for case in cases) == 12
+    assert sum(case['split'] == 'held-out' for case in cases) == 8
+    assert not {case['id'] for case in cases} & {case['id'] for case in [*load_cases(), *load_held_out()]}
+    for case in cases:
+        expected = case['expect']
+        assert isinstance(expected['valid'], bool) and isinstance(expected['codes'], list)
+        assert not expected['valid'] or not expected['codes']
+        assert 'document' in expected and 'expanded' in expected
+    assert len(next(case['prompt'] for case in cases if case['category'] == 'long-contradiction')) >= 200
+    expected = cases[0]['expect']['expanded']['axis_pair']
+    assert ['second.s_ready', 'first.m_ready', 1] in expected
+
+
+def test_interface_replays_score_against_frozen_independent_expectations(tmp_path):
+    from ai.interface_evaluation import evaluate_interfaces, write_interface_report
+
+    report = evaluate_interfaces()
+    assert report['count'] == 20 and report['completed_trials'] == 60
+    assert report['real_model_called'] is False and report['consistency'] == 1
+    assert all(trial['final_pass'] for trial in report['trials']), [(trial['id'], trial['checks'], trial['diagnostics']) for trial in report['trials'] if not trial['final_pass']]
+    assert all(trial['calls'] == 0 for trial in report['trials'] if trial['id'] == 'axis_held_shared')
+    assert all(trial['attempts'] == 2 and not trial['first_pass'] for trial in report['trials'] if trial['id'] == 'axis_dev_width_repair')
+    write_interface_report(report, tmp_path)
+    assert (tmp_path / 'report.json').is_file() and (tmp_path / 'report.md').is_file()
+
+
+def test_interface_scoring_rejects_corrupt_replay_without_rewriting_expectations():
+    from ai.interface_evaluation import evaluate_interfaces
+    from bdstudio.ai_eval import load_interface_cases
+
+    case = load_interface_cases()[0]
+    original = deepcopy(case)
+    recordings = json.loads((ROOT / 'tests/ai_eval/interface_replays.json').read_text(encoding='utf-8'))
+    recordings[case['id']][0]['ops'][0]['to']['interface'] = 'm_axis'
+    report = evaluate_interfaces([case], recordings)
+    assert all(not trial['final_pass'] and not trial['checks']['document'] and not trial['checks']['signals'] for trial in report['trials'])
+    assert case == original
+
+
+def test_interface_evaluation_never_enables_real_network_mode(tmp_path):
+    with pytest.raises(SystemExit) as raised:
+        main(['--suite', 'interfaces', '--client', 'real', '--allow-network', '--report', str(tmp_path)])
+    assert raised.value.code == 2 and not (tmp_path / 'report.json').exists()
+
+
 def test_scoring_distinguishes_validity_topology_parameters_and_missing_ip():
     expected = {"instances": [["unit", "counter", "1.0.0"]], "connections": [["@clk", "unit.clk"]],
                 "params": {"unit.WIDTH": 8}, "ports": {"clk": {"dir": "in", "width": 1, "signed": False}}, "missing_ip": False}

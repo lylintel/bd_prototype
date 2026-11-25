@@ -10,7 +10,7 @@ import CopilotPanel from "./CopilotPanel.jsx";
 import AISettings from "./ai/Settings.jsx";
 import { useAIPrivacy } from "./ai/Privacy.jsx";
 import AIAssistant from "./ai/Assistant.jsx";
-import { candidateGraph, designChanges, mergePreview } from "./ai/model.js";
+import { candidateGraph, designChanges, mergePreview, proposalView } from "./ai/model.js";
 import { Sparkles } from "lucide-react";
 import { ImportButton, LibraryList, OriginBadge } from "./ip/Library.jsx";
 import { IP_DRAG_TYPE, addImported, findImportedDrop, originForDefinition } from "./ip/model.js";
@@ -22,7 +22,7 @@ import ExpressionNode from "./semantic/ExpressionNode.jsx";
 import InterfacePanel, { InterfaceConfirmation } from "./semantic/InterfacePanel.jsx";
 import { interfaceMode, parseInterfaceHandle, projectInterfaceGraph } from "./semantic/interfaces.js";
 import { markLayout, markOutput, nodeGeometry, recordRender, sameNodeData, visibleLabelEdges } from "./performance.js";
-import { bundleHierarchyEdges, hasSubdesign, mergeScopeState, scopeState } from "./semantic/hierarchy.js";
+import { bundleHierarchyEdges, hasSubdesign, mergeScopeState, scopeReferenceCount, scopeState } from "./semantic/hierarchy.js";
 import { publishPositions, requestLayout } from "./layout/client.js";
 import { createHistory, commitHistory, undoHistory, redoHistory } from "./history.js";
 import { editableCanvas, interfaceOwnedPins, expressionId, normalizeInspection, projectConnections, renameSemantic, replaceEndpoint, scheduleInspection, syncDocument } from "./semantic/model.js";
@@ -185,6 +185,7 @@ export default function App() {
   const rootDocument = history?.current.document ?? history?.current.design;
   const currentHdlResult = hdlResult?.document === rootDocument && hdlResult?.baseDir === baseDir && hdlResult?.language === hdlLanguage ? hdlResult.result : null;
   const scope = hasSubdesign(rootDocument, scopePath.at(-1)) ? scopePath.at(-1) : "";
+  const sharedScope = useMemo(() => Boolean(scope && scopeReferenceCount(rootDocument, scope) !== 1), [rootDocument, scope]);
   const toggleGroupPins = useCallback((name) => setExpandedGroups((current) => current.includes(`${scope}:${name}`) ? current.filter((item) => item !== `${scope}:${name}`) : [...current, `${scope}:${name}`]), [scope]);
   const logicalView = useMemo(() => scopeState(history?.current, scope), [history?.current.design, history?.current.document, scope]);
   const view = useMemo(() => logicalView ? { ...logicalView, layout: scope ? history.current.layout.scopes?.[scope] ?? initialLayout : history.current.layout } : logicalView,
@@ -392,19 +393,23 @@ export default function App() {
 
   async function applyCopilotProposal(proposal, selected) {
     const current = editorState.current;
-    if (current.scope) throw new Error(t("ai.rootOnly"));
-    if (!current.history || current.busy) throw new Error(t("semantic.notReady"));
-    const original = current.view.document ?? current.view.design;
-    const result = await api("/api/ops/accept", { proposal_id: proposal.id, selected, confirmed: true, design: original, base_dir: current.baseDir });
+    if (!current.history || current.busy || (proposal.scope ?? "") !== current.scope) throw new Error(t("semantic.notReady"));
+    const snapshot = current.history.current;
+    const original = snapshot.document ?? snapshot.design;
+    const result = await api("/api/ops/accept", { proposal_id: proposal.id, selected, confirmed: true, design: original, base_dir: current.baseDir, scope: current.scope });
     const latest = editorState.current;
-    if ((latest.view.document ?? latest.view.design) !== original || latest.baseDir !== current.baseDir) throw new Error(t("semantic.notReady"));
-    const applied = mutate((next, nextLayout) => {
-      for (const key of Object.keys(next)) delete next[key];
-      Object.assign(next, result.canvas);
-      const nodes = new Set([...Object.keys(next.instances), ...Object.keys(next.ports).map(externalId)]);
-      for (const id of Object.keys(nextLayout.nodes)) if (!nodes.has(id)) delete nextLayout.nodes[id];
-    }, t("ai.accepted"), false, result.document, true);
-    if (!applied) throw new Error(t("ai.acceptFailed"));
+    if (latest.history.current !== snapshot || latest.scope !== current.scope || latest.baseDir !== current.baseDir) throw new Error(t("semantic.notReady"));
+    const nextLayout = clone(snapshot.layout);
+    const visible = current.scope ? result.scope_canvas : result.canvas;
+    const visibleDocument = current.scope ? result.scope_document : result.document;
+    const visibleLayout = current.scope ? (nextLayout.scopes ??= {})[current.scope] ??= clone(initialLayout) : nextLayout;
+    const nodeIds = new Set([...Object.keys(visible.instances), ...Object.keys(visible.ports).map(externalId),
+      ...(visibleDocument.interfaces ?? []).map((item) => `@interface:${item.name}`)]);
+    for (const id of Object.keys(visibleLayout.nodes)) if (!nodeIds.has(id)) delete visibleLayout.nodes[id];
+    const nextHistory = commitHistory(current.history, { ...snapshot, document: result.document,
+      design: validateDocumentShape(editableCanvas(result.document, result.canvas)), layout: nextLayout });
+    editorState.current = { ...latest, history: nextHistory };
+    setHistory(nextHistory); setSaved(false); setChecking(true); setInspection({ ...emptyInspection }); setActivity(t("ai.accepted"));
     setSelection(null);
     setPendingPin(null);
     notify(t("ai.accepted"));
@@ -414,27 +419,44 @@ export default function App() {
 
   async function generateProposal(prompt, allowRemovals) {
     const current = editorState.current;
-    if (current.scope) throw new Error(t("ai.rootOnly"));
-    const original = current.view.document ?? current.view.design;
+    if (!current.history || current.busy) throw new Error(t("semantic.notReady"));
+    const snapshot = current.history.current;
+    const original = snapshot.document ?? snapshot.design;
     const selectedInstances = selection?.type === "node" && !selection.id.startsWith("@") ? [selection.id] : [];
-    const result = await api("/api/ai/propose", { design: original, base_dir: current.baseDir, prompt, allow_removals: allowRemovals, selected_instances: selectedInstances });
+    const result = await api("/api/ai/propose", { design: original, base_dir: current.baseDir, scope: current.scope, prompt, allow_removals: allowRemovals, selected_instances: selectedInstances });
     const latest = editorState.current;
-    if ((latest.view.document ?? latest.view.design) !== original || latest.baseDir !== current.baseDir) {
+    if (latest.history.current !== snapshot || latest.scope !== current.scope || latest.baseDir !== current.baseDir) {
       await api("/api/ops/discard", { proposal_id: result.id });
       throw new Error(t("semantic.notReady"));
     }
-    setPreview(result);
+    setPreview(proposalView(result));
     setViewportRequest({ fit: true });
     return result;
   }
 
   async function selectProposal(proposal, selected) {
     const current = editorState.current;
+    if ((proposal.scope ?? "") !== current.scope || current.busy) throw new Error(t("semantic.notReady"));
+    const snapshot = current.history.current;
     const result = await api("/api/ops/select", { proposal_id: proposal.id, selected,
-      design: current.view.document ?? current.view.design, base_dir: current.baseDir });
-    setPreview(result);
+      design: snapshot.document ?? snapshot.design, base_dir: current.baseDir, scope: current.scope });
+    const latest = editorState.current;
+    if (latest.history.current !== snapshot || latest.scope !== current.scope || latest.baseDir !== current.baseDir) throw new Error(t("semantic.notReady"));
+    setPreview(proposalView(result));
     return result;
   }
+
+  function previewProposal(value) {
+    setPreview(value ? proposalView(value) : null);
+    if (value) setViewportRequest({ fit: true });
+  }
+
+  useEffect(() => {
+    if (preview && (preview.scope ?? "") !== scope) {
+      setPreview(null);
+      api("/api/ops/discard", { proposal_id: preview.id }).catch((error) => notify(error.message, true));
+    }
+  }, [scope, preview?.scope, preview?.id]);
 
   function undo() {
     if (!history?.past.length || busy) return;
@@ -576,8 +598,8 @@ export default function App() {
   const labeledEdges = useMemo(() => bundledEdges.length > 256 ? bundledEdges.map((edge) => ({ ...edge, data: { ...edge.data, labelMode: true } })) : bundledEdges, [bundledEdges]);
   const displayedEdges = useMemo(() => labeledEdges.length > 256 ? visibleLabelEdges(labeledEdges, nodes, viewport, canvasWidth, canvasHeight) : labeledEdges,
     [labeledEdges, nodes, viewport, canvasWidth, canvasHeight]);
-  const previewGraph = useMemo(() => candidate ? mergePreview(nodes, edges, candidate.nodes, candidate.edges, designChanges(design, preview.canvas)) : null,
-    [candidate, nodes, edges, design, preview?.canvas]);
+  const previewGraph = useMemo(() => candidate ? mergePreview(nodes, edges, candidate.nodes, candidate.edges, designChanges(design, preview.canvas, document, preview.document)) : null,
+    [candidate, nodes, edges, design, document, preview?.canvas, preview?.document]);
   const graph = previewGraph ?? { nodes, edges: displayedEdges };
 
   useEffect(() => {
@@ -954,8 +976,8 @@ export default function App() {
       <div className="brand"><span className="brand-symbol"><CircuitBoard size={22} strokeWidth={1.6} /></span><span>BD <strong>Studio</strong></span><span className="local-badge">LOCAL</span></div>
       <div className="header-center"><span className="session-dot" />RTL WORKSPACE</div>
       <div className="header-actions">
-        <IconButton icon={Bot} label={scope ? t("ai.rootOnly") : "Copilot 助手"} aria-pressed={copilotOpen} disabled={Boolean(preview || scope)} onClick={() => setCopilotOpen(!copilotOpen)} />
-        <IconButton icon={Sparkles} label={t(scope ? "ai.rootOnly" : "ai.assistant")} disabled={Boolean(scope)} onClick={() => { setCopilotOpen(false); setAssistantOpen(true); }} />
+        <IconButton icon={Bot} label={sharedScope ? t("ai.sharedReadOnly") : "Copilot 助手"} aria-pressed={copilotOpen} disabled={Boolean(preview || sharedScope)} onClick={() => setCopilotOpen(!copilotOpen)} />
+        <IconButton icon={Sparkles} label={t(sharedScope ? "ai.sharedReadOnly" : "ai.assistant")} disabled={sharedScope} onClick={() => { setCopilotOpen(false); setAssistantOpen(true); }} />
         <IconButton icon={Settings2} label={t("ai.settings")} onClick={() => setAiSettingsOpen(true)} disabled={Boolean(busy)} />
         <IconButton icon={FilePlus2} label="新建设计" onClick={newDocument} disabled={Boolean(busy || preview)} />
         <IconButton icon={FolderOpen} label="打开设计" onClick={openDialog} disabled={Boolean(busy || preview)} />
@@ -1098,9 +1120,9 @@ export default function App() {
     }} />
     <footer className="status-bar"><span><span className="session-dot" />{busy || "本地连接"}</span><span className="status-path">{documentPath || "Untitled"}</span><span>JSON <span className="status-divider">|</span> {t(hdlLanguage === "sv" ? "hdl.systemVerilog" : "hdl.verilog2005")}</span></footer>
 
-    <CopilotPanel open={copilotOpen && !scope} onClose={() => setCopilotOpen(false)} api={api} token={token} design={document} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} onAuthorize={privacy.authorize} />
+    <CopilotPanel key={scope} open={copilotOpen && !sharedScope} onClose={() => setCopilotOpen(false)} api={api} token={token} design={rootDocument} scope={scope} baseDir={baseDir} onAcceptProposal={applyCopilotProposal} onAuthorize={privacy.authorize} onSelect={selectProposal} onPreview={previewProposal} />
     <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} api={api} />
-    <AIAssistant open={assistantOpen && !scope} onClose={() => setAssistantOpen(false)} onSettings={() => setAiSettingsOpen(true)} api={api}
+    <AIAssistant key={scope} open={assistantOpen && !sharedScope} onClose={() => setAssistantOpen(false)} onSettings={() => setAiSettingsOpen(true)} api={api}
       onGenerate={generateProposal} onAccept={applyCopilotProposal} onSelect={selectProposal} onPreview={setPreview} />
 
     {toast && <div className={`toast ${toast.error ? "error" : ""}`} role={toast.error ? "alert" : "status"}>{toast.error ? <CircleAlert size={17} /> : <CircleCheck size={17} />}<span>{toast.message}</span><IconButton icon={X} label="关闭通知" onClick={() => setToast(null)} /></div>}

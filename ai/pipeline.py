@@ -4,11 +4,13 @@ import json
 from jsonschema import Draft202012Validator
 
 from ai.client import LLMError
-from ai.context import budget_context, scope_violations
+from ai.context import apply_scoped_ops, budget_context, compact_design, editable_scope, scope_violations
+from core.hierarchy import resolve_hierarchy, scope_document
+from core.interfaces import expand_interfaces
 from ai.retrieval import SearchIndex
 from core.design import check_document
 from core.diagnostics import Diagnostic
-from core.ops import SCHEMA as OPS_SCHEMA, OperationError, apply_ops, validate_operations
+from core.ops import SCHEMA as OPS_SCHEMA, OperationError, validate_operations
 from core.resolve import resolve
 from core.semantic import validate
 
@@ -16,10 +18,20 @@ from core.semantic import validate
 TEXT_LIST = {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 1024}}
 RESPONSE_SCHEMA = {"type": "object", "additionalProperties": False,
     "required": ["schema_version", "ops", "summary", "assumptions", "missing_ip", "questions"],
-    "properties": {"schema_version": {"type": "integer", "const": 1}, "ops": OPS_SCHEMA["properties"]["ops"],
+    "properties": {"schema_version": {"type": "integer", "const": 1}, "ops": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/operation"}},
                    "summary": {"type": "string", "maxLength": 8000}, "assumptions": TEXT_LIST, "missing_ip": TEXT_LIST, "questions": TEXT_LIST},
     "$defs": OPS_SCHEMA["$defs"]}
 RESPONSE_VALIDATOR = Draft202012Validator(RESPONSE_SCHEMA)
+
+
+def response_schema(version):
+    result = deepcopy(RESPONSE_SCHEMA)
+    result['properties']['schema_version']['const'] = version
+    if version == 2:
+        result['properties']['ops']['items'] = {'$ref': '#/$defs/operationV2'}
+    return result
+
+
 SYSTEM = """Produce one JSON operation proposal conforming to the supplied schema.
 Use only IP id/version references in the supplied cards for new instances and actual
 ports in cards/current netlist. Never invent missing IPs or infer unspecified widths,
@@ -50,6 +62,9 @@ def affected_ports(candidate, library, operations, diagnostics):
         pending.extend(item[key] for key in ("from", "to") if isinstance(item.get(key), dict))
         pending.extend(item.get("concat", []))
     resolved = resolve(candidate, library)
+    if candidate.get('schema_version') in (4, 5):
+        projected = expand_interfaces(candidate, library)['document'] if candidate['schema_version'] == 5 else candidate
+        resolved = resolve_hierarchy(projected, library)
     return {name: {port: shape.to_dict() for port, shape in resolved.instances[name].ports.items()}
             if name in resolved.instances else {} for name in sorted(value for value in names if isinstance(value, str))}
 
@@ -63,35 +78,45 @@ def _result(response, candidate, diagnostics, attempt, trace, cards, context):
             "retrieved": [{"id": card["id"], "version": card["version"]} for card in cards]}
 
 
-def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_removals=False, context_token_budget=32_000, selected_instances=(), send_ip_descriptions=False):
+def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_removals=False, context_token_budget=32_000, selected_instances=(), send_ip_descriptions=False, scope='', ops_version=None):
     if (not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 8000
             or type(max_attempts) is not int or not 1 <= max_attempts <= 3 or type(allow_removals) is not bool or type(send_ip_descriptions) is not bool):
         raise LLMError("AI_REQUEST", field="prompt_or_policy")
     check_document(document)
     baseline = deepcopy(document)
     library = tuple(library)
+    view = editable_scope(baseline, scope)
+    version = ops_version if ops_version is not None else 2 if baseline.get('schema_version') == 5 or any(item.interfaces for item in library) else 1
+    if type(version) is not int or version not in (1, 2):
+        raise LLMError('AI_REQUEST', field='ops_version')
+    schema = response_schema(version)
+    validator = RESPONSE_VALIDATOR if version == 1 else Draft202012Validator(schema)
     cards = SearchIndex(library).search_ip(prompt, 8, send_descriptions=send_ip_descriptions, builtin_descriptions=True)
     references = {(card["id"], card["version"]) for card in cards}
-    netlist, context = budget_context(baseline, library, token_budget=context_token_budget, selected_instances=selected_instances)
+    netlist, context = budget_context(view, library, token_budget=context_token_budget, selected_instances=selected_instances)
+    if scope:
+        context.update(design_scope=scope, root_name=baseline['name'], shared_definitions_readonly=True)
     data = {"netlist": netlist, "context_scope": context, "ip_cards": cards, "permissions": {"allow_removals": allow_removals}}
     encoded = json.dumps(data, ensure_ascii=False, allow_nan=False)
     if len(encoded.encode("utf-8")) > 128 * 1024:
         raise LLMError("AI_LLM_LIMIT", limit=128 * 1024)
     messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt},
                 {"role": "user", "content": f"BEGIN_BD_DATA\n{encoded}\nEND_BD_DATA"}]
-    empty = {"schema_version": 1, "ops": [], "summary": "", "assumptions": [], "missing_ip": [], "questions": []}
+    if version == 2:
+        messages[0]['content'] += '\nUse only confirmed interfaces. Interface endpoints connect or disconnect atomically; never mix with scalar expressions, confirm mappings, materialize buses, or edit shared definitions. Names are local to the supplied open scope. Missing optional signals require human adaptation, not invented constants. Maximum newly expanded interface signals per proposal: 4096.'
+    empty = {"schema_version": version, "ops": [], "summary": "", "assumptions": [], "missing_ip": [], "questions": []}
     trace = []
     for attempt in range(1, max_attempts + 1):
         response, candidate, diagnostics = deepcopy(empty), deepcopy(baseline), []
         try:
-            raw = client.generate(deepcopy(messages), deepcopy(RESPONSE_SCHEMA))
+            raw = client.generate(deepcopy(messages), deepcopy(schema))
         except LLMError as error:
             return _result(response, candidate, [error.diagnostic], attempt, trace, cards, context)
         try:
             if not isinstance(raw, dict) or len(json.dumps(raw, ensure_ascii=False, allow_nan=False).encode("utf-8")) > 128 * 1024:
                 raise LLMError("AI_MODEL_SCHEMA", reason="size_or_object")
-            validate_operations(raw.get("ops"))
-            if next(RESPONSE_VALIDATOR.iter_errors(raw), None):
+            validate_operations({'schema_version': raw.get('schema_version'), 'ops': raw.get('ops')})
+            if next(validator.iter_errors(raw), None):
                 raise LLMError("AI_MODEL_SCHEMA", reason="schema")
             response = deepcopy(raw)
             if response["missing_ip"] or response["questions"]:
@@ -105,7 +130,7 @@ def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_rem
                 if operation["op"] == "remove_instance" and not allow_removals:
                     diagnostics.append(issue("AI_OPERATION_FORBIDDEN", op=operation["op"]))
             if not diagnostics:
-                candidate, diagnostics = apply_ops(baseline, library, response["ops"])
+                candidate, diagnostics = apply_scoped_ops(baseline, library, {'schema_version': version, 'ops': response['ops']}, scope)
                 for diagnostic in validate(candidate, library):
                     if diagnostic not in diagnostics:
                         diagnostics.append(diagnostic)
@@ -113,14 +138,28 @@ def run_pipeline(document, library, prompt, client, *, max_attempts=3, allow_rem
             diagnostics = [error.diagnostic]
         except (ValueError, TypeError, RecursionError):
             diagnostics = [issue("AI_MODEL_SCHEMA", reason="json")]
+        candidate_view = scope_document(candidate, scope)
         feedback = {"diagnostics": [{"code": item.code, "params": item.params, "location": item.location} for item in diagnostics if item.severity == "error"],
-                    "affected_ports": affected_ports(candidate, library, response["ops"], diagnostics)}
+                    "affected_ports": affected_ports(candidate_view, library, response["ops"], diagnostics)}
+        if candidate_view.get('schema_version') == 5:
+            current = compact_design(candidate_view, library)
+            feedback['affected_interfaces'] = {item['name']: item['interfaces'] for item in current['instances'] if item['name'] in feedback['affected_ports']}
+            allowed_interfaces = set(context.get('included_external_interfaces', []))
+            feedback['affected_external_interfaces'] = [item for item in current['interfaces'] if context['scope'] != 'subgraph' or item['name'] in allowed_interfaces]
+            allowed_instances = set(context['included_instances']) | {item['name'] for item in response['ops'] if item['op'] == 'add_instance'}
+            feedback['available_interfaces'] = [{'inst': instance['name'], 'interface': item['name'], 'mode': item['effective_mode'], 'parameters': item['parameters']}
+                for instance in current['instances'] if instance['name'] in allowed_instances for item in instance['interfaces'] if item.get('valid') and not item['occupied']]
+            feedback['required_confirmations'] = [{'code': item.code, 'location': item.location} for item in diagnostics if item.code == 'E207']
         if context["scope"] == "subgraph":
             allowed = set(context["included_instances"]) | {item["name"] for item in response["ops"] if item["op"] == "add_instance"}
             feedback["affected_ports"] = {name: ports for name, ports in feedback["affected_ports"].items() if name in allowed}
+            if 'affected_interfaces' in feedback:
+                feedback['affected_interfaces'] = {name: interfaces for name, interfaces in feedback['affected_interfaces'].items() if name in allowed}
         trace.append({"attempt": attempt, **feedback})
         if not feedback["diagnostics"] or attempt == max_attempts:
             return _result(response, candidate, diagnostics, attempt, trace, cards, context)
+        if len(json.dumps(feedback, ensure_ascii=False).encode('utf-8')) > 128 * 1024:
+            return _result(response, candidate, [issue('AI_LLM_LIMIT', limit=128 * 1024)], attempt, trace, cards, context)
         messages.append({"role": "assistant", "content": json.dumps({"ops": response["ops"]}, ensure_ascii=False)})
         messages.append({"role": "user", "content": json.dumps(feedback, ensure_ascii=False)})
     raise AssertionError("unreachable pipeline state")

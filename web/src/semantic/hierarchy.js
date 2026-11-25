@@ -7,6 +7,20 @@ export function hasSubdesign(document, name) {
   return typeof name === "string" && Object.hasOwn(document?.subdesigns ?? {}, name);
 }
 
+export function scopeReferenceCount(document, scope) {
+  if (!scope) return 1;
+  const counts = new Map();
+  function visit(name, amount) {
+    if (!hasSubdesign(document, name)) return;
+    const previous = counts.get(name) ?? 0;
+    const next = Math.min(2, previous + amount);
+    counts.set(name, next);
+    if (next > previous) for (const instance of document.subdesigns[name].instances) visit(instance.ip.id, next - previous);
+  }
+  for (const instance of document?.instances ?? []) visit(instance.ip.id, 1);
+  return counts.get(scope) ?? 0;
+}
+
 export function bundleHierarchyEdges(edges, nodes) {
   const compact = new Set(nodes.filter((node) => node.data.compact).map((node) => node.id));
   if (!compact.size) return edges;

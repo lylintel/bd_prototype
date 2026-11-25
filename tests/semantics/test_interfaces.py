@@ -355,6 +355,21 @@ def test_axis_connection_reports_structured_domain_errors(axis_pair, case, code)
     assert finding['params']
 
 
+def test_axis_owner_conflict_does_not_expand_invalid_nets_or_hide_unrelated_errors(axis_pair):
+    from core.interfaces import expand_interfaces
+
+    document, library = axis_pair
+    document['nets'].append({'name': 'partial', 'endpoints': [{'const': "4'd0"}, {'inst': 'second', 'port': 's_data', 'slice': [3, 0]}]})
+    expanded = expand_interfaces(document, library)
+    assert not any(net['name'].startswith('__bd_if_') for net in expanded['document']['nets'])
+    assert expanded['origins']['axis_pair'] == {}
+    assert {item['code'] for item in inspect_design(document, library)['diagnostics'] if item['severity'] == 'error'} == {'E205'}
+    document['nets'][0]['endpoints'].append({'const': "1'b0"})
+    errors = [item for item in inspect_design(document, library)['diagnostics'] if item['severity'] == 'error']
+    assert {item['code'] for item in errors} == {'E205', 'E002'}
+    assert all(item['location'].get('net') == 'clk_net' for item in errors if item['code'] == 'E002')
+
+
 def test_axis_external_interface_role_is_mirrored_inside_the_design(axis_pair):
     document, library = axis_pair
     document['interfaces'] = [{'name': 'output_stream', 'protocol': 'axi-stream', 'definition_version': '1.0.0',

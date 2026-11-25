@@ -1,4 +1,10 @@
 {
+  "连接 first.m_axis 到 second.s_axis": {"schema_version": 2, "summary": "连接完整流接口", "assumptions": [], "questions": [], "missing_ip": [], "ops": [
+    {"op": "connect", "net": "link", "from": {"type": "interface", "inst": "first", "interface": "m_axis"}, "to": {"type": "interface", "inst": "second", "interface": "s_axis"}}
+  ]},
+  "仅修改当前层 compare_0 阈值为 19": {"schema_version": 1, "summary": "修改当前层参数", "assumptions": [], "questions": [], "missing_ip": [], "ops": [
+    {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19}
+  ]},
   "更新 compare_0 阈值并增加 aux 输入": {"schema_version": 1, "summary": "调整阈值并添加输入", "assumptions": [], "questions": [], "missing_ip": [], "ops": [
     {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19},
     {"op": "add_external_port", "name": "aux", "dir": "in", "width": "1"}

@@ -262,6 +262,39 @@ class EditorTests(unittest.TestCase):
         self.assertTrue(loaded["inspection"]["valid"])
         self.assertEqual(loaded["inspection"]["document"]["schema_version"], 2)
 
+    def test_ops_child_scope_is_locked_and_shared_definitions_are_readonly(self):
+        from ai.client import LLMError
+        from bdsemantic import prepare
+        from core.hierarchy import collapse_design
+
+        document, library = prepare(self.workspace, self.data, 'examples')
+        root = collapse_design(document, library, ['counter_0', 'compare_0'], 'group')
+        before = copy.deepcopy(root)
+        payload = {'design': root, 'base_dir': 'examples', 'scope': 'group', 'ops': {'schema_version': 2,
+            'ops': [{'op': 'set_param', 'inst': 'compare_0', 'name': 'THRESHOLD', 'value': 19}]}}
+        proposal = self.workspace.propose_ops(payload)
+        self.assertTrue(proposal['valid'], proposal['diagnostics'])
+        self.assertEqual(proposal['scope_document']['name'], 'group')
+        self.assertEqual(proposal['ops_version'], 2)
+        self.assertEqual(proposal['scope_view']['canvas']['name'], 'group')
+        self.assertEqual(proposal['scope_view']['parameters']['compare_0']['THRESHOLD'], 19)
+        self.assertTrue(proposal['scope_view']['connections'])
+        acceptance = {'design': root, 'base_dir': 'examples', 'scope': 'group', 'proposal_id': proposal['id'], 'selected': [0], 'confirmed': True}
+        for action in (self.workspace.select_ops, self.workspace.accept_ops):
+            with self.assertRaises(ValueError) as caught:
+                action({**acceptance, 'scope': ''})
+            self.assertEqual(caught.exception.diagnostic.code, 'AI_STALE_PROPOSAL')
+        self.assertTrue(self.workspace.select_ops(acceptance)['valid'])
+        accepted = self.workspace.accept_ops(acceptance)
+        self.assertEqual(accepted['document']['subdesigns']['group']['instances'][1]['params']['THRESHOLD'], 19)
+        self.assertEqual(accepted['document']['instances'], root['instances'])
+        self.assertEqual(root, before)
+        root['instances'].append({'name': 'reuse', 'ip': {'id': 'group', 'version': '1.0.0'}})
+        with self.assertRaises(LLMError) as caught:
+            self.workspace.propose_ops(payload)
+        self.assertEqual(caught.exception.code, 'AI_SHARED_SCOPE')
+        self.assertFalse((self.root / 'build').exists())
+
     def test_ops_proposal_requires_confirmation_and_is_single_use(self):
         operation = {"op": "set_param", "inst": "compare_0", "name": "THRESHOLD", "value": 19}
         proposal = self.workspace.propose_ops({"design": self.data, "base_dir": "examples", "ops": [operation]})

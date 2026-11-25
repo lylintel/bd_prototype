@@ -1,14 +1,28 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "BD Studio typed operations v1",
+  "title": "BD Studio typed operations v1/v2",
   "type": "object",
   "required": ["schema_version", "ops"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": 1, "type": "integer"},
-    "ops": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/operation"}}
+    "schema_version": {"enum": [1, 2], "type": "integer"},
+    "ops": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/operationV2"}}
   },
+  "allOf": [{"if": {"properties": {"schema_version": {"const": 1}}},
+             "then": {"properties": {"ops": {"items": {"$ref": "#/$defs/operation"}}}}}],
   "$defs": {
+    "interfaceEndpoint": {
+      "type": "object", "required": ["type"], "additionalProperties": false,
+      "properties": {"type": {"const": "interface"}, "inst": {"$ref": "#/$defs/name"}, "interface": {"$ref": "#/$defs/name"}, "ext_interface": {"$ref": "#/$defs/name"}},
+      "oneOf": [{"required": ["inst", "interface"], "not": {"required": ["ext_interface"]}},
+                {"required": ["ext_interface"], "not": {"anyOf": [{"required": ["inst"]}, {"required": ["interface"]}]}}]
+    },
+    "operationV2": {"oneOf": [
+      {"$ref": "#/$defs/operation"},
+      {"type": "object", "required": ["op", "from", "to"], "additionalProperties": false,
+       "properties": {"op": {"enum": ["connect", "disconnect"]}, "from": {"$ref": "#/$defs/interfaceEndpoint"},
+                      "to": {"$ref": "#/$defs/interfaceEndpoint"}, "net": {"$ref": "#/$defs/name"}}}
+    ]},
     "name": {"type": "string", "minLength": 1, "maxLength": 256},
     "value": {"oneOf": [{"type": "integer", "minimum": -2147483648, "maximum": 2147483647}, {"type": "string", "minLength": 1, "maxLength": 4096}]},
     "params": {"type": "object", "maxProperties": 200, "propertyNames": {"$ref": "#/$defs/name"}, "additionalProperties": {"$ref": "#/$defs/value"}},

@@ -14,7 +14,7 @@ function Action({ icon: Icon, label, ...props }) {
   return <button type="button" className="icon-button" title={label} aria-label={label} {...props}><Icon size={16} strokeWidth={1.7} /></button>;
 }
 
-export default function CopilotPanel({ open, onClose, api, token, design, baseDir, onAcceptProposal, onAuthorize }) {
+export default function CopilotPanel({ open, onClose, api, token, design, baseDir, scope = "", onAcceptProposal, onAuthorize, onSelect, onPreview }) {
   const [status, setStatus] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -90,8 +90,8 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
     setGenerating(true);
     setPrompt("");
     followOutput.current = true;
-    setMessages((previous) => [...previous, { id: `user-${Date.now()}`, role: "user", content: text, design: design.name }]);
-    const payload = { prompt: text, model: model || null, conversation_id: conversationId, confirm_usage: true, share_context: true, allow_design_changes: true, design, base_dir: baseDir };
+    setMessages((previous) => [...previous, { id: `user-${Date.now()}`, role: "user", content: text, design: scope || design.name }]);
+    const payload = { prompt: text, model: model || null, conversation_id: conversationId, confirm_usage: true, share_context: true, allow_design_changes: true, design, base_dir: baseDir, scope };
     try {
       const response = await fetch("/api/copilot/chat", { method: "POST", headers: { "Content-Type": "application/json", "X-BD-Token": token }, body: JSON.stringify(payload), signal: activeController.signal });
       await readCopilotEvents(response, (received) => {
@@ -102,7 +102,7 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
           setTurns(received.turns);
         }
         if (received.type === "done") settled = true;
-        if (received.type === "proposal") setProposal(received.proposal);
+        if (received.type === "proposal") { setProposal(received.proposal); onPreview(received.proposal); }
         if (received.type === "design_update") {
           setMessages((previous) => [...previous, { id: `${activeId}:design-update`, role: "error", content: t("ai.legacyBlocked") }]);
         }
@@ -129,13 +129,19 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
   async function discardProposal(value) {
     await api("/api/ops/discard", { proposal_id: value.id });
     setProposal((current) => current?.id === value.id ? null : current);
+    onPreview(null);
     setMessages((previous) => [...previous, { id: `${value.id}:discarded`, role: "status", content: t("ai.discarded") }]);
+  }
+
+  async function close() {
+    try { if (proposal) await discardProposal(proposal); onClose(); }
+    catch (failure) { setError(failure.message); }
   }
 
   if (!open) return null;
   const ready = Boolean(status?.connected && status?.authenticated);
   return createPortal(<aside className="copilot-panel" aria-label="Copilot 助手">
-    <header className="copilot-heading"><Bot size={20} /><strong>Copilot</strong><span>RTL Assistant</span><Action icon={Plus} label="新 Copilot 会话" disabled={generating || connecting || !messages.length} onClick={newConversation} /><Action icon={X} label="关闭 Copilot" onClick={onClose} /></header>
+    <header className="copilot-heading"><Bot size={20} /><strong>Copilot</strong><span>RTL Assistant</span><Action icon={Plus} label="新 Copilot 会话" disabled={generating || connecting || !messages.length} onClick={newConversation} /><Action icon={X} label="关闭 Copilot" onClick={close} /></header>
     <div className="copilot-connection"><span className={`copilot-indicator ${ready ? "ready" : ""}`} /><span>{connecting ? "正在连接" : ready ? "已连接" : status?.connected ? "需要登录" : "未连接"}</span><button className="small-command" onClick={connect} disabled={connecting || generating || !status?.compatible}>{connecting ? <LoaderCircle size={13} className="spin" /> : <Plug size={13} />}{ready ? "检查连接" : "连接 Copilot"}</button></div>
     {!status?.compatible && status && <div className="copilot-notice" role="status"><CircleAlert size={15} /><span>需要安装项目的可选 Copilot SDK 依赖。</span></div>}
     {status?.message && <div className="copilot-notice"><span>{status.message}</span></div>}
@@ -151,7 +157,7 @@ export default function CopilotPanel({ open, onClose, api, token, design, baseDi
         </article>)}
       {generating && <div className="copilot-working"><LoaderCircle size={14} className="spin" />正在回复</div>}
     </div>
-    {proposal && <Proposal key={proposal.id} proposal={proposal} busy={generating} onAccept={acceptProposal} onDiscard={discardProposal} />}
+    {proposal && <Proposal key={proposal.id} proposal={proposal} busy={generating} onAccept={acceptProposal} onDiscard={discardProposal} onSelect={onSelect} />}
     {error && <div className="copilot-notice error" role="alert"><CircleAlert size={15} /><span>{error}</span><Action icon={X} label="关闭 Copilot 错误" onClick={() => setError("")} /></div>}
     <form className="copilot-composer" onSubmit={send}>
       <textarea aria-label="Copilot 消息输入" placeholder="输入消息" rows={3} maxLength={8000} value={prompt} disabled={generating || Boolean(proposal)} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form.requestSubmit(); } }} />
