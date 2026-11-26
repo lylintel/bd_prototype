@@ -35,7 +35,7 @@ jobs:
             requirements-ai.txt
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "24.22.3"
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install Icarus
@@ -75,6 +75,15 @@ jobs:
           if-no-files-found: warn
       - name: Run the same local checks
         run: python scripts/check.py
+      - name: Publish browser traces and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence-python-${{ matrix.python }}
+          path: |
+            web/test-results/
+            web/playwright-report/
+          if-no-files-found: warn
       - name: Publish external HDL checks
         if: always()
         uses: actions/upload-artifact@v4
@@ -102,7 +111,7 @@ jobs:
           python-version: "3.14"
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "24.22.3"
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install and build

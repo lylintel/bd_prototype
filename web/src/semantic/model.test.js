@@ -125,6 +125,21 @@ test("canvas edits retain explicit versions and do not mutate the original", () 
   assert.throws(() => syncDocument({ ...original, instances: [original.instances[0], original.instances[0]] }, canvas, []));
 });
 
+for (const version of [4, 5]) test(`v${version} subdesign insertion does not depend on pending inspection metadata`, () => {
+  const fields = version === 5 ? { interfaces: [], interface_connections: [] } : {};
+  const child = { schema_version: version === 5 ? 5 : 3, name: "group", ports: {}, instances: [], nets: [], ...fields };
+  const original = { schema_version: version, name: "top", ports: {}, instances: [], nets: [], subdesigns: { group: child }, ...fields };
+  const before = structuredClone(original);
+  const canvas = { name: "top", ports: {}, nets: {}, modules: {}, instances: { group_0: { module: "group", parameters: {} } } };
+  const changed = syncDocument(original, canvas, []);
+  assert.deepEqual(changed.instances, [{ name: "group_0", ip: { id: "group", version: "1.0.0" }, params: {} }]);
+  assert.deepEqual(changed.subdesigns, original.subdesigns);
+  assert.deepEqual(original, before);
+  for (const module of ["missing", "constructor"]) {
+    assert.throws(() => syncDocument(original, { ...canvas, instances: { invalid: { module, parameters: {} } } }, []));
+  }
+});
+
 test("parameter input preserves expressions and rejects empty or excessive text", () => {
   assert.equal(parameterValue("12"), 12);
   assert.equal(parameterValue("WIDTH * 2"), "WIDTH * 2");

@@ -38,13 +38,32 @@ test("AXI-Stream hierarchy confirms boundaries and preserves nested root transac
   await expect(badge).toContainText("校验通过");
   await expect(page.locator('.react-flow__node[data-id="inner_group"]')).toBeVisible();
   const rootNavigation = page.getByRole("navigation", { name: t("hierarchy.path") }).getByRole("button", { name: "axis_pair", exact: true });
+  let releaseInspection, inspectionStarted;
+  const heldInspection = new Promise((resolve) => { releaseInspection = resolve; });
+  const inspectionPending = new Promise((resolve) => { inspectionStarted = resolve; });
+  const holdRootInspection = async (route) => {
+    inspectionStarted();
+    await heldInspection;
+    await route.continue();
+  };
+  await page.route("**/api/semantic/inspect", holdRootInspection);
   await rootNavigation.click();
   const nested = await designJson(page);
   expect(Object.keys(nested.subdesigns).sort()).toEqual(["inner_group", "stream_group"]);
   expect(nested.interface_connections).toEqual(folded.interface_connections);
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   expect(await designJson(page)).toEqual(folded);
-  await page.getByRole("button", { name: "添加 stream_group", exact: true }).click();
+  await inspectionPending;
+  try {
+    await page.getByTestId("add-project-module-stream_group").click();
+    server.evidence.afterAdd = { design: await designJson(page), alerts: await page.getByRole("alert").allTextContents(),
+      badge: await badge.textContent() };
+    expect(server.evidence.afterAdd.design.instances.map((instance) => instance.name)).toContain("stream_group_0");
+    expect(server.evidence.afterAdd.alerts).toEqual([]);
+  } finally {
+    releaseInspection();
+    await page.unroute("**/api/semantic/inspect", holdRootInspection);
+  }
   await expect(badge).toContainText("待修复");
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await expect(badge).toContainText("校验通过");
@@ -180,7 +199,25 @@ test.beforeEach(async ({ page }, testInfo) => {
     cwd: root, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32",
   });
   const exited = new Promise((resolve) => child.once("close", resolve));
-  server = { child, directory, exited, url: "" };
+  const evidence = { requests: [], pending: [] };
+  server = { child, directory, exited, url: "", evidence };
+  if (testInfo.title.startsWith("AXI-Stream hierarchy ")) {
+    const entries = new WeakMap();
+    page.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (!["/api/semantic/inspect", "/api/hierarchy/inspect", "/api/hierarchy/collapse"].includes(pathname)) return;
+      const entry = { path: pathname, started: performance.now(), request: request.postDataJSON() };
+      entries.set(request, entry);
+      evidence.requests.push(entry);
+    });
+    page.on("response", (response) => {
+      const entry = entries.get(response.request());
+      if (!entry) return;
+      evidence.pending.push(response.json().then((body) => {
+        entry.response = { status: response.status(), finished: performance.now(), body };
+      }).catch((error) => { entry.responseError = error.message; }));
+    });
+  }
   try {
     server.url = await new Promise((resolve, reject) => {
       let output = "", errors = "";
@@ -197,7 +234,23 @@ test.beforeEach(async ({ page }, testInfo) => {
   } catch (error) { await stopServer(server); server = null; throw error; }
 });
 
-test.afterEach(async () => { if (server) { await stopServer(server); server = null; } });
+test.afterEach(async ({ page }, testInfo) => {
+  try {
+    if (server && testInfo.status !== testInfo.expectedStatus && testInfo.title.startsWith("AXI-Stream hierarchy ")) {
+      const captured = { requests: server.evidence.requests, afterAdd: server.evidence.afterAdd };
+      try {
+        captured.badge = await page.getByRole("button", { name: "校验设计", exact: true }).textContent();
+        captured.design = await designJson(page);
+        await page.getByRole("tab", { name: /^诊断/ }).click();
+        captured.diagnostics = await page.locator(".diagnostic-summary, .semantic-diagnostic").allTextContents();
+      } catch (error) { captured.captureError = error.message; }
+      await Promise.allSettled(server.evidence.pending);
+      const body = JSON.stringify(captured, null, 2);
+      console.log("CI_HIERARCHY_EVIDENCE", body);
+      await testInfo.attach("hierarchy-state-and-validation", { body: Buffer.from(body), contentType: "application/json" });
+    }
+  } finally { if (server) { await stopServer(server); server = null; } }
+});
 
 async function openEditor(page) {
   await page.route("**/*", (route) => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());

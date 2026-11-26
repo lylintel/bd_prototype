@@ -67,6 +67,7 @@ export function syncDocument(previous, canvas, metadata) {
   const candidates = [...(previous.project_ips ?? []), ...metadata];
   const instances = Object.entries(canvas.instances).map(([name, item]) => {
     let reference = previous.instances.find((instance) => instance.name === name && instance.ip.id === item.module)?.ip;
+    if (!reference && Object.hasOwn(previous.subdesigns ?? {}, item.module)) reference = { id: item.module, version: "1.0.0" };
     if (!reference) {
       const matches = [...new Map(candidates.filter((candidate) => candidate.id === item.module).map((candidate) => [`${candidate.id}@${candidate.version}`, candidate])).values()];
       if (matches.length !== 1) throw new Error(t("semantic.referenceAmbiguous", { name: item.module }));

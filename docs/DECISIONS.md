@@ -593,3 +593,18 @@ P2.6 的 main 合并提交 5cc18aa 已通过本地完整门禁与 [CI 4381558451
 - 评分器损坏回放负向对照、零真实网络入口、共享范围零调用及 SDK 三次上限均有回归；评测加入完整门禁。实际 token 为 null，估算 token 和 mock 时延不冒充供应商测量。
 - 首次完整门禁未通过，日志 build/phase2b-ai-check.log：742 Python +91 子测试、72 Node、新旧 mock 和全部 HDL 通过；浏览器第一分片虽然 19 条最终全通过，但总耗时 6.9 分钟超过原 300 秒。后续分片/性能未运行，不提交为已验收任务。随后 CPU 86.951% 的既有负载采样不合格，保持全部时限与两个顺序分片不变，等待可执行的复验条件。
 - 2026-11-25 完整复验通过：742 Python +91 子测试、72 Node、38 E2E，日志 build/phase2b-ai-recheck-20261125.log；两分片 4.2/3.5 分钟，未修改门槛。旧语义性能 373.036/477.974ms 仅非阻塞告警；运行前 CPU 61.523% 不合格，故这不是接口配对性能验收。
+
+## D050：Linux 层次编辑 CI 取证与修复
+
+- 对象为 CI 45746592863 的 `AXI-Stream hierarchy confirms boundaries and preserves nested root transactions`，失败发生在撤销嵌套折叠后点击“添加 stream_group”：预期“待修复”，实际“校验通过”。此前冻结期望的 CRLF/LF 哈希问题由 11c70e1 单独修复，与本次故障不同；期望与回放内容均未重写。
+- 用例是 138db7e（2B.2b）新增的。`git log -S` 定位该提交，逐字检查证明旧全绿 8a1b5e5 中不存在该用例，因此不适用“旧用例对后续提交二分”的条件，不能把旧 CI 全绿当作此新路径已覆盖的证据。
+- 在独立分支 fix/axis-hierarchy-ci-20261126 处理；原 main 的性能测量、缓存优化和用户 SV 改动不带入修复检出。Linux 为 WSL Ubuntu 22.04 原生 ext4 检出，Node 24.22.3 与实际 CI 命令路径一致，Playwright 1.58.2、Chromium/Headless Shell 145.0.7632.6 revision 1208；未使用 Windows 通过结果作为复现证据。
+- 原用例在该 Linux 环境 `--repeat-each 10 --workers 1` 为 10/10 通过（2.3 分钟），如实保留，不宣称自然复现。随后在返回根层前拦住实际根校验请求，使用 Promise/请求事件释放，不加 sleep；相同用例确定性失败一次（约 37.4 秒），原“待修复”断言未改。
+- 失败属于“编辑未生效”，不是徽标显示了过期响应，也不是后端换行/路径/哈希差异。点击后应用设计仍只有 second、stream_group，没有 stream_group_0；即时错误提示为“模块 stream_group 缺少唯一的 IP 版本引用，请先导入或明确版本”。实际校验请求仍是旧设计，响应 valid=true、无错误，徽标与诊断面板均正确显示旧设计有效。
+- 根因：syncDocument 为新增子设计实例解析引用时只查 project_ips 和异步 inspection.metadata；快速返回根层并撤销时，metadata 仍来自子层，缺少当前层的 stream_group。内部定义本来就在权威文档 subdesigns 中，且其版本固定为 1.0.0，不能依赖检查完成时间才能实例化。
+- 修复仅使已声明内部子设计从文档自身解析引用，并用 Object.hasOwn 避免继承属性被当作定义；真实外部 IP 的明确版本要求不变。补 v4/v5 缺失检查 metadata、未知模块和原型名拒绝单测。按钮增加稳定 data-testid，测试先断言 stream_group_0 已写入设计且没有编辑拒绝提示，再执行原“待修复”和撤销断言。证据不属于响应覆盖问题，因此不引入与本次分类无关的全局 revision 改造。
+- 修复后同一受控窗口在 Linux 固定十轮为 10/10 通过（2.9 分钟），相邻语义模型 16 项、Linux lint/typecheck/build 均通过。未重跑挑选通过样本，未增大超时、弱化/删除断言或跳过用例。
+- 本地证据保留在 build/ci-axis-linux-20261126 的 baseline、controlled、fixed 三个目录；controlled/state-validation.json 包含应用设计、请求/响应、徽标、诊断及即时编辑错误，controlled/test-results 内含 trace.zip 与截图。测试失败时将同样证据输出并附加到 Playwright 报告；CI 配置 trace=retain-on-failure，always 上传 test-results 与 playwright-report。CI Node 固定为 24.22.3。
+- AXI-Stream 元数据、语义、生成、层次、画布、AI 和独立离线评测已经实现；本次是新 AXI-Stream 层次复用流程暴露的共享前端引用解析缺陷，不涉及协议数据通路或 RTL。2000 实例配对性能仍未验收且改动未提交，不与本分支合并。
+- Linux 完整 scripts/check.py 通过：255+55+336+97=743 Python、91 子测试、74 Node、38 E2E，两分片 2.4/1.5 分钟；25 个 HDL 对象零 error、原 77 warning 保留，旧语义基准 287.639/332.439ms 通过既有门槛，不作为接口配对验收。全部历史 golden 保持逐字节校验，未改源码/期望/回放。
+- 分支 CI 结果待补；只有分支 CI 全绿后才合入 main。
