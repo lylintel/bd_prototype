@@ -21,10 +21,24 @@
 | 层次导出与共享引用 | 已完成 | 完整门禁 718 Python +91 子测试、70 Node、36 E2E，日志 build/phase2b-hierarchy-check.log |
 | 当前层 AI、ops v2、离线评测 | 已完成完整复验 | 742 Python +91 子测试、72 Node、38 E2E；日志 build/phase2b-ai-recheck-20261125.log |
 | 2000 实例同机同次配对 | 历史方法快照 d701e9d 已推送 perf/2b-paired，性能未验收 | 三轮正式报告均 0/3 完整合格配对；最新轮还有浏览器导航 +28.071% 超限，仍待独立处理 |
-| 仓库规则与 Linux 从零入口 | 从零 verify 与最终门禁通过 | AGENTS.md 原文逐字校验；外置固定版本/哈希安装，无 sudo；目标 10/10，最终完整 755 Python +91 子测试、75 Node、38 E2E，见 ../local-linux-ci.md |
-| main 固定五轮稳定性 | 待执行 | 不以历史 D050 十轮或从零验证替代 |
+| 仓库规则与 Linux 从零入口 | 已提交 f827792，从零 verify 与最终门禁通过 | AGENTS.md 原文逐字校验；外置固定版本/哈希安装，无 sudo；目标 10/10，最终完整 755 Python +91 子测试、75 Node、38 E2E，见 ../local-linux-ci.md |
+| main 固定五轮稳定性 | 通过，五轮全部保留 | dd10bbf，运行 45760525973 的 attempt 2-6；每轮 7/7 job 成功、九份附件已归档 |
 | 异步依赖审计与 revision | 待执行 | 每个缺陷独立提交、逐操作 gated-response 回归 |
 | 九对交错及 Linux CI 五次采集 | 待执行 | <=10% 不变，最终结论尚无法验收 |
+
+## D050 后续稳定性
+
+预先固定 main dd10bbf20dd150cbac0dc13ccb8303130f8bc6dd，同一完整工作流恰好运行五轮，不包含原 attempt 1，不以单用例十轮或本地 Linux 安装验证代替。每轮均包括 Python 3.10/3.14 完整门禁、四个解析器矩阵及既有非阻塞浏览器性能采集。
+
+| 轮次 | CI attempt | 完整 Python 两版本 | 解析器四组合 | 浏览器性能采集 | 总结 |
+|---|---|---|---|---|---|
+| 1 | [2](https://github.com/lylintel/bd_prototype/actions/runs/45760525973/attempts/2) | 通过 | 通过 | 通过 | 7/7 成功 |
+| 2 | [3](https://github.com/lylintel/bd_prototype/actions/runs/45760525973/attempts/3) | 通过 | 通过 | 通过 | 7/7 成功 |
+| 3 | [4](https://github.com/lylintel/bd_prototype/actions/runs/45760525973/attempts/4) | 通过 | 通过 | 通过 | 7/7 成功 |
+| 4 | [5](https://github.com/lylintel/bd_prototype/actions/runs/45760525973/attempts/5) | 通过 | 通过 | 通过 | 7/7 成功 |
+| 5 | [6](https://github.com/lylintel/bd_prototype/actions/runs/45760525973/attempts/6) | 通过 | 通过 | 通过 | 7/7 成功 |
+
+全部结果/step 状态、日志 ZIP、每轮九份附件保留于 build/main-stability-20261126/attempt-N。两次证据下载/元数据查询 TLS 超时后仅补取附件，没有重跑测试或改变证书校验。五轮无业务失败；这是该固定提交的稳定性样本，不是新九对接口性能结论。新性能代码、规则与后续修复均只在 perf/2b-paired，未合入 main。
 
 ## 迁移与兼容
 
