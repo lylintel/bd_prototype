@@ -10,6 +10,81 @@ from core.hierarchy import collapse_design
 from scripts.gui_benchmark import write_fixture
 
 
+@pytest.mark.parametrize('count', [2, 2000])
+def test_interface_pair_has_identical_physical_nets_source_and_layout(tmp_path, count):
+    from bdip import IpMetadata
+    from core.generation import generate_files
+    from core.interfaces import expand_interfaces
+    from core.persistence import canonical_document
+    from scripts.interface_benchmark import write_pair
+
+    report = write_pair(tmp_path, count)
+    signal = json.loads((tmp_path / 'signal/design.json').read_bytes())
+    interface = json.loads((tmp_path / 'interface/design.json').read_bytes())
+    library = (IpMetadata.from_dict(signal['project_ips'][0]),)
+    assert canonical_document(expand_interfaces(interface, library)['document']) == canonical_document(signal)
+    assert report['expanded_nets'] == 3 * (count - 1) + 8
+    assert report['derived_signal_nets'] == 3 * (count - 1)
+    assert (tmp_path / 'signal/design.layout.json').read_bytes() == (tmp_path / 'interface/design.layout.json').read_bytes()
+    assert (tmp_path / 'signal/bd_stream_slice.v').read_bytes() == (tmp_path / 'interface/bd_stream_slice.v').read_bytes()
+    assert all(item['document_bytes'] <= 2 * 1024 * 1024 for item in report['variants'].values())
+    if count == 2:
+        ordinary = generate_files(signal, library)
+        grouped = {name: text.replace('schema_version: 5', 'schema_version: 4', 1) for name, text in generate_files(interface, library).items()}
+        assert ordinary == grouped
+        assert Workspace(tmp_path / 'signal', 'design.json').load('design.json')['inspection']['valid']
+        assert Workspace(tmp_path / 'interface', 'design.json').load('design.json')['inspection']['valid']
+    assert write_pair(tmp_path, count) == report
+
+
+def test_v5_workspace_reuses_format_validation_but_rechecks_source_and_changed_input(tmp_path, monkeypatch):
+    import core.design as design_format
+    import core.hierarchy as hierarchy
+    from scripts.interface_benchmark import write_pair
+
+    write_pair(tmp_path, 2)
+    monkeypatch.setattr(hierarchy, '_checked_formats', set())
+    checked = []
+    original = design_format.check_document
+
+    def checker(document):
+        if document.get('schema_version') == 5:
+            checked.append(document['name'])
+        return original(document)
+
+    monkeypatch.setattr(design_format, 'check_document', checker)
+    monkeypatch.setattr(hierarchy, 'check_document', checker)
+    workspace = Workspace(tmp_path / 'interface', 'design.json')
+    assert workspace.load('design.json')['inspection']['valid']
+    assert checked == ['axis_performance']
+    assert workspace.load('design.json')['inspection']['valid']
+    assert checked == ['axis_performance']
+    source = tmp_path / 'interface/bd_stream_slice.v'
+    source.write_bytes(source.read_bytes() + b'\n')
+    assert not workspace.load('design.json')['inspection']['valid']
+    data = json.loads((tmp_path / 'interface/design.json').read_bytes())
+    data['invented'] = True
+    (tmp_path / 'interface/design.json').write_text(json.dumps(data), encoding='utf-8')
+    with pytest.raises(DesignFormatError):
+        workspace.load('design.json')
+    assert len(checked) == 2
+
+
+def test_interface_pair_measurement_retains_raw_order_equivalence_and_memory(tmp_path):
+    from scripts.interface_benchmark import measure_pair, write_pair
+
+    write_pair(tmp_path, 2)
+    result = measure_pair(tmp_path, repetitions=2, first='interface')
+    assert result['physical_equivalence'] and result['hdl_equivalence_except_schema_header']
+    assert set(result['metrics']) == {'parse_ms', 'inspect_ms', 'generate_ms'}
+    for metric in result['metrics'].values():
+        assert [item['variant'] for item in metric['sequence']] == ['interface', 'signal', 'signal', 'interface']
+        assert metric['signal'] > 0 and metric['interface'] > 0
+        assert metric['ratio'] == metric['interface'] / metric['signal']
+    assert result['memory']['interface']['derived_nets_bytes'] > 0
+    assert result['memory']['interface']['expanded_nets_bytes'] > result['memory']['interface']['raw_nets_bytes']
+
+
 @pytest.mark.parametrize("count", [100, 500, 2000])
 def test_gui_benchmark_fixture_is_loadable_and_deterministic(tmp_path, count):
     document, layout = write_fixture(tmp_path, count)

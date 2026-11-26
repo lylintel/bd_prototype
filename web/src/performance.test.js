@@ -1,5 +1,29 @@
 import { createHistory, commitHistory, undoHistory, redoHistory, historyBytes } from "./history.js";
 import { assessLoad } from "../e2e/benchmark-load.mjs";
+import { assessPair, summarizePairs } from "../e2e/interface-performance.mjs";
+
+test("paired performance uses relative costs and rejects missing unqualified or insufficient samples", () => {
+  const load = { qualified: true };
+  const browser = { instances: 2000, chromium: "test", status: "measured", budget_passed: false, measurement_qualified: true, preflight: load, postflight: load,
+    load_ms: 10000, cold_start: { total_ms: 12000 }, selection_ms: 1000, pan: { fps: 10 }, zoom: { fps: 10 }, drag: { fps: 10 } };
+  const pair = { backend_preflight: load, backend_postflight: load, backend: { physical_equivalence: true, hdl_equivalence_except_schema_header: true,
+    metrics: Object.fromEntries(["parse_ms", "inspect_ms", "generate_ms"].map((name) => [name, { signal: 100, interface: 105 }])) },
+    browser: { signal: browser, interface: structuredClone(browser) } };
+  assert.equal(assessPair(pair).passed, true);
+  pair.browser.interface.load_ms = 11001;
+  assert.equal(assessPair(pair).passed, false);
+  pair.browser.interface.load_ms = 10000;
+  pair.browser.interface.pan.fps = 8;
+  assert.equal(assessPair(pair).metrics.pan_frame_time.ratio, 1.25);
+  assert.equal(assessPair(pair).passed, false);
+  pair.browser.interface.pan.fps = 10;
+  assert.equal(assessPair({ ...pair, backend: null }).passed, false);
+  assert.equal(assessPair({ ...pair, backend_postflight: { qualified: false } }).passed, false);
+  const result = { assessment: assessPair(pair) };
+  assert.equal(summarizePairs([result]).accepted, false);
+  assert.equal(summarizePairs([result, result, result]).accepted, true);
+  assert.equal(summarizePairs([result, result, result], 100).accepted, false);
+});
 
 test("interface rows have stable geometry without changing ordinary pin spacing", () => {
   const geometry = nodeGeometry({ ports: [

@@ -272,7 +272,11 @@ class Workspace:
             digest = hashlib.sha256(raw).digest()
             with self._schema_lock:
                 if digest not in self._checked_documents:
-                    check_document(data)
+                    if data.get('schema_version') == 5:
+                        from core.hierarchy import check_hierarchy_document
+                        check_hierarchy_document(data)
+                    else:
+                        check_document(data)
                     if len(self._checked_documents) >= 16:
                         self._checked_documents.clear()
                     self._checked_documents.add(digest)

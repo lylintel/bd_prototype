@@ -54,6 +54,11 @@ v5 增加已确认的 AXI-Stream ready-valid 接口，示例见 [examples/interf
 
 AI 使用当前打开层的局部名字和已确认接口；共享子定义只读，候选合回整根检查，接受时核对作用层及整根快照。ops v2 增加原子 interface 端点，禁止混接/嵌入 concat，每提案最多新增展开 4096 信号；v1 回放继续按原端点契约验证。独立离线评测：`python -m bdstudio.ai_eval --client mock --suite interfaces --report build/ai-eval-interfaces`，包含冻结的 dev12/held-out8 和三轮重复，不允许真实网络模式。实施及性能验收状态见 [docs/reports/phase-2b-1.md](docs/reports/phase-2b-1.md)。
 
+接口性能配对：`node web/e2e/interface-performance.mjs --instances 2000 --samples 3 --strict --report build/phase2b-paired-run1`。
+每次使用新的报告目录，已有报告不会覆盖。两个夹具共享 RTL/布局，完整展开文档逐条相同；原信号级基准不修改。
+验收要求同机同次三组合格配对，解析/检查/生成及浏览器各成本比值不超过 1.10；帧时间用 FPS 的倒数比值，旧绝对预算不参与判定。
+负载前后检查不合格、缺测或不足三组均不能通过，拒测记录和原始时序保留。`--instances 100 --samples 1` 仅用于冒烟，不会标为正式验收。当前性能任务尚未验收。
+
 “整理布局”在独立 Web Worker 中运行 ELK，小图分层、超过 500 节点时矩形打包。大图保留当前视口，分批应用坐标，计算和应用阶段均可取消；设计变化时不覆盖新编辑。布局只改变独立坐标，一次撤销恢复。
 超过 256 条显示边时使用端点 net 标签，选中恢复完整路径，向量默认粗线。标签不改变电气连接；长名称可悬停查看全文。
 
