@@ -21,6 +21,14 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPECTATION_SHA256 = 'd5ba4ecb7350f9a7684e89c8352e6356f3f6dde6319d0ebaf565cdcc5ea17189'
 
 
+def _verify_expectation_bytes(content):
+    normalized = content.replace(b'\r\n', b'\n')
+    frozen_bytes = normalized.replace(b'\n', b'\r\n')
+    if hashlib.sha256(frozen_bytes).hexdigest() != EXPECTATION_SHA256:
+        raise ValueError('Independent expectations changed after the pre-replay freeze')
+    return hashlib.sha256(normalized).hexdigest()
+
+
 def interface_library(variant='standard'):
     path = ROOT / 'examples/interfaces/axis_pair.json'
     raw = json.loads(path.read_text(encoding='utf-8'))['project_ips'][0]
@@ -96,8 +104,8 @@ def evaluate_interfaces(cases=None, recordings=None):
     from bdstudio.ai_eval import load_interface_cases
 
     expectation_path = ROOT / 'tests/ai_eval/interfaces.yaml'
-    if hashlib.sha256(expectation_path.read_bytes()).hexdigest() != EXPECTATION_SHA256:
-        raise ValueError('Independent expectations changed after the pre-replay freeze')
+    expectation_bytes = expectation_path.read_bytes()
+    expectation_lf_sha256 = _verify_expectation_bytes(expectation_bytes)
     cases = deepcopy(cases if cases is not None else load_interface_cases())
     recordings = deepcopy(recordings if recordings is not None else json.loads((ROOT / 'tests/ai_eval/interface_replays.json').read_text(encoding='utf-8')))
     if not {case['id'] for case in cases} <= recordings.keys():
@@ -143,6 +151,8 @@ def evaluate_interfaces(cases=None, recordings=None):
         signatures[trial['id']].add(trial['signature'])
     return {'schema_version': 1, 'cohort': 'axis-dev12-held-out8', 'client': 'mock', 'real_model_called': False,
             'count': len(cases), 'completed_trials': len(trials), 'calls': budget.calls, 'expectation_sha256': EXPECTATION_SHA256,
+            'expectation_lf_sha256': expectation_lf_sha256, 'expectation_file_sha256': hashlib.sha256(expectation_bytes).hexdigest(),
+            'expectation_hash_basis': 'Original CRLF freeze retained; only LF/CRLF line endings normalized for verification',
             'replay_sha256': hashlib.sha256(json.dumps(recordings, sort_keys=True).encode()).hexdigest(),
             'first_pass_protocol': 'local replay of first response, no recorded transport call',
             'metrics': _metrics(trials), 'groups': grouped, 'consistency': sum(len(value) == 1 for value in signatures.values()) / len(signatures),

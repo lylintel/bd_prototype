@@ -27,12 +27,28 @@ def test_interface_expectations_are_authored_before_replays_and_keep_old_cohorts
     assert ['second.s_ready', 'first.m_ready', 1] in expected
 
 
+@pytest.mark.parametrize('line_ending', [b'\n', b'\r\n'])
+def test_interface_expectation_freeze_accepts_checkout_line_endings_but_not_content_changes(line_ending):
+    from ai.interface_evaluation import _verify_expectation_bytes
+
+    path = ROOT / 'tests/ai_eval/interfaces.yaml'
+    original = path.read_bytes()
+    content = original.replace(b'\r\n', b'\n').replace(b'\n', line_ending)
+    assert _verify_expectation_bytes(content) == 'b33d335f8b98538952bf06055819c604664da1a4caa194f5c1d4985d7e44f11c'
+    for changed in (b'X' + content[1:], content + b' ', content + line_ending):
+        with pytest.raises(ValueError, match='pre-replay freeze'):
+            _verify_expectation_bytes(changed)
+    assert path.read_bytes() == original
+
+
 def test_interface_replays_score_against_frozen_independent_expectations(tmp_path):
     from ai.interface_evaluation import evaluate_interfaces, write_interface_report
 
     report = evaluate_interfaces()
     assert report['count'] == 20 and report['completed_trials'] == 60
     assert report['real_model_called'] is False and report['consistency'] == 1
+    assert report['expectation_sha256'] == 'd5ba4ecb7350f9a7684e89c8352e6356f3f6dde6319d0ebaf565cdcc5ea17189'
+    assert report['expectation_lf_sha256'] == 'b33d335f8b98538952bf06055819c604664da1a4caa194f5c1d4985d7e44f11c'
     assert all(trial['final_pass'] for trial in report['trials']), [(trial['id'], trial['checks'], trial['diagnostics']) for trial in report['trials'] if not trial['final_pass']]
     assert all(trial['calls'] == 0 for trial in report['trials'] if trial['id'] == 'axis_held_shared')
     assert all(trial['attempts'] == 2 and not trial['first_pass'] for trial in report['trials'] if trial['id'] == 'axis_dev_width_repair')
