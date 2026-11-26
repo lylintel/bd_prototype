@@ -607,4 +607,5 @@ P2.6 的 main 合并提交 5cc18aa 已通过本地完整门禁与 [CI 4381558451
 - 本地证据保留在 build/ci-axis-linux-20261126 的 baseline、controlled、fixed 三个目录；controlled/state-validation.json 包含应用设计、请求/响应、徽标、诊断及即时编辑错误，controlled/test-results 内含 trace.zip 与截图。测试失败时将同样证据输出并附加到 Playwright 报告；CI 配置 trace=retain-on-failure，always 上传 test-results 与 playwright-report。CI Node 固定为 24.22.3。
 - AXI-Stream 元数据、语义、生成、层次、画布、AI 和独立离线评测已经实现；本次是新 AXI-Stream 层次复用流程暴露的共享前端引用解析缺陷，不涉及协议数据通路或 RTL。2000 实例配对性能仍未验收且改动未提交，不与本分支合并。
 - Linux 完整 scripts/check.py 通过：255+55+336+97=743 Python、91 子测试、74 Node、38 E2E，两分片 2.4/1.5 分钟；25 个 HDL 对象零 error、原 77 warning 保留，旧语义基准 287.639/332.439ms 通过既有门槛，不作为接口配对验收。全部历史 golden 保持逐字节校验，未改源码/期望/回放。
-- 分支 CI 结果待补；只有分支 CI 全绿后才合入 main。
+- 修复提交 f2a24d8 的[分支 CI 45757823999](https://github.com/lylintel/bd_prototype/actions/runs/45757823999)七项全部成功，包含 Python 3.10/3.14 完整门禁、四个解析器组合及浏览器采集。browser-evidence-python-3.10/3.14 两份 artifact 已实际上传，分别为 2502924/2500653 字节。
+- 该结果关闭本次层次编辑缺陷，不表示接口配对性能已验收。合入 main 仍要求修复分支当前提交 CI 全绿；性能改动保持未提交并单独处理。
