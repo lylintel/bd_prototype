@@ -629,3 +629,11 @@ P2.6 的 main 合并提交 5cc18aa 已通过本地完整门禁与 [CI 4381558451
 - 快照 Windows 门禁 build/phase2b-paired-snapshot-check.log 因第一浏览器分片超过原 300 秒失败；19 条最终通过、耗时 7.5 分钟不能算门禁通过。Linux 原生文件系统对同一八文件快照执行完整 scripts/check.py，通过 747 Python +91 子测试、75 Node、38 E2E，两分片 3.0/1.5 分钟，旧语义基准 275.259/339.680ms；没有放宽时限或筛选样本。
 - 规则原文位于 IMPLEMENTATION_PLAN.md 的第 0 节，将全文固化到根 AGENTS.md，并提供报告、验证命令、固定工具及 Linux 从零复现入口；此后不从编辑器聊天记录找规则。
 - 本轮后续工作按用户要求依次记录 main 五次完整检查、异步操作审计与 revision、导航分段 profile、九对交错方法及 Linux CI 至少五次采集。每项独立验证，所有失败保留；不做第二期接口、W020-W022 或真实模型调用。
+
+### 规则与用户目录 Linux 引导
+
+- AGENTS.md 从 IMPLEMENTATION_PLAN.md 逐字复制第 0 节，并由离线测试逐字核验；新增报告入口、门禁命令和固定工具版本。规则仅查仓库文件，不再查编辑器聊天记录。
+- scripts/local_linux_ci.py 以系统 Python 标准库引导固定 CPython 3.14.10、Node 24.22.3、浏览器和 HDL 工具。九归档 URL/SHA-256、Python wheel 哈希与 npm integrity 均固定，下载/安装全部在外部 prefix；拒绝 root、重叠路径、未知清单、错误哈希、已有真实 node_modules 和关闭 TLS。不使用 sudo，官方 Verilator 包装器隔离自带 libc。
+- 2026-11-26 新检出与空 prefix 实际 verify 一次通过，记录见 docs/local-linux-ci.md 和 build/linux-ci-zero-20261126：目标固定十轮通过；完整 754 Python +91 子测试、75 Node、38 E2E 通过。此结果独立于 main 五轮稳定性和新配对性能，不能相互替代。
+- 引导器测试不得访问网络；覆盖缓存重验、外部目录约束、ZIP 越界、TLS/libc 环境、现有依赖保护及失败后旧成功标记失效。实际网络仅用于从零安装固定工具，不属于测试依赖。
+- 标记修复后的最终完整门禁另存 final-check.log：755 Python +91 子测试、75 Node、38 E2E 全部通过，两分片 2.5/1.5 分钟，旧语义基准 205.349/235.090ms；没有扩大时限、跳过用例或重录期望。

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "versions": {"node": "24.22.3", "python": "3.14.10", "playwright": "1.58.2", "chromium": "145.0.7632.6", "chromium_revision": "1208", "oss_cad_suite": "2026-11-17"},
+  "assets": [
+    {"name": "node.tar.xz", "kind": "tar", "folder": "node", "url": "https://nodejs.org/dist/v24.22.3/node-v24.22.3-linux-x64.tar.xz", "sha256": "4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb"},
+    {"name": "python.tar.gz", "kind": "tar", "folder": "python", "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261124/cpython-3.14.10%2B20261124-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz", "sha256": "73ee0629c19e9f87077f318cd50d7e703137c274479ce8e8fd5723e75c86c9bc"},
+    {"name": "oss-cad-suite.tar.gz", "kind": "tar", "folder": "oss-cad-suite", "url": "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-11-17/oss-cad-suite-linux-x64-20261117.tgz", "sha256": "d31c77e62aff4c922285ffc5265afa92034199206abb188bc72c0ee97b85e749"},
+    {"name": "chromium.zip", "kind": "zip", "folder": "browsers/chromium-1208", "url": "https://cdn.playwright.dev/builds/cft/145.0.7632.6/linux64/chrome-linux64.zip", "sha256": "b5e3195041af345a668d110f5daf5581961fa3608626ea588c97dd0fe81c4e38"},
+    {"name": "chromium-headless.zip", "kind": "zip", "folder": "browsers/chromium_headless_shell-1208", "url": "https://cdn.playwright.dev/builds/cft/145.0.7632.6/linux64/chrome-headless-shell-linux64.zip", "sha256": "2536e97d8f410df0394b3e7c4252e88ce9f239f04f3af4e247a26caf45baf49e"},
+    {"name": "ffmpeg.zip", "kind": "zip", "folder": "browsers/ffmpeg-1011", "url": "https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1011/ffmpeg-linux.zip", "sha256": "ebc74fc5b94830176a3c2914ae96bd8bc7f6a91f4f33890230f84a172ee61ccc"},
+    {"name": "libnspr4.deb", "kind": "deb", "folder": "browser-libs", "url": "https://archive.ubuntu.com/ubuntu/pool/main/n/nspr/libnspr4_4.35-0ubuntu0.22.04.1_amd64.deb", "sha256": "b3c96e4a61675c87f8d9655109346748847d859abc95f20493159d06b5aa30ef"},
+    {"name": "libnss3.deb", "kind": "deb", "folder": "browser-libs", "url": "https://archive.ubuntu.com/ubuntu/pool/main/n/nss/libnss3_3.98-0ubuntu0.22.04.5_amd64.deb", "sha256": "75f3879ab9969a930b5bf4b9229345d57e2ebe310ad8ce58c9d91393d823b236"},
+    {"name": "libasound2.deb", "kind": "deb", "folder": "browser-libs", "url": "https://archive.ubuntu.com/ubuntu/pool/main/a/alsa-lib/libasound2_1.2.6.1-1ubuntu1.2_amd64.deb", "sha256": "dce4ce1043cde35f4bc375a4b1bd84badd5dec7e656ea2a8849edf9215bc8c33"}
+  ]
+}
